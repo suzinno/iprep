@@ -89,6 +89,12 @@ flowchart TB
 
 The attribute check — *does an active `care_relationship` exist between this clinician and this patient at this instant* — is enforced by **PostgreSQL row-level security**. Each request sets a session GUC (`app.actor_id`, `app.actor_kind`) inside the transaction, and RLS policies on every patient-scoped table join through `care_relationship`'s temporal range. Application-layer checks exist too, but they are the second line: **a query a developer forgets to scope returns zero rows rather than another patient's record.** This is the single most important control in the design, because it converts the most common class of application bug into an empty result set.
 
+**Three implementation details decide whether that control is real, and each is asserted by a test rather than left to review:**
+
+- The GUC is set with **`SET LOCAL`** inside the request transaction, never a plain `SET`. Azure Flexible Server fronted by a transaction-mode pooler reuses a backend across requests, and a session-scoped `SET` would leak one caller's identity into the next caller's query — turning the strongest control in the design into its exact opposite. A pooled-connection leakage test asserts this.
+- The application role is `NOSUPERUSER` and lacks `BYPASSRLS`; migrations run as a separate owning role that never serves a request. A role-privilege assertion runs in CI.
+- Policies are written so the `patient_id` predicate still reaches the planner, keeping partition pruning intact on the monthly-partitioned `wellbeing_checkin` and `audit_event`. A policy that hides `patient_id` behind an opaque subquery silently converts a pruned index scan into a full partition sweep, so an `EXPLAIN` assertion guards the plan shape.
+
 The same scope is projected into `es-clinical` as the mandatory `patient_id` / `care_team_ids` filter described in [`03-data-modeling.md`](./03-data-modeling.md), so search cannot become the path around RLS.
 
 **Break-glass.** Emergency access requires an explicit reason string, grants a time-boxed `care_relationship`, notifies the patient's named team, and raises a high-priority audit event reviewed within 24 h. It is a recorded, reviewed exception, not a role.
@@ -100,9 +106,9 @@ The same scope is projected into `es-clinical` as the mandatory `patient_id` / `
 **In transit**
 
 - TLS 1.3 from client to Front Door, and from Front Door to APIM to `care-core`. TLS 1.2 is the floor for legacy mobile clients; nothing below it is negotiated.
-- **mTLS** on `care-core` ↔ `clinical-nlp-svc` — the one cross-cluster hop, and the one carrying clinical free text.
+- **mTLS** on `care-core` ↔ `clinical-nlp-svc` — the one cross-cluster hop, and the one carrying clinical free text. Certificates are issued and rotated by cert-manager from a private issuer in each cluster; OpenShift's built-in service-serving certificates do not span clusters, so this is an explicit dependency rather than a platform freebie (flagged in [`02-high-level-design.md`](./02-high-level-design.md)).
 - TLS on every store connection (`pg-clinical` with `verify-full`, `mongo-content`, `es-clinical`, `redis-cache`, `rmq-core` AMQPS and MQTT/TLS).
-- **East-west isolation without a service mesh.** OpenShift NetworkPolicy default-denies pod-to-pod traffic; each service permits only its declared callers. This is the cheaper alternative flagged in [`02-high-level-design.md`](./02-high-level-design.md); OpenShift Service Mesh is the documented upgrade if the service count grows past a handful.
+- **East-west isolation without a service mesh.** OpenShift NetworkPolicy default-denies pod-to-pod traffic; each service permits only its declared callers. This is the cheaper alternative flagged in [`02-high-level-design.md`](./02-high-level-design.md); OpenShift Service Mesh is the documented upgrade if the service count grows past a handful. NetworkPolicy governs traffic **inside** a cluster only, so the one hop it cannot see is `care-core` → `clinical-nlp-svc`, which crosses the VNet peering into `aks-ml`. That hop is governed by network security groups and a private endpoint, with mTLS as the identity check — three mechanisms where one would do, and part of the two-cluster cost named in [`02-high-level-design.md`](./02-high-level-design.md).
 
 **At rest**
 
@@ -113,7 +119,7 @@ The same scope is projected into `es-clinical` as the mandatory `patient_id` / `
 | `mongo-content`, `es-clinical`, `redis-cache` | Encrypted persistent volumes (AES-256), CMK-backed |
 | Key material | Key Vault with soft-delete and purge protection; annual rotation; access via workload identity, logged |
 
-**Field-level encryption** with `pgcrypto` applies to direct identifiers whose exposure is not needed for clinical function — `external_mrn`, contact details, next-of-kin — with keys in Key Vault. Diagnosis and treatment data are **not** field-encrypted: they are the working substance of every query and index, and encrypting them would either break search or be defeated by a decryption path the application must hold anyway. The honest control for that data is RLS, audit, and least privilege — stated plainly rather than dressed up as encryption.
+**Field-level encryption** with `pgcrypto` applies to direct identifiers whose exposure is not needed for clinical function — `external_mrn`, contact details, next-of-kin — with keys in Key Vault. `external_mrn` additionally carries a keyed blind index so hospital sync can still find a patient without decrypting the column, the mechanism recorded in [`03-data-modeling.md`](./03-data-modeling.md). Diagnosis and treatment data are **not** field-encrypted: they are the working substance of every query and index, and encrypting them would either break search or be defeated by a decryption path the application must hold anyway. The honest control for that data is RLS, audit, and least privilege — stated plainly rather than dressed up as encryption.
 
 **Data minimisation in transit to the model.** `clinical-nlp-svc` receives diagnosis code, treatment line, stage, and locale for page composition — not the patient's identity, name, or contact details. Extraction calls that must see note text receive the text and a correlation id, never the patient identifier.
 
@@ -146,6 +152,8 @@ The design targets **GDPR (UK/EU) with health data treated as Article 9 special-
 ## Auditing and Detection
 
 Every read and write of patient data writes an `audit.audit_event` row inside the same transaction as the access — not asynchronously, because an audit trail that can be lost in a queue is not an audit trail. Each row carries actor, actor kind, patient, action, resource, reason where applicable, and the `trace_id` that joins it to the Elastic APM trace.
+
+**A cache hit is still an access.** Serving a timeline from `redis-cache` writes the same audit row as serving it from `pg-clinical`; caching reduces read cost, never audit coverage. Because that row is a write, audited reads are served by the primary and never by a replica — the consequence recorded in [`03-data-modeling.md`](./03-data-modeling.md).
 
 The table is append-only at the database level (`UPDATE` and `DELETE` revoked from all application roles plus a blocking trigger), partitioned monthly, retained 13 months hot, then archived to the immutable `audit-archive` container for the full 7 years.
 

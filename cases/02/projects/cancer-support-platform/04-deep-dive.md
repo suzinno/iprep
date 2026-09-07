@@ -50,9 +50,13 @@ sequenceDiagram
 
 The REST alternative (`POST /api/v1/diary/check-ins`) exists for the web client and returns `202` with the same semantics. **At-least-once redelivery is absorbed by the unique key on `(patient_id, recorded_for)`**, not by application dedupe — a design choice made in [`03-data-modeling.md`](./03-data-modeling.md) precisely so that a redelivered message is arithmetic rather than a bug.
 
+**Three broker settings carry the RPO 0 claim, and none of them is a default.** `mqtt.exchange` must point at `care.events`, or the plugin publishes to `amq.topic` instead; MQTT's `/` separator is translated to AMQP's `.`, so `care/checkin/{patient_id}` binds as `care.checkin.{patient_id}`; and `care.events` needs an **alternate exchange**, because RabbitMQ returns PUBACK for a QoS 1 publish that routes to no queue. Without one, an unbound topic is acknowledged to the device and silently dropped — the exact loss this path exists to prevent. The alternate exchange turns it into a visible dead-letter instead.
+
+> **Deep Dive Reference:** Celery on quorum queues — quorum queues are required here, since RabbitMQ 4 removed classic mirrored queues, but Celery's support for them is recent and interacts with `task_acks_late`, global QoS, and priority. Pin and test the Celery version against the broker before committing the reminder path to it; the fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates.
+
 ## Reminder Delivery Path
 
-This is where the brief's reduction in missed reminders comes from. The failure it removes is structural: reminders that were sent inline during a request died with the request, and nothing recorded that they had not arrived.
+This is where the brief's 22% reduction in missed reminders comes from. The failure it removes is structural: reminders that were sent inline during a request died with the request, and nothing recorded that they had not arrived.
 
 ```mermaid
 sequenceDiagram
@@ -105,7 +109,7 @@ sequenceDiagram
 
 **The constraint that defines this pipeline:** composition draws only from `guidance_sources` passages a clinician has approved, and every block carries a citation to the passage it came from. The model selects, ranks, and rewrites approved material for the patient's context; it does not author clinical claims. A page a reviewer has not approved is never assigned. This costs relevance — a freely generating model would produce more fluent, more specific pages — and the cost is accepted deliberately, because an unsourced sentence in cancer guidance is a patient-safety defect, not a quality regression.
 
-Fine-tuned Hugging Face models are used at two points: **entity and code extraction** from visit notes (enriching `es-clinical-notes`) and **passage reranking** during retrieval. Both are evaluated against a held-out clinical set on every model version, and the model version is stamped on every artifact so a regression is attributable and a rollback is a reindex.
+Fine-tuned Hugging Face models are used at two points: **entity and code extraction** from visit notes (enriching `es-clinical-notes`) and **passage reranking** during retrieval. The brief's 28% relevance gain is attributable to these two together — reranking approved passages against the patient's diagnosis and treatment context, rather than serving one generic leaflet per cancer type. Both are evaluated against a held-out clinical set on every model version, and the model version is stamped on every artifact so a regression is attributable and a rollback is a reindex.
 
 > **Deep Dive Reference:** Fine-tuning data governance — transfer learning on real visit notes means patient text in a training corpus. Whether that is lawful processing, what de-identification is required, and whether the resulting weights can leak training text all need resolution with the data controller before any tuning run, not after.
 
@@ -113,15 +117,16 @@ Fine-tuned Hugging Face models are used at two points: **entity and code extract
 
 `care-core` never writes to `es-clinical` directly. Every write commits to `pg-clinical` with an `outbox_event` row in the same transaction; the relay publishes to `care.events`; `celery.index` consumes and bulk-indexes.
 
-This costs latency — a note is searchable a few seconds after it is saved — and buys the elimination of an entire class of defect: with a dual write, a `pg-clinical` commit followed by an `es-clinical` failure leaves the index permanently wrong with nothing to detect it. Here the outbox row is unpublished until the index succeeds, so the backlog is visible as a metric and drains on recovery. A nightly reconciliation compares document counts per patient between the two and reindexes divergent patients.
+This costs latency — a note is searchable within the composed lag budget in [`05-reliability.md`](./05-reliability.md), p95 < 15 s — and buys the elimination of an entire class of defect: with a dual write, a `pg-clinical` commit followed by an `es-clinical` failure leaves the index permanently wrong with nothing to detect it. Here the outbox row is unpublished until the index succeeds, so the backlog is visible as a metric and drains on recovery. A nightly reconciliation compares document counts per patient between the two and reindexes divergent patients.
 
 ## Failure Modes and Single Points of Failure
 
 | Component | Failure mode | Mitigation | Degraded behaviour |
 |---|---|---|---|
-| `pg-clinical` primary | Node loss | Flexible Server zone-redundant HA, automatic failover ~60 s; PITR, RPO 5 min | Writes rejected `503` during failover; replica-served reads continue |
+| `pg-clinical` primary | Node loss | Flexible Server zone-redundant HA, automatic failover ~60 s; PITR, RPO 5 min | **Reads and writes both rejected `503` during failover.** Because every PHI read writes an audit row, read availability is coupled to the primary; a cached timeline is not served as a fallback, since it could not be audited. This is the accepted price of synchronous audit, and it fits the 99.9% budget at a ~60 s zone failover |
 | `rmq-core` | Broker node loss | 3-node cluster, **quorum queues** for `care.events` and all Celery queues; publisher confirms mandatory | Check-ins buffer on the device via MQTT QoS 1; nothing is acknowledged that is not replicated |
 | `celery-worker` | Consumer crash mid-task | Late acknowledgement, idempotent handlers, bounded retries then dead-letter queue | Backlog grows; `outbox_lag` alerts before it is user-visible |
+| **Celery beat** | The scheduler is a singleton — if it stops, nothing sweeps for due reminders | Single-replica Deployment holding a Redis-backed lock (RedBeat) so a restart cannot double-schedule; liveness probe on last-tick age | **Reminders are delayed, not lost** — `reminder` rows stay `pending` in `pg-clinical` and the next sweep catches up. This is the payoff for keeping the state machine in the database rather than in the scheduler, and `reminder_dispatch_lateness_seconds` alerts long before a patient notices |
 | `es-clinical` | Cluster degraded or lost | 3 nodes, 1 replica per shard; **fully rebuildable from `pg-clinical` + `mongo-content`** | Search returns a clearly-labelled fallback: chronological browse and filters served from `pg-clinical` |
 | `clinical-nlp-svc` / `aks-ml` | Cluster or GPU pool unavailable | No synchronous user path depends on it; requests queue on `celery.content` | New page generation pauses; already-approved assigned pages serve normally |
 | Azure Entra ID | IdP outage | JWKS cached in `redis-cache` for 12 h, so existing tokens keep validating; SCIM sync queues and replays | New clinician sign-in fails; active sessions are unaffected. This is the deliberate reason the JWKS TTL is long |
@@ -140,6 +145,8 @@ This costs latency — a note is searchable a few seconds after it is saved — 
 **Throughput vs. cost in the split messaging estate.** Running `rmq-core` and `sb-integration` means two brokers to operate. The alternative — Service Bus alone — cannot terminate MQTT, and the alternative of RabbitMQ alone forfeits native Function triggering and the managed dead-lettering at the third-party delivery boundary. The seam is drawn where the platform hands work to Azure, which keeps the rule memorable, but the operational cost is real and is the first thing to revisit if MQTT ingress is ever dropped.
 
 **Correctness vs. relevance in generated content.** Stated above and worth repeating as a system-level trade-off: constraining generation to approved passages measurably narrows what a page can say. That is the intended outcome.
+
+**Read availability vs. audit completeness.** Auditing every PHI read synchronously makes an audited read a write: it cannot be served from a replica, and it fails when the primary fails, so read availability is bounded by write availability. Queuing the audit rows instead would let reads survive a failover, at the cost of an audit trail with a hole in it. For a health record the hole is the worse outcome, so the coupling is accepted and paid for with zone-redundant HA and a ~60 s failover that fits the 99.9% budget. It is stated here because it is the least obvious consequence of a control chosen in [`06-security.md`](./06-security.md).
 
 **Simplicity vs. capability in the search layer.** `es-clinical` is a second index to keep consistent, a rebuild procedure to rehearse, and a scope filter that must never be omitted. PostgreSQL full-text search would remove all three. It was chosen anyway because the latency target on 2.4M notes with filtering and highlighting is not reachable otherwise — a cost taken against a number, not a preference.
 

@@ -195,5 +195,6 @@ Four components are needed that the brief's environment list does not name. Each
 2. **Azure Front Door + WAF** — APIM does rate limiting but is not a web application firewall, and the brief names no L7 filtering.
 3. **Service-to-service mTLS.** OpenShift Service Mesh would provide it; at three services the cheaper alternative is NetworkPolicy isolation plus TLS terminated per service, and that is what [`06-security.md`](./06-security.md) specifies. The mesh is a documented upgrade, not a day-one dependency.
 4. **Azure Event Grid** — named in the project's responsibilities but absent from the environment list; used as described there for `BlobCreated` triggering.
+5. **A certificate authority for service-to-service mTLS** — cert-manager or equivalent. Declining the service mesh in item 3 removed the component that would have issued and rotated these certificates, and the cross-cluster hop still needs them. Naming the mesh as optional without naming its replacement would have left the mTLS claim in [`06-security.md`](./06-security.md) unsupported.
 
 > **Deep Dive Reference:** MQTT ingress authentication — RabbitMQ's MQTT plugin authenticates per connection, not per publish, so a long-lived mobile connection must be re-validated against token expiry out of band. Prototype this against real token lifetimes before committing to the check-in transport.

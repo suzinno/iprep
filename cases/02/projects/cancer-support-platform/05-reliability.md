@@ -20,7 +20,7 @@ Every index below exists for a named access pattern from an API contract in [`02
 
 | Access pattern | Endpoint | Index |
 |---|---|---|
-| Patient timeline, most recent first | `GET /api/v1/timeline` | Composite B-tree `(patient_id, occurred_at DESC)` on `appointment`, `prescription`, `visit_note`, `document`, `wellbeing_checkin` |
+| Patient timeline, most recent first | `GET /api/v1/timeline` | Composite B-tree `(patient_id, timeline_at DESC)` on `appointment`, `prescription`, `visit_note`, `document`, `wellbeing_checkin` — the normalised ordering column defined in [`03-data-modeling.md`](./03-data-modeling.md) |
 | Check-ins over a date window | `GET /api/v1/diary/check-ins` | Monthly range partition + BRIN on `recorded_at`; unique `(patient_id, recorded_for)` |
 | Symptom trend across a window | `GET /api/v1/patients/{id}/checkin-trend` | GIN on `symptom_scores jsonb` |
 | "May this clinician see this patient" — on every clinician request | all clinician paths | GiST on `care_relationship (patient_id, clinician_id, valid_period)`; the exclusion constraint is the same index |
@@ -31,9 +31,11 @@ Every index below exists for a named access pattern from an API contract in [`02
 
 **Write-path work already stated where it is owned:** partitioning and BRIN in [`03-data-modeling.md`](./03-data-modeling.md), `FOR UPDATE SKIP LOCKED` reminder claiming in [`04-deep-dive.md`](./04-deep-dive.md).
 
-**SQL discipline on the timeline query.** The timeline is a union across five tables and is the single most-executed clinician query. It is a keyset-paginated `UNION ALL` over per-table windows with `LIMIT` pushed into each branch, so PostgreSQL reads at most `limit` rows per source instead of materialising and sorting the whole union. Offset pagination on this query is prohibited; it is what the composite indexes exist to avoid.
+**SQL discipline on the timeline query.** The timeline is a union across five tables and is the single most-executed clinician query. It is a keyset-paginated `UNION ALL` over per-table windows with `LIMIT` pushed into each branch, so PostgreSQL reads at most `limit` rows per source instead of materialising and sorting the whole union. The cursor is the tuple `(timeline_at, source_table, id)`, which is why the ordering column is normalised across all five tables instead of each branch sorting on its own natural column. Offset pagination on this query is prohibited; it is what the composite indexes exist to avoid.
 
-**`es-clinical`.** Bulk indexing with a 5 s / 1000-document flush; `refresh_interval` of 5 s rather than the 1 s default, which matches the freshness target in [`01-requirements.md`](./01-requirements.md) and roughly halves segment-merge pressure. Searches use `filter` context for scope and date clauses (cacheable, unscored) and `must` only for the user's text, so the expensive scoring pass runs on a pre-filtered set.
+**`es-clinical`.** Bulk indexing with a 5 s / 1000-document flush; `refresh_interval` of 5 s rather than the 1 s default, which roughly halves segment-merge pressure. Searches use `filter` context for scope and date clauses (cacheable, unscored) and `must` only for the user's text, so the expensive scoring pass runs on a pre-filtered set.
+
+**The freshness budget is composed, not asserted.** Outbox relay ≤ 2 s, plus a bulk flush ≤ 5 s, plus a 5 s `refresh_interval`, puts a newly-saved note in search results at **p50 < 8 s, p95 < 15 s, p99 < 30 s** — the figures carried in [`01-requirements.md`](./01-requirements.md). Tightening any one of the three alone buys nothing, which is why the target is stated as a sum rather than as a single knob.
 
 **`mongo-content`.** Read-mostly; approved page versions are immutable, so reads hit the covering index on `{page_id, version}` and never contend with a writer.
 
@@ -66,6 +68,8 @@ Two telemetry planes exist because the estate spans OpenShift/AKS and Azure-nati
 | Index freshness | `outbox_unpublished_age_seconds` | > 30 s for 5 min |
 | Reminder timeliness | `reminder_dispatch_lateness_seconds` p99 | > 5 min |
 | Reminder outcome | `reminder_delivery_total{state}` | `failed` ratio > 2% over 1 h |
+| Consumer processing latency | `consumer_task_duration_seconds` p95 by queue | p95 > 5 s on `celery.reminders` or `celery.index` |
+| Consumer error rate | `consumer_task_failed_total` / `consumer_task_total` by queue | > 1% over 15 min |
 | Broker health | `rmq_queue_depth`, unacked messages | depth > 10K or rising 15 min |
 | NLP pipeline | generation queue depth, model p95, `nlp_low_confidence_total` | queue > 500, or confidence dip on a new model version |
 | Auth | JWT validation failures by reason, SCIM sync failures | any sustained rise; SCIM failure is paged — a deprovisioning that did not land is a security event |

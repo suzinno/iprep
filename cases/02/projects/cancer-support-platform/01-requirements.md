@@ -52,7 +52,7 @@ Clinician accounts originate in the hospital's Azure Entra ID tenant and are **n
 | **Latency** | Timeline read p95 < 120 ms (cached) / < 250 ms (cold); search p95 < 400 ms; write p95 < 300 ms; education page generation p95 < 45 s (asynchronous, never on the request path) | Clinicians open a timeline mid-consultation; a 2 s load is the behaviour the product exists to remove |
 | **Reminder timeliness** | Delivered within ±2 min of the scheduled window, p99 < 5 min late | The reminder pipeline's whole justification is reliability, not speed |
 | **Scalability** | Horizontal on stateless services; vertical + read replicas on `pg-clinical` until the documented evolution triggers below | Peak load is ~200 QPS — this is not a sharding-scale system, and pretending otherwise buys operational cost for nothing |
-| **Consistency** | **CP for the clinical record.** `pg-clinical` is the single source of truth; a clinician's write is read-your-writes for every party on the next read. **AP/eventual for derived views** — `es-clinical` search index lag target < 5 s (p99 < 30 s), content pages eventually consistent on publish | A stale search hit is recoverable; a lost prescription write is not. The record refuses to trade correctness for availability |
+| **Consistency** | **CP for the clinical record.** `pg-clinical` is the single source of truth; a clinician's write is read-your-writes for every party on the next read. **AP/eventual for derived views** — `es-clinical` search index lag p50 < 8 s, p95 < 15 s, p99 < 30 s (budget itemised in `05-reliability.md`), content pages eventually consistent on publish | A stale search hit is recoverable; a lost prescription write is not. The record refuses to trade correctness for availability |
 | **Durability** | RPO 5 min, RTO 30 min for `pg-clinical`; RPO 0 for accepted check-ins (durable on the broker before acknowledgement) | Health record loss is not commercially or legally survivable |
 | **Auditability** | Every read and write of patient data recorded, retained 7 years, immutable | Regulatory floor, not a feature |
 
@@ -85,7 +85,7 @@ Back-of-the-envelope figures below are the baseline every capacity decision in `
 | `pg-clinical` — check-ins | 60K active × 1/day × 365 × 5 ≈ 110M rows × ~1 KB | ~110 GB + ~40 GB indexes |
 | `pg-clinical` — visit notes | 60K × 8/yr × 5 = 2.4M × 4 KB | ~10 GB |
 | `pg-clinical` — appointments + prescriptions | 6M + 4.5M rows | ~12 GB |
-| `pg-clinical` — audit events | ~1M/day × 1825 = 1.8B × 300 B | ~550 GB (13 months retained hot ≈ 110 GB; older archived to `blob-documents`) |
+| `pg-clinical` — audit events | ~1M/day (the PHI-touching subset of 2.0M API calls; health checks, static content and unauthenticated routes are not audited) × 1825 = 1.8B × 300 B | ~550 GB (13 months retained hot ≈ 110 GB; older archived to `blob-documents`) |
 | **`pg-clinical` hot total** | | **~1.0 TB** |
 | `mongo-content` | ~500K page versions + templates + NLP extractions | ~120 GB |
 | `es-clinical` | 2.4M notes + 500K pages, ~3× source with per-field indexing | ~150 GB |
