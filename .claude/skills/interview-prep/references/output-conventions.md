@@ -52,6 +52,39 @@ When a question has sub-questions (`3.1`, `3.2`), nest them under the parent hea
 
 ---
 
+## Project attribution
+
+A case may hold several CV projects, and a client's question bank mixes questions tied to one of them, questions spanning several, and questions tied to none. Attribution is carried per question, and the document is **never reordered into project groups** — question order and numbering always follow the source question file, which is the order the interviewer has in front of them.
+
+Every question in an attributed file carries a `**Project:**` line between the heading and the brief answer:
+
+```
+---
+
+### Q5. <Question text>
+
+**Project:** iot-telemetry
+
+**Brief answer**
+<...>
+```
+
+The value is one or more project folder names, or `general` when the question is not tied to any project. Name several when a question genuinely spans them — a tag is an attribution, not a partition, so nothing is forced into a single bucket and nothing is dropped for fitting none.
+
+The document then opens with an index, directly under the header notes, giving the per-project view without moving anything:
+
+```
+## Questions by project
+
+- **cancer-support-platform** — Q1, Q2, Q3, Q6, Q7
+- **iot-telemetry** — Q5, Q8.2, Q9
+- **general** — Q4.1–Q4.6, Q11, Q12
+```
+
+**Which files carry this:** `<interview>/tech-answers.md` and `<interview>/tech-extra.md`. The soft-skills files do not — soft-skills questions are not project-bound. A project's own `interview-questions.md` does not either: every question in it belongs to that project by construction.
+
+---
+
 ## Language & style
 
 1. **Abbreviations** — On first use, write the full term followed by the abbreviation in parentheses: "Object-Relational Mapping (ORM)", "Single Sign-On (SSO)". Use the abbreviation freely afterwards.
@@ -85,5 +118,6 @@ Every mode re-reads its own output and verifies:
 - Every `<details>` block is opened and closed
 - Abbreviations expanded on first use
 - Numbering is consistent and unbroken
+- In an attributed file: every question carries a `**Project:**` line, every value names a real project folder or `general`, and the index at the top accounts for every question exactly once
 
 Each mode file adds its own checks on top of these.

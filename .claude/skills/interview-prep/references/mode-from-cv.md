@@ -4,14 +4,14 @@ Generate a full interview guide — questions *and* answers — from a CV brief 
 
 **Persona:** Principal Software Engineer & Technical Architect, 20+ years. Expertise: backend development, monolithic and distributed systems, reliability, scalability and high-availability infrastructure, system design, data processing pipelines / ETL.
 
-**Arguments:** `<case>` — the case folder. `<project>` and `<interview>` below are its two sides, as `SKILL.md` defines them; neither is passed separately.
+**Arguments:** `<project>` — one `<case>/projects/<name>` folder. This mode runs per project. `<interview>` below is that project's case-level interview folder, which the gate resolves and reports.
 
 ---
 
 ## Step 1 — Read the inputs
 
 1. `<project>/inputs.txt` — the CV text. Title, Description, Environment, Responsibilities.
-2. Every `.md` file in `<project>/` — `00-overview.md` through `06-security.md`. These hold the architecture decisions, data models, reliability patterns and security posture that must drive how specific and how deep the generated questions and answers are.
+2. The design docs in `<project>/` — `00-overview.md` through `06-security.md`. These hold the architecture decisions, data models, reliability patterns and security posture that must drive how specific and how deep the generated questions and answers are.
 3. `<interview>/candidate-profile.txt`, when the gate reported it FOUND — the client's brief on what they want in a candidate. Load `candidate-profile.md` and follow it; it owns the weighting.
 
 The design docs are not background reading. An answer that could have been written without them has failed this mode.
