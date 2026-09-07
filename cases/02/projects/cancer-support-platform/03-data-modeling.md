@@ -1,4 +1,4 @@
-# 3. Data Modeling & Storage
+# Data Modeling & Storage
 ## Personalized Cancer Support Platform
 
 **Table of Contents**

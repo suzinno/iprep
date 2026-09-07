@@ -65,6 +65,28 @@ Peak load is roughly **200 QPS**. The design says so explicitly and refuses to b
 
 ---
 
+## Requirement Traceability
+
+Every responsibility in `inputs.txt`, and where the design answers it.
+
+| # | Responsibility | Addressed in |
+|---|---|---|
+| 1 | PostgreSQL schemas and Elasticsearch indexes for clinical content search (35% latency reduction) | [`03`](./03-data-modeling.md) schema and index design; [`05`](./05-reliability.md) access-pattern indexing |
+| 2 | Fine-tuned Hugging Face models and LangChain workflows for education pages (28% relevance gain) | [`04`](./04-deep-dive.md) education page generation path; [`02`](./02-high-level-design.md) technology mapping |
+| 3 | Event-driven FastAPI with RabbitMQ AMQP and MQTT, check-ins and reminders off the request path (22% fewer missed reminders) | [`04`](./04-deep-dive.md) check-in ingest and reminder delivery paths |
+| 4 | REST APIs with SCIM 2.0 and Entra ID JWT; clinicians provisioned from the directory and kept off the patient portal | [`02`](./02-high-level-design.md) API design; [`06`](./06-security.md) two separated identity planes |
+| 5 | FastAPI modular monolith with SCIM provisioning and clinical NLP extracted | [`02`](./02-high-level-design.md) service topology and rejected alternatives |
+| 6 | File ingestion and async notifications on Blob Storage, Service Bus, Event Grid | [`02`](./02-high-level-design.md) architecture diagram; [`04`](./04-deep-dive.md) cloud integration edge |
+| 7 | SQLAlchemy 2 data access; tightened SQL for the timeline and care-team views | [`05`](./05-reliability.md) timeline query discipline; [`03`](./03-data-modeling.md) `timeline_at` normalisation |
+| 8 | Python 3.14 with Poetry-managed dependencies | [`02`](./02-high-level-design.md) technology mapping |
+| 9 | GitLab CI with ruff, pyright and SonarQube gates before OpenShift deploys | [`05`](./05-reliability.md) CI/CD pipeline |
+| 10 | Pytest unit and integration tests for API contracts, identity flows, content services | [`05`](./05-reliability.md) blocking gates |
+| 11 | ArgoCD releases to OpenShift and Kubernetes | [`05`](./05-reliability.md) GitOps delivery; [`02`](./02-high-level-design.md) cluster split |
+| 12 | Jira estimates and Confluence release/incident notes on a shared runbook | **No architectural implication** — process tooling, not system behaviour. The one property that is architectural, a single operational runbook across diary, content and identity, appears in [`05`](./05-reliability.md) restore rehearsal and [`06`](./06-security.md) breach reporting |
+| 13 | Elastic APM, Prometheus and Kibana on API and consumer latency and error rates | [`05`](./05-reliability.md) telemetry and SLI table |
+
+---
+
 ## Reading Order
 
 `01` sets the numbers; `02` fixes the names and technology choices that `03`–`06` are bound to; `04` explains the paths the earlier files assume; `05` and `06` are the operational and regulatory consequences. Deviating from `02`'s naming or technology anywhere in `03`–`06` is a defect in this document set, not a variation.

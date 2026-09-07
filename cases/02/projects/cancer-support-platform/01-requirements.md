@@ -1,4 +1,4 @@
-# 1. Requirement Clarification & Scoping
+# Requirement Clarification & Scoping
 ## Personalized Cancer Support Platform
 
 **Table of Contents**

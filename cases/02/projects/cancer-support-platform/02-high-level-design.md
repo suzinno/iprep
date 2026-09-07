@@ -1,4 +1,4 @@
-# 2. High-Level Design
+# High-Level Design
 ## Personalized Cancer Support Platform
 
 **Table of Contents**

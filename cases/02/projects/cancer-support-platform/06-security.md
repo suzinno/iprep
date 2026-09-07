@@ -1,4 +1,4 @@
-# 6. Security & Compliance
+# Security & Compliance
 ## Personalized Cancer Support Platform
 
 **Table of Contents**

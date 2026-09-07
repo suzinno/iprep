@@ -1,4 +1,4 @@
-# 5. Reliability & Observability
+# Reliability & Observability
 ## Personalized Cancer Support Platform
 
 **Table of Contents**

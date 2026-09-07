@@ -1,4 +1,4 @@
-# 4. Deep Dive & Bottlenecks
+# Deep Dive & Bottlenecks
 ## Personalized Cancer Support Platform
 
 **Table of Contents**
@@ -52,7 +52,7 @@ The REST alternative (`POST /api/v1/diary/check-ins`) exists for the web client 
 
 **Three broker settings carry the RPO 0 claim, and none of them is a default.** `mqtt.exchange` must point at `care.events`, or the plugin publishes to `amq.topic` instead; MQTT's `/` separator is translated to AMQP's `.`, so `care/checkin/{patient_id}` binds as `care.checkin.{patient_id}`; and `care.events` needs an **alternate exchange**, because RabbitMQ returns PUBACK for a QoS 1 publish that routes to no queue. Without one, an unbound topic is acknowledged to the device and silently dropped — the exact loss this path exists to prevent. The alternate exchange turns it into a visible dead-letter instead.
 
-> **Deep Dive Reference:** Celery on quorum queues — quorum queues are required here, since RabbitMQ 4 removed classic mirrored queues, but Celery's support for them is recent and interacts with `task_acks_late`, global QoS, and priority. Pin and test the Celery version against the broker before committing the reminder path to it; the fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates.
+> **Verify Before Build:** Celery on quorum queues — quorum queues are required here, since RabbitMQ 4 removed classic mirrored queues, but Celery's support for them is recent and interacts with `task_acks_late`, global QoS, and priority. Pin and test the Celery version against the broker before committing the reminder path to it; the fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates.
 
 ## Reminder Delivery Path
 
