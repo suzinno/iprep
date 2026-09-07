@@ -4,7 +4,7 @@ Generate additional questions that read as a natural continuation of an existing
 
 **Persona:** Senior Software Engineer and experienced technical interviewer.
 
-**Arguments:** `<interview>` — the interview folder. `<project>` — optional.
+**Arguments:** `<case>` — the case folder. `<project>` and `<interview>` below are its two sides, as `SKILL.md` defines them; neither is passed separately.
 
 ---
 
@@ -13,7 +13,7 @@ Generate additional questions that read as a natural continuation of an existing
 - `<interview>/soft-skills-questions.txt`, `<interview>/tech-questions.txt` — the original set, **optional.** The gate reports each as `SOURCED`, `ABSENT` or `PRESENT BUT HOLDS NO QUESTIONS`. When a pack has no originals, the base answers below carry the questions and are the only source for Step 2.
 - `<interview>/soft-skills-answers.md`, `<interview>/tech-answers.md` — **what the base pack already covers.** A new question is a duplicate if the existing *answers* already cover its substance, even when no original question asks it in those words. Checking the question list alone is not enough.
 - `<interview>/candidate-profile.txt`, when the gate reported it FOUND — the client's brief on what they want in a candidate. Load `candidate-profile.md` and follow it; it owns the weighting.
-- `<project>/inputs.txt` and `<project>/interview-questions.md`, when a project folder was given — the CV guide is a second body of covered ground to avoid re-asking, and the brief tailors new questions toward what the candidate would realistically face.
+- `<project>/inputs.txt` and `<project>/interview-questions.md`, when the gate reported the project brief `SOURCED` — the CV guide is a second body of covered ground to avoid re-asking, and the brief tailors new questions toward what the candidate would realistically face.
 
 ---
 

@@ -16,25 +16,25 @@ Output format and style are owned by `references/output-conventions.md`, not by 
 Each mode consumes what the previous step wrote to disk. The dependency is on **the artifacts**, never on "that skill was run earlier" — that is not knowable in a new session.
 
 ```
-inputs.txt ──> /system-design ──> 00-overview.md .. 06-security.md ──┐
-                                                                     ├──> from-cv ──> interview-questions.md
-inputs.txt ──────────────────────────────────────────────────────────┘
+<project>/inputs.txt ──> /system-design ──> <project>/00-overview.md .. 06-security.md ──┐
+                                                                                         ├──> from-cv ──> <project>/interview-questions.md
+<project>/inputs.txt ────────────────────────────────────────────────────────────────────┘
 
-{soft-skills,tech}-questions.txt  (optional) ─┐
-candidate-profile.txt             (optional) ─┼──> answer ──> {soft-skills,tech}-answers.md ──> extend ──> {soft-skills,tech}-extra.md
-<project>/inputs.txt              (optional) ─┘
-                    at least one of the three
+<interview>/{soft-skills,tech}-questions.txt  (optional) ─┐
+<interview>/candidate-profile.txt             (optional) ─┼──> answer ──> <interview>/{soft-skills,tech}-answers.md ──> extend ──> <interview>/{soft-skills,tech}-extra.md
+<project>/inputs.txt                          (optional) ─┘
+                              at least one of the three
 ```
 
-| Mode | Argument(s) | Requires on disk | Writes |
+| Mode | Argument | Requires on disk | Writes |
 |---|---|---|---|
-| `from-cv` | `<project>` `[<interview>]` | `inputs.txt`, and `00-overview.md`…`06-security.md` from `/system-design` | `<project>/interview-questions.md` |
-| `answer` | `<interview>` `[<project>]` | at least one source: a `*-questions.txt`, a profile, or a project brief | `<interview>/soft-skills-answers.md`, `tech-answers.md` |
-| `extend` | `<interview>` `[<project>]` | both `*-answers.md`; `<project>/interview-questions.md` if a project is given | `<interview>/soft-skills-extra.md`, `tech-extra.md` |
+| `from-cv` | `<case>` | `<project>/inputs.txt`, and `00-overview.md`…`06-security.md` from `/system-design` | `<project>/interview-questions.md` |
+| `answer` | `<case>` | at least one source: a `*-questions.txt`, a candidate profile, or the project brief | `<interview>/soft-skills-answers.md`, `<interview>/tech-answers.md` |
+| `extend` | `<case>` | both `*-answers.md`; `<project>/interview-questions.md` when the case has a project | `<interview>/soft-skills-extra.md`, `<interview>/tech-extra.md` |
 
-`extend`'s dependency on `from-cv` is **conditional**: it applies only when a project folder is passed. An interview folder with no associated project is a supported case.
+`extend`'s dependency on `from-cv` is **conditional**: it applies only when the case has a project brief to have generated a CV guide from. A case with an interview pack and no project is a supported shape.
 
-Each mode takes its **primary folder first** — the one it writes into — and an optional companion folder second. For `from-cv` the companion is an interview folder; for `answer` and `extend` it is a project folder.
+---
 
 The two `*-questions.txt` files are **optional**, and independent of each other. A client may supply one pack, both, or neither. Where a set exists, `answer` answers it; where none exists, `answer` generates that pack from the profile and the project brief, and the result is more generic by design. A file counts as a question set only if it actually holds questions — a stub like a lone `1` is non-empty but sources nothing, and the gate reports it as `PRESENT BUT HOLDS NO QUESTIONS`.
 
@@ -44,13 +44,30 @@ The two `*-questions.txt` files are **optional**, and independent of each other.
 
 ---
 
+## The case folder
+
+Every mode takes exactly one argument: a **case**. A case holds at most one project, and optionally one interview pack, at fixed relative paths:
+
+| Path | Written by | Holds |
+|---|---|---|
+| `<case>/project` | `/system-design`, `from-cv` | `inputs.txt`, `00-overview.md`…`06-security.md`, `interview-questions.md` |
+| `<case>/interview` | `answer`, `extend` | `candidate-profile.txt`, `*-questions.txt`, `*-answers.md`, `*-extra.md` |
+
+Throughout this file and every mode file, `<project>` and `<interview>` mean those two paths. They are **derived from the case, never passed** — there is no companion argument to any mode.
+
+Only the case folder itself has to exist. A case whose project side or interview pack is missing is an ordinary "not started yet" state, and the gate reports it BLOCKED with a runnable remedy — never as a malformed invocation. Create `<interview>/` if a mode needs to write there and it is absent.
+
+Two cases are never related to each other. A new case is independent of every existing one even when its project covers similar ground, and nothing in this skill infers a link from folder numbering or from content resemblance.
+
+---
+
 ## Step 0 — Parse the invocation
 
-`$ARGUMENTS` is `<mode> <path> [<companion-path>]`.
+`$ARGUMENTS` is `<mode> <case>`.
 
 `<mode>` is one of `from-cv`, `answer`, `extend`.
 
-If no mode word is present, infer the likely mode from the paths given, state the inference, and **ask the user to confirm before doing anything else**. Never silently guess a mode — the three modes write different files to different folders.
+If no mode word is present, infer the likely mode from what the case already holds, state the inference, and **ask the user to confirm before doing anything else**. Never silently guess a mode — the three modes write different files to different places.
 
 ---
 
@@ -59,7 +76,7 @@ If no mode word is present, infer the likely mode from the paths given, state th
 **Before reading any input file, before loading a mode file, run:**
 
 ```
-.claude/skills/interview-prep/scripts/preflight.sh <mode> <path> [<companion-path>]
+.claude/skills/interview-prep/scripts/preflight.sh <mode> <case>
 ```
 
 Dispatch on the **exit code**, not on the printed text:
@@ -70,7 +87,7 @@ Dispatch on the **exit code**, not on the printed text:
 | `1` | BLOCKED | **Stop.** Report the unsatisfied preconditions and the `to unblock:` remedy verbatim. Offer to run the remedy. Do not generate anything. |
 | `2` | CANNOT-RUN | **Stop.** The invocation is malformed. Report the problem and ask for the correct arguments. |
 
-Read the gate's `notes:` section either way. It reports the candidate profile as `FOUND`, `ABSENT`, `PRESENT BUT EMPTY` or `PRESENT BUT UNUSABLE`. On the two unusable verdicts, say so to the user before generating — a file was put there deliberately and producing an unweighted pack silently is the failure to avoid.
+Read the gate's `notes:` section either way. It reports every optional input: the candidate profile, each `*-questions.txt`, and the project brief. On any `PRESENT BUT EMPTY` or `PRESENT BUT UNUSABLE` verdict, say so to the user before generating — a file was put there deliberately, and producing an unweighted or ungrounded pack silently is the failure to avoid.
 
 A BLOCKED result is not a hurdle to reason around. Generating output from missing prerequisites produces a guide grounded in nothing — the failure is silent and the result looks fine. If the user explicitly instructs you to proceed anyway, say plainly what will be missing from the result, then proceed.
 

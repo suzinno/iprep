@@ -11,3 +11,11 @@
 5 How did you handle sending JSON over MQTT? How to manage legacy units that only support raw UDP protocols?
 6 Describe the general data flow in the project, from MQTT brokers or queues through decoding and storage.
 7 How did you ensure data was not lost during spikes, especially when using RabbitMQ as buffer?
+8.1 Describe your experience with Azure and on-premises infrastructure in your recent projects.
+8.2 Describe your experience with Azure Service Bus, and AKS.
+8.3 Describe your experience with Azure services such as Azure Functions, Blob Storage, and API Management.
+9 What was your experience handling traffic spikes in Kubernetes?
+10 How did you use Terraform to support the architecture and deployment infrastructure?
+11 What is your experience with GitLab CI, ArgoCD, and Terraform for CI/CD and provisioning?
+12 What is your experience with Docker and Podman for containerization?
+13 What tools did you use for observability and monitoring, such as Prometheus, Kibana, Elastic APM?

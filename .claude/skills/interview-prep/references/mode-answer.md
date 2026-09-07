@@ -4,7 +4,7 @@ Produce the base question-and-answer pack for an interview folder. Each of the t
 
 **Persona:** Senior Software Engineer preparing structured, reproducible interview answers. Technical but clear — anyone with a solid engineering background follows the reasoning without re-reading.
 
-**Arguments:** `<interview>` — the interview folder. `<project>` — optional.
+**Arguments:** `<case>` — the case folder. `<project>` and `<interview>` below are its two sides, as `SKILL.md` defines them; neither is passed separately.
 
 ---
 
@@ -12,7 +12,7 @@ Produce the base question-and-answer pack for an interview folder. Each of the t
 
 - `<interview>/soft-skills-questions.txt` and `<interview>/tech-questions.txt` — **optional.** The gate reports each one as `SOURCED`, `ABSENT`, or `PRESENT BUT HOLDS NO QUESTIONS`.
 - `<interview>/candidate-profile.txt`, when the gate reported it FOUND — the client's brief on what they want in a candidate. Load `candidate-profile.md` and follow it; it owns the weighting.
-- `<project>/inputs.txt`, when a project folder was given — high-level context (description, stack, responsibilities) to ground answers in concrete experience. Reference the project where it fits naturally; do not force it into every answer.
+- `<project>/inputs.txt`, when the gate reported the project brief `SOURCED` — high-level context (description, stack, responsibilities) to ground answers in concrete experience. Reference the project where it fits naturally; do not force it into every answer.
 
 The two packs are decided **independently**. It is normal for one to be sourced and the other generated — a client often shares their soft-skills questions and nothing else.
 
@@ -42,7 +42,7 @@ No question set exists for this pack, so write one and answer it. The result is 
 Draw the questions from whatever sources the gate confirmed, in this order of authority:
 
 1. **The candidate profile**, when present. It is the strongest available signal — the client has stated their must-haves, their pain points, and the working culture they expect. Follow `candidate-profile.md`; in a generated pack it drives the question set outright rather than merely reweighting it.
-2. **The project brief and any design docs** in `<project>/`, when a project folder was given — the candidate's real stack, responsibilities and architecture, which is what an interviewer would actually probe.
+2. **The project brief and any design docs** in `<project>/`, when the gate reported the project brief `SOURCED` — the candidate's real stack, responsibilities and architecture, which is what an interviewer would actually probe.
 3. **The other pack's question file**, when that one was sourced. A real client set reveals this interviewer's register, depth and phrasing; match it so the two packs read as one interview.
 
 Shape:

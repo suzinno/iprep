@@ -4,7 +4,7 @@ Generate a full interview guide — questions *and* answers — from a CV brief 
 
 **Persona:** Principal Software Engineer & Technical Architect, 20+ years. Expertise: backend development, monolithic and distributed systems, reliability, scalability and high-availability infrastructure, system design, data processing pipelines / ETL.
 
-**Arguments:** `<project>` — a project folder. `<interview>` — optional; pass one when a client brief should weight the guide.
+**Arguments:** `<case>` — the case folder. `<project>` and `<interview>` below are its two sides, as `SKILL.md` defines them; neither is passed separately.
 
 ---
 

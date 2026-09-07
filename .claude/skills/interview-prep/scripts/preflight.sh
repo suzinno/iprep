@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # Precondition gate for the interview-prep skill.
 #
+# Every mode takes exactly one argument: a case folder. A case holds at most one
+# project and optionally one interview pack, at fixed relative paths:
+#
+#   <case>/project    inputs.txt, the /system-design docs, interview-questions.md
+#   <case>/interview  candidate-profile.txt, *-questions.txt, *-answers.md, *-extra.md
+#
+# Both sides are derived from the case, never passed separately. Only the case
+# folder itself has to exist -- a missing project or interview side is an ordinary
+# "not started yet" state and is reported as BLOCKED with a remedy, not as a
+# malformed invocation.
+#
 # Dependencies between modes are expressed as the artifacts a prior step leaves
 # on disk, never as "skill X was invoked" -- that state does not survive a new
 # session and cannot be checked.
@@ -10,10 +21,11 @@
 #   1  BLOCKED     a prerequisite artifact is missing/empty/unreadable
 #   2  CANNOT-RUN  the invocation itself is wrong (bad mode, bad arg count, bad path)
 #
-# candidate-profile.txt and the two *-questions.txt files are OPTIONAL inputs and
-# never block on their own. Their presence or absence is always reported, because
-# an optional input that goes unnoticed is how the weighting, or the switch to a
-# generated pack, silently fails to happen.
+# candidate-profile.txt, the two *-questions.txt files and the project brief are
+# OPTIONAL inputs to answer and extend, and never block on their own. Their
+# presence or absence is always reported, because an optional input that goes
+# unnoticed is how the weighting, or the switch to a generated pack, silently
+# fails to happen.
 #
 # A question file counts as a source only if it actually holds questions. A stub
 # such as a lone "1 " is non-empty and would pass a -s test, so usability here is
@@ -32,9 +44,10 @@ notes=()
 
 usage() {
     printf '\nusage:\n'
-    printf '  preflight.sh from-cv <project>   [<interview>]\n'
-    printf '  preflight.sh answer  <interview> [<project>]\n'
-    printf '  preflight.sh extend  <interview> [<project>]\n'
+    printf '  preflight.sh from-cv <case>\n'
+    printf '  preflight.sh answer  <case>\n'
+    printf '  preflight.sh extend  <case>\n'
+    printf '\nthe project side is <case>/project and the interview side <case>/interview.\n'
 }
 
 cannot_run() {
@@ -64,8 +77,8 @@ require() {
 }
 
 require_dir() {
-    [ -n "$1" ] || cannot_run "no path given"
-    [ -e "$1" ] || cannot_run "no such path: $1"
+    [ -n "$1" ] || cannot_run "no case folder given"
+    [ -e "$1" ] || cannot_run "no such case folder: $1"
     [ -d "$1" ] || cannot_run "not a directory: $1"
     [ -r "$1" ] || cannot_run "unreadable directory: $1"
 }
@@ -110,18 +123,43 @@ report_profile() {
     fi
 }
 
+# report_project <project-dir> -- optional input to answer and extend, never blocks.
+# Sets PROJECT_SOURCED=1 when this case has a usable CV project brief.
+PROJECT_SOURCED=0
+report_project() {
+    local path="$1/inputs.txt"
+    if [ ! -e "$path" ]; then
+        notes+=("project brief: ABSENT ($path) -- this case has no CV project; generate without it")
+    elif [ ! -f "$path" ] || [ ! -r "$path" ]; then
+        notes+=("project brief: PRESENT BUT UNUSABLE (not a readable file): $path -- tell the user before generating")
+    elif [ ! -s "$path" ]; then
+        notes+=("project brief: PRESENT BUT EMPTY: $path -- tell the user before generating")
+    else
+        notes+=("project brief: SOURCED $path -- ground the output in this project")
+        PROJECT_SOURCED=1
+    fi
+}
+
 [ "$#" -ge 1 ] || cannot_run "no mode given"
 
 mode="$1"
 shift
 
 case "$mode" in
-    from-cv)
-        [ "$#" -ge 1 ] && [ "$#" -le 2 ] || cannot_run "mode 'from-cv' takes a project folder and an optional interview folder; got $#"
-        project="$1"
-        interview="${2:-}"
-        require_dir "$project"
+    from-cv|answer|extend) ;;
+    *) cannot_run "unknown mode: $mode" ;;
+esac
 
+[ "$#" -eq 1 ] || cannot_run "mode '$mode' takes exactly one case folder; got $#"
+
+case_dir="${1%/}"
+require_dir "$case_dir"
+
+project="$case_dir/project"
+interview="$case_dir/interview"
+
+case "$mode" in
+    from-cv)
         require "$project/inputs.txt" "write the CV brief to $project/inputs.txt"
 
         # Output contract of the system-design skill.
@@ -130,66 +168,41 @@ case "$mode" in
             require "$project/$doc.md" "run: /system-design $project"
         done
 
-        if [ -n "$interview" ]; then
-            require_dir "$interview"
-            report_profile "$interview"
-        else
-            notes+=("candidate profile: NOT REQUESTED -- no interview folder given; pass one to weight toward a client brief")
-        fi
+        report_profile "$interview"
         ;;
 
     answer)
-        [ "$#" -ge 1 ] && [ "$#" -le 2 ] || cannot_run "mode 'answer' takes an interview folder and an optional project folder; got $#"
-        interview="$1"
-        project="${2:-}"
-        require_dir "$interview"
-
         report_questions "$interview/soft-skills-questions.txt" "soft-skills"
         report_questions "$interview/tech-questions.txt"        "tech"
-
-        project_is_source=0
-        if [ -n "$project" ]; then
-            require_dir "$project"
-            require "$project/inputs.txt" "write the CV brief to $project/inputs.txt, or drop the project argument"
-            is_usable_file "$project/inputs.txt" && project_is_source=1
-        fi
-
         report_profile "$interview"
+        report_project "$project"
 
         # Something must drive generation. With no question set, no profile and no
         # project there is nothing to build a pack from, and inventing one would be
         # the worst possible silent success.
-        if [ "$QUESTIONS_SOURCED" -eq 0 ] && [ "$PROFILE_USABLE" -eq 0 ] && [ "$project_is_source" -eq 0 ]; then
+        if [ "$QUESTIONS_SOURCED" -eq 0 ] && [ "$PROFILE_USABLE" -eq 0 ] && [ "$PROJECT_SOURCED" -eq 0 ]; then
             problems+=("no source to generate from: no usable question file, no candidate profile, no project brief")
-            remedies+=("add questions to $interview, add $interview/candidate-profile.txt, or pass a project folder")
+            remedies+=("add questions to $interview, add $interview/candidate-profile.txt, or write the CV brief to $project/inputs.txt")
         fi
         ;;
 
     extend)
-        [ "$#" -ge 1 ] && [ "$#" -le 2 ] || cannot_run "mode 'extend' takes an interview folder and an optional project folder; got $#"
-        interview="$1"
-        project="${2:-}"
-        require_dir "$interview"
-
         # Optional: when absent, extend derives topics and style from the base answers.
         report_questions "$interview/soft-skills-questions.txt" "soft-skills"
         report_questions "$interview/tech-questions.txt"        "tech"
 
         # extend reads the base answers to avoid re-asking what they already cover.
-        require "$interview/soft-skills-answers.md" "run: /interview-prep answer $interview"
-        require "$interview/tech-answers.md"        "run: /interview-prep answer $interview"
-
-        # Conditional: only when a project folder is in play does the CV guide exist to dedupe against.
-        if [ -n "$project" ]; then
-            require_dir "$project"
-            require "$project/interview-questions.md" "run: /interview-prep from-cv $project, or drop the project argument"
-        fi
+        require "$interview/soft-skills-answers.md" "run: /interview-prep answer $case_dir"
+        require "$interview/tech-answers.md"        "run: /interview-prep answer $case_dir"
 
         report_profile "$interview"
-        ;;
+        report_project "$project"
 
-    *)
-        cannot_run "unknown mode: $mode"
+        # Conditional: only when this case actually has a project does the CV guide
+        # exist to dedupe against. A case with no project is a supported shape.
+        if [ "$PROJECT_SOURCED" -eq 1 ]; then
+            require "$project/interview-questions.md" "run: /interview-prep from-cv $case_dir"
+        fi
         ;;
 esac
 
