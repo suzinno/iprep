@@ -1,0 +1,5 @@
+1 where in the project you were responsible for a critical part of a system? also for ensuring the quality and reliability under pressure. tell about those critical parts
+2 specify which AIs and which tools exactly did you use for development process and as a components within the system
+3 provide an example of disagreement that you had with another engineer or product owner or a team member and how did you resolve it
+4 task with unclear requirements - one-liner telling you to do something (with no acceptance criteria, no real value). how do you proceed?
+5 how to balance speed and quality? you have a tight deadline so you have to make decision of which one to prioritize. how do you handle this type of situation: delivery vs. quality? what is your negotiation approach?

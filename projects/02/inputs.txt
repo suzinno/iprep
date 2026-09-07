@@ -1,0 +1,24 @@
+Title: PERSONALIZED CANCER SUPPORT PLATFORM
+
+Description:
+Platform for people diagnosed with cancer and for the clinicians who follow them.
+Patients log daily wellbeing, access diagnosis- and treatment-specific guidance, and keep appointments, prescriptions, and visit notes in one place instead of scattered files and messages. Care teams see the same record, so questions and updates do not depend on a phone call or a paper pack.
+The product cuts time spent hunting for information and helps patients stay on treatment and check-in schedules.
+
+Environment:
+Python, FastAPI, SQLAlchemy, Alembic, Pydantic, Pytest, Celery, Poetry, ruff, pyright, OAuth2, Hugging Face, LangChain, RabbitMQ, PostgreSQL, Redis, MongoDB, Elasticsearch, Elastic APM, Prometheus, Kibana, SonarQube, OpenShift, ArgoCD, GitLab CI, Docker, Docker Compose, Kubernetes(k8s), Terraform, GitLab, Linux, Azure (AKS, Blob Storage, Functions, Service Bus, Monitor, API Management, etc.), etc.
+
+Responsibilities:
+    • Designed PostgreSQL schemas and Elasticsearch indexes for clinical content search so patients and clinicians could find notes, guidance, and visit history without scanning the full record, cutting query latency by 35%;
+    • Fine-tuned Hugging Face models with transfer learning and built LangChain workflows that turn diagnosis and treatment context into education pages patients actually read, raising relevance scores by 28%;
+    • Implemented event-driven FastAPI services with RabbitMQ AMQP and MQTT to take wellbeing check-ins and appointment reminders off the request path, cutting missed reminders by 22%;
+    • Implemented REST APIs with SCIM 2.0 and Azure Entra ID JWT so clinician and care-team accounts stay provisioned from the hospital directory and stay off the patient portal;
+    • Designed a FastAPI modular monolith with separate patient diary, clinical content, and identity modules, and extracted microservices for SCIM provisioning and clinical NLP so those releases no longer blocked the rest of the product;
+    • Migrated file ingestion and async notifications to Azure Blob Storage, Service Bus, and Event Grid so scans, letters, and follow-up messages no longer sat in ad-hoc folders;
+    • Migrated data access to SQLAlchemy 2 and tightened SQL for clinical record queries used on the patient timeline and care-team views;
+    • Moved core FastAPI services to Python 3.14 with Poetry-managed dependencies so runtime and packages stayed consistent across modules;
+    • Configured GitLab CI with ruff, pyright, and SonarQube gates, automating lint, type checks, and test runs before OpenShift deploys, and fixed failing pipeline and deploy jobs;
+    • Wrote Pytest unit and integration tests for API contracts, identity flows, and clinical content services so SCIM and portal changes did not break patient access;
+    • Deployed releases with ArgoCD to OpenShift and Kubernetes so diary, content, and identity services rolled out on the same GitOps path;
+    • Tracked estimates and remaining work in Jira and kept release and incident notes in Confluence so diary, content, and identity deploys shared one runbook;
+    • Instrumented Elastic APM, Prometheus, and Kibana to track API and consumer latency and error rates on wellbeing and reminder traffic.

@@ -1,0 +1,24 @@
+1 django, fastapi, flask - what's the difference when working with them. from the technical point and 'how to work with' point?
+2 important aspect for fastapi is concurrent execution by using async calls. how do you manage in the entire app this asynchronous calls starting from the endpoints, starting from the routers and to the db? is it easy to do out of the box or does it need some special arrangements in your code for fastapi?
+3 assume we decided to use fastapi for rag project with llms to be used.
+3.1 how do you structure the project in the beginning? focus on the fastapi - how to structure (folders, modules).
+3.2 how do you design the initial steps for having a fastapi application? including db
+3.3 how do you design routers and entrypoint?
+4 assume you already have separate layers for domain and for the services.
+4.1 what is the best way (talking about fastapi) of managing the dependencies? for the dependencies how to reach the loose coupling in all the code and really have good separation of concerns?
+4.2 does it make sense to have layering in a hierarchical manner? doesn't it affect the code itself or maintainability?
+4.3 imagine we use dependency injection, we have good separation of concerns. how the layers should be structured and how they should call each other? can the entrypoint directly have the dependency to the db or how do you deal with that (even if you are using dependency injection)? why you have dependency to the db session, but not to the repositories (on the presentation layer or on the routers)?
+5 let's assume we already created our fastapi app and we want to use the rag pipeline.
+5.1 how do you integrate the pipeline? that could be an external llm call over openAI or from Azure. how do you integrate it to your existing implementation? what components to consider?
+5.2 if you already use postgres in your project, what will you choose, still the pinecone or alternative?
+5.3 expand on langchain usage in the pipeline
+6 authentication in fastapi apps:
+6.1 how do you deal with it? how do you design it?
+6.2 let's assume you need sso (single sign on). how would you implement it?
+7 python specifics:
+7.1 is it object-oriented or is it functional or procedural paradigm? how you decide what to use and when? what is preferred and what are best practicies?
+7.2 what are the disadvantages of python being object-oriented?
+7.3 how to deal with diamond inheritance problem (occurring from having multiple superclasses)? what kind of structures python provides to deal with such problems?
+7.4 are there private methods in python?
+7.5 sqlalchemy and orms. how do you prefer to work with them - using directly mapped columns coming out of sqlalchemy or something else like data classes, pydantic?
+7.6 how do you deal with the validation in data classes?

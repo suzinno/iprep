@@ -1,0 +1,10 @@
+
+1 Describe your role and responsibilities in the project.
+2 Tell where in the project you were responsible for a critical part of a system?
+3 Tell about the team structure and the people you worked with.
+4 What methodology did your team follow, and which rituals did you use?
+5 What quality criteria do you use, such as test coverage, and how do you ensure robust development?
+6 Specify which AIs and which tools exactly did you use for development process and as a components within the system
+7 Provide an example of disagreement that you had with another engineer \ product owner \ a team member and how did you resolve it
+8 How do you proceed if you get task with unclear requirements - just one-liner telling you to do something abstract (with no acceptance criteria, no real value)?
+9 How to balance speed and quality? you have a tight deadline so you have to make decision of which one to prioritize - how do you handle this type of situation: delivery vs. quality? what is your negotiation approach?

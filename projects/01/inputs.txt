@@ -1,0 +1,32 @@
+Title: PERSONALIZED CANCER SUPPORT PLATFORM
+
+Description:
+This platform helps cancer patients from the day of diagnosis by providing reliable information and tracking their daily wellbeing. It offers customized details about their diagnosis and treatment, making communication with healthcare providers easier. Patients can store important information like appointments, prescriptions, and doctor’s notes in one convenient place.
+
+Environment:
+Python, FastAPI, Pydantic, Alembic, SQLAlchemy, LangChain, LangGraph, Milvus, Redis, PostgreSQL, Javascript, TypeScript, React, Redux, Redux Toolkit, axios, React Testing Library, Webpack, HTML/CSS, MUI, Serverless Framework, Docker, Docker Compose, Kubernetes(k8s), Azure (Monitor, SQL, Cosmos DB, DevOps, Machine Learning, Blob Storage, Service Bus, Container Apps, API Management, Functions, Repos, AKS, etc.), GitHub Actions, Bash, Cursor, Claude.
+
+Responsibilities:
+    • Develop and implement streaming applications to process data from various sources;
+    • Writing auxiliary scripts for data processing;
+    • Designing the overall structure and schema of the databases and services;
+    • Optimizing large complicated SQL statements;
+    • Identify and resolve performance issues with SQL queries, including high resource usage and slow response times;
+    • Review and improve the performance of stored procedures and SQL queries;
+    • Developing strategies for cache invalidation to ensure data consistency and reliability;
+    • Designing memory and context management strategies for conversational agents using LangChain abstractions;
+    • Implementing asynchronous and event-driven execution flows in LangGraph for scalable AI pipelines;
+    • Combining LangChain pipelines with Milvus for semantic search and retrieval-augmented generation;
+    • Designing and implementing serverless workloads using Azure Functions for event-driven data processing;
+    • Using Azure BlobStorage batch operations to invoke Azure Functions function on a large set of Azure BlobStorage objects;
+    • Managing networking in AKS, including ingress controllers, load balancers, and secure service communication;
+    • Writing optimized Docker and Docker Compose file;
+    • Configuring CI/CD pipelines to automate build and deployment processes into AKS clusters;
+    • Diagnosing and resolved issues in CI/CD pipelines;
+    • Using AI tools to analyze existing codebases, identify bottlenecks, and suggest optimizations;
+    • Validating and refining AI-generated code to ensure compliance with project standards and performance requirements;
+    • Writing unit and integration tests;
+    • Configuring pre-commit hooks in order to improve the quality of commits;
+    • Building dynamic user interfaces with React, ensuring smooth data flow and efficient interaction with backend APIs;
+    • Implementing form handling and validation in React applications with a focus on user experience and data integrity;
+    • Setting up hot module replacement (HMR) in Webpack to enhance development workflow and reduce feedback loop time.

@@ -1,0 +1,13 @@
+1 Describe your experience with FastAPI and Asyncio in your recent project.
+2 Describe your experience with Django, Django REST, and Flask in earlier projects.
+3 Describe your experience with SQLAlchemy Core and building custom queries.
+4 N+1 problem
+4.1 What are the solutions to the N+1 problem in Django, such as select_related and prefetch_related?
+4.2 Explain the N+1 problem in microservices or backend applications. Where it can appear, and how it can be solved?
+4.3 Explain how the N+1 problem can appear at the frontend or backend design level when the UI requests information through separate endpoints.
+4.4 What could be a good solution for reducing that problem if REST is not being used?
+4.5 Could the N+1 problem be handled on the database side, for example by creating a view that joins tables so data is always accessible?
+4.6 How much does using a database view cost, and did you try solving something like that with a view? What did you conclude in the end?
+5 How did you handle sending JSON over MQTT? How to manage legacy units that only support raw UDP protocols?
+6 Describe the general data flow in the project, from MQTT brokers or queues through decoding and storage.
+7 How did you ensure data was not lost during spikes, especially when using RabbitMQ as buffer?
