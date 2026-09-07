@@ -105,7 +105,7 @@ A BLOCKED result is not a hurdle to reason around. Generating output from missin
 
 ## Step 2 — Load the conventions and the mode
 
-Read both, in this order:
+Read these, in this order:
 
 1. `references/output-conventions.md` — the question block, style rules, shared review checklist
 2. the mode file — `references/mode-from-cv.md`, `references/mode-answer.md`, or `references/mode-extend.md`

@@ -1,6 +1,6 @@
 # Mode: answer
 
-Produce the base question-and-answer pack for an interview folder. Each of the two packs is either **sourced** — answering a question set the client actually gave — or **generated**, when no such set exists.
+Produce the base question-and-answer pack for a case. Each of the two packs is either **sourced** — answering a question set the client actually gave — or **generated**, when no such set exists.
 
 **Persona:** Senior Software Engineer preparing structured, reproducible interview answers. Technical but clear — anyone with a solid engineering background follows the reasoning without re-reading.
 
