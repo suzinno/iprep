@@ -6,9 +6,9 @@ Single owner for how a client's candidate brief changes what the modes generate.
 
 ## What it is
 
-`<interview>/candidate-profile.txt` is a brief written by the client or the vendor describing **what they want in a candidate** for a specific role. It is not a CV and not a project description: `inputs.txt` says what the candidate did, the profile says what the client is looking for.
+`<interview>/candidate-profile.txt` is a brief written by the client or the vendor describing **what they want in a candidate** for a specific role. It is not a CV and not a project description: the case's project briefs say what the candidate did, the profile says what the client is looking for.
 
-It is optional and rare. Most interview folders have none, and the gate reports `candidate profile: ABSENT` — generate normally in that case and do not mention it.
+It is optional and rare. Most cases have none, and the gate reports `candidate profile: ABSENT` — generate normally in that case and do not mention it.
 
 If the gate reports it PRESENT BUT EMPTY or PRESENT BUT UNUSABLE, tell the user before generating anything. Someone put a file there on purpose; silently producing an unweighted pack is the failure to avoid.
 
@@ -53,7 +53,7 @@ The profile shifts **emphasis and proportion**. It never replaces a mode's own c
 
 ## Step 4 — Two guards
 
-**Do not fabricate fit.** The profile says what the client wants; `inputs.txt` and the design docs say what the candidate actually did. Where they overlap, foreground the overlap. Where they do not, write a question that lets the candidate speak honestly about adjacent experience — never an answer claiming experience the source material does not support. The pack is preparation, not a script for pretending.
+**Do not fabricate fit.** The profile says what the client wants; the project briefs and design docs in the case say what the candidate actually did. Where they overlap, foreground the overlap. Where they do not, write a question that lets the candidate speak honestly about adjacent experience — never an answer claiming experience the source material does not support. The pack is preparation, not a script for pretending.
 
 **Keep scenarios neutral.** Briefs are candid about client dysfunction and may name internal friction, politics, or individuals. Generate the question as a neutral situation the candidate might face; do not quote the brief's characterisation of the client's own staff into a document the candidate may share or read aloud.
 

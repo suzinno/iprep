@@ -1,0 +1,29 @@
+Title: RETAIL SOFTWARE AGGREGATION PLATFORM
+
+Description:
+This platform acts as a marketplace for banking software solutions - marketplace where software vendors list POS, inventory, loyalty, and related tools for brick-and-mortar and chain retail.
+Store groups compare features, pricing, and coverage, then open a conversation with the vendor without a separate sourcing round. Vendor teams publish and update listings from an admin workspace; category managers on the retailer side shortlist products and track who is already in talks.
+The platform shortens sourcing: a retailer with a gap in checkout, stock, or loyalty software reaches a vendor conversation without a separate RFP round.
+
+Environment:
+Python, FastAPI, SQLAlchemy, Alembic, Pydantic, Pytest, Celery, OAuth2, PostgreSQL, Redis, MongoDB, GitLab CI, Docker, Docker Compose, Kubernetes (k8s), Terraform, GitLab, Linux, Azure (AKS, Blob Storage, Functions, Service Bus, Monitor, API Management, etc.).
+
+Responsibilities:
+    • Designed a marketplace backend with clean architecture, splitting catalog, vendor, and retailer modules so listing changes did not spill into connection and billing flows;
+    • Designed MongoDB schemas for product metadata so vendors could publish POS, inventory, and loyalty tools without a fixed column set;
+    • Built PostgreSQL schemas for vendors, retailers, and product listings used by search, shortlists, and the admin workspace;
+    • Built an admin panel for vendors, retail chains, stores, and software products so vendor teams could update listings and category managers could shortlist without engineering tickets;
+    • Implemented OAuth2 and JWT authentication for vendors and retailers so catalog and connection APIs stayed behind the right account type;
+    • Built FastAPI REST APIs for catalog browse and vendor–retailer connection so a chain could go from a listing to an open conversation without a separate sourcing tool;
+    • Optimized SQL queries and indexes for catalog search and listing filters used when chains compare coverage and pricing;
+    • Cached hot catalog reads in Redis to cut database load on popular POS and inventory listings;
+    • Configured Celery for catalog imports and notification jobs so new listings and connection requests did not block the API;
+    • Automated GitLab CI pipelines for test and deploy across marketplace services;
+    • Provisioned Azure marketplace infrastructure with Terraform so AKS, storage, and functions stayed in versioned config;
+    • Deployed services to Azure AKS with Docker and Kubernetes;
+    • Integrated Azure Functions, Blob Storage, and Service Bus for catalog updates and vendor–retailer notifications when a listing changed or a chain opened a thread;
+    • Monitored services with Azure Monitor, tracking API errors and job failures on catalog and connection flows;
+    • Reviewed pull requests and refactored catalog and auth modules;
+    • Wrote unit, integration, and functional tests with Pytest for catalog, auth, and connection paths;
+    • Documented workflows, deployment steps, and data models for the marketplace services;
+    • Administered Linux hosts for production and development.

@@ -6,7 +6,7 @@ Patients log daily wellbeing, access diagnosis- and treatment-specific guidance,
 The product cuts time spent hunting for information and helps patients stay on treatment and check-in schedules.
 
 Environment:
-Python, FastAPI, SQLAlchemy, Alembic, Pydantic, Pytest, Celery, Poetry, ruff, pyright, OAuth2, Hugging Face, LangChain, RabbitMQ, PostgreSQL, Redis, MongoDB, Elasticsearch, Elastic APM, Prometheus, Kibana, SonarQube, OpenShift, ArgoCD, GitLab CI, Docker, Docker Compose, Kubernetes(k8s), Terraform, GitLab, Linux, Azure (AKS, Blob Storage, Functions, Service Bus, Monitor, API Management, etc.), etc.
+Python, FastAPI, SQLAlchemy, Alembic, Pydantic, Pytest, Celery, Poetry, ruff, pyright, OAuth2, Hugging Face, LangChain, RabbitMQ, PostgreSQL, Redis, MongoDB, Elasticsearch, Elastic APM, Prometheus, Kibana, SonarQube, OpenShift, ArgoCD, GitLab CI, Docker, Docker Compose, Kubernetes (k8s), Terraform, GitLab, Linux, Azure (AKS, Blob Storage, Functions, Service Bus, Monitor, API Management, etc.).
 
 Responsibilities:
     • Designed PostgreSQL schemas and Elasticsearch indexes for clinical content search so patients and clinicians could find notes, guidance, and visit history without scanning the full record, cutting query latency by 35%;
