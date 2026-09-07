@@ -85,8 +85,9 @@ shellcheck .claude/skills/interview-prep/scripts/*.sh
 ```
 PF=.claude/skills/interview-prep/scripts/preflight.sh
 $PF from-cv cases/01/projects/cancer-support-platform   # 0 READY
-$PF from-cv cases/02/projects/cancer-support-platform   # 1 BLOCKED, remedy names /system-design
-$PF answer  cases/02                                    # 0 READY
+$PF from-cv cases/02/projects/cancer-support-platform   # 0 READY
+$PF from-cv cases/02/projects/banking-software-marketplace  # 1 BLOCKED, remedy names /system-design
+$PF answer  cases/02                                    # 1 BLOCKED, on the project above
 $PF extend  cases/02                                    # 1 BLOCKED, remedy names /interview-prep answer
 $PF from-cv cases/01                                    # 2 CANNOT-RUN, a case is not a project
 $PF answer  cases/01/projects/cancer-support-platform    # 2 CANNOT-RUN, a project is not a case
