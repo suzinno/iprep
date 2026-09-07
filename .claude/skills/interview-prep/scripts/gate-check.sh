@@ -122,7 +122,9 @@ mkdir -p "$FIX/stub/interview"; printf '1 \n' > "$FIX/stub/interview/tech-questi
 # fresh / filled: copies of the committed template, one untouched, one filled in
 if [ -d "$TEMPLATE" ]; then
     cp -r "$TEMPLATE" "$FIX/fresh"
-    cp -r "$TEMPLATE" "$FIX/filled"; write_brief "$FIX/filled/projects/project-name"
+    cp -r "$TEMPLATE" "$FIX/filled"
+    write_brief "$FIX/filled/projects/project-name"
+    write_design_docs "$FIX/filled/projects/project-name"
 fi
 
 # --- checks -----------------------------------------------------------------
@@ -151,6 +153,13 @@ check 0 "soft-skills questions: ABSENT"                answer "$FIX/complete"
 check 0 "project alpha: SOURCED"                       answer "$FIX/complete"
 check 0 "projects: NONE"                               answer "$FIX/noprojects"
 check 1 "project ghost: NO BRIEF"                      answer "$FIX/nobrief"
+
+echo "--- answer is bound to the design docs, not to a brief alone ---"
+check 1 "run: /system-design $FIX/nodocs/projects/alpha"        answer "$FIX/nodocs"
+# every project in play must be designed, not just one of them
+check 1 "run: /system-design $FIX/multi/projects/beta"          answer "$FIX/multi"
+# a case with no CV project has nothing to be bound to, and still runs
+check 0 EMPTY                                                   answer "$FIX/noprojects"
 
 echo "--- answer needs at least one source ---"
 check 1 "no source to generate from"                   answer "$FIX/bare"

@@ -12,7 +12,7 @@ Produce the base question-and-answer pack for a case. Each of the two packs is e
 
 - `<interview>/soft-skills-questions.txt` and `<interview>/tech-questions.txt` — **optional.** The gate reports each one as `SOURCED`, `ABSENT`, or `PRESENT BUT HOLDS NO QUESTIONS`.
 - `<interview>/candidate-profile.txt`, when the gate reported it FOUND — the client's brief on what they want in a candidate. Load `candidate-profile.md` and follow it; it owns the weighting.
-- `<project>/inputs.txt` for **every** project the gate reported as `SOURCED` — high-level context (description, stack, responsibilities) to ground answers in concrete experience. The pack is common to the whole case, so it must span every project in it. Reference a project where it fits naturally; do not force one into every answer.
+- `<project>/inputs.txt` **and** `<project>/00-overview.md` through `06-security.md`, for **every** project the gate reported as `SOURCED`. The brief gives description, stack and responsibilities; the design docs give the architecture, data models, failure modes and trade-offs. Both are required — the gate blocks without the docs. The pack is common to the whole case, so it must span every project in it. Reference a project where it fits naturally; do not force one into every answer.
 
 The two packs are decided **independently**. It is normal for one to be sourced and the other generated — a client often shares their soft-skills questions and nothing else.
 
@@ -83,6 +83,8 @@ Add the profile weighting note from `candidate-profile.md` on its own line when 
 
 Every question uses the block from `output-conventions.md`; sub-questions use the nested form there. `tech-answers.md` is an **attributed** file — follow the project attribution section in `output-conventions.md`, which owns the `**Project:**` line and the index. `soft-skills-answers.md` is not attributed.
 
+Whichever branch produced the questions, every answer that touches a project is **bound to that project's design docs** — the actual services, data models, queues and failure modes, not the stack list. An answer that could have been written from `inputs.txt` alone has failed this mode.
+
 Whichever branch produced the questions, the answers obey the same honesty rule: foreground the experience that overlaps what the client asked for, mirror their stated working practices where the answer touches on them, and answer in the register they described. Where the source material shows no such experience, answer honestly about what is adjacent; never claim experience `inputs.txt` does not support.
 
 ---
@@ -93,4 +95,5 @@ Whichever branch produced the questions, the answers obey the same honesty rule:
 - **Generated packs:** at least 10 questions, grouped by topic, easier to harder; every hard must-have from the profile is targeted at least once.
 - Each file's header states whether its questions were supplied or generated, and the two packs are labelled independently.
 - Every project the gate reported as `SOURCED` is drawn on somewhere in the technical pack, and its questions are attributed to it.
+- Answers grounded in a project cite something only its design docs contain — a service, a data model, a failure mode — not merely a technology from its Environment line.
 - When a profile was used: no answer claims experience the source material does not support, and the header carries the weighting note.

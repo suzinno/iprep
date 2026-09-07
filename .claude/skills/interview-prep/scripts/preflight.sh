@@ -241,6 +241,16 @@ case "$mode" in
         report_profile "$interview"
         report_projects "$case_dir"
 
+        # A brief lists the stack and the responsibilities; the design docs carry the
+        # architecture, data models and failure modes an answer has to be specific
+        # about. Grounding a pack in the brief alone yields answers that recite the
+        # Environment line, so a project in play must be fully specified.
+        if [ "${#SOURCED_PROJECTS[@]}" -gt 0 ]; then
+            for project in "${SOURCED_PROJECTS[@]}"; do
+                require_design_docs "$project"
+            done
+        fi
+
         # Something must drive generation. With no question set, no profile and no
         # project there is nothing to build a pack from, and inventing one would be
         # the worst possible silent success.

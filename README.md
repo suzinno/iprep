@@ -41,7 +41,7 @@ Then **delete the input files the client did not give you** — `cases/03/interv
 
 ## An existing case
 
-Run whichever step you need; nothing has to be redone in order. Adding a project to a case is steps 1–3 against a new folder under `projects/` — `cp -r cases/nn/projects/project-name cases/03/projects/another-project` — after which `answer` and `extend` should be re-run so the case-level packs cover it. Replacing a client question file and re-running `answer` regenerates that pack.
+Run whichever step you need, with one ordering rule the gate enforces: every project with a brief must have its design docs before `answer` runs, because answers are bound to the architecture rather than to the stack list. Adding a project to a case is steps 1–3 against a new folder under `projects/` — `cp -r cases/nn/projects/project-name cases/03/projects/another-project` — after which `answer` and `extend` should be re-run so the case-level packs cover it. Replacing a client question file and re-running `answer` regenerates that pack.
 
 Each mode checks its own prerequisites against files on disk, so it works the same in a fresh session and refuses rather than inventing an answer from missing inputs.
 

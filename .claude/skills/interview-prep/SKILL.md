@@ -24,14 +24,14 @@ per project
 per case
   <interview>/{soft-skills,tech}-questions.txt  (optional) ─┐
   <interview>/candidate-profile.txt             (optional) ─┼──> answer ──> <interview>/{soft-skills,tech}-answers.md ──┐
-  every project's inputs.txt in the case        (optional) ─┘                                                           ├──> extend ──> <interview>/{soft-skills,tech}-extra.md
+  every project's inputs.txt + design docs      (optional) ─┘                                                           ├──> extend ──> <interview>/{soft-skills,tech}-extra.md
                                at least one of the three            every project's interview-questions.md ─────────────┘
 ```
 
 | Mode | Takes | Requires on disk | Writes |
 |---|---|---|---|
 | `from-cv` | `<project>` | `<project>/inputs.txt`, and `00-overview.md`…`06-security.md` from `/system-design` | `<project>/interview-questions.md` |
-| `answer` | `<case>` | at least one source: a `*-questions.txt`, a candidate profile, or a project brief | `<interview>/soft-skills-answers.md`, `<interview>/tech-answers.md` |
+| `answer` | `<case>` | at least one source: a `*-questions.txt`, a candidate profile, or a project brief — **and** the `/system-design` docs for every project that has a brief | `<interview>/soft-skills-answers.md`, `<interview>/tech-answers.md` |
 | `extend` | `<case>` | both `*-answers.md`, and `interview-questions.md` for every project that has a brief | `<interview>/soft-skills-extra.md`, `<interview>/tech-extra.md` |
 
 `interview-questions.md` holds questions **and** answers, despite its name — it is a complete per-project pack, not a question list.
@@ -43,6 +43,8 @@ per case
 The two `*-questions.txt` files are **optional**, and independent of each other. A client may supply one pack, both, or neither. Where a set exists, `answer` answers it; where none exists, `answer` generates that pack from the profile and the project briefs, and the result is more generic by design. A file counts as a question set only if it actually holds questions — a stub like a lone `1` is non-empty but sources nothing, and the gate reports it as `PRESENT BUT HOLDS NO QUESTIONS`.
 
 `answer` still needs **something** to work from. With no question set, no profile and no project brief it is BLOCKED, because the alternative is inventing an interview out of nothing.
+
+A project that is in play must be **fully specified**. `inputs.txt` names the stack and the responsibilities; the design docs carry the architecture, data models and failure modes an answer has to be specific about. So `answer` requires `/system-design` to have run for every project with a usable brief, and blocks naming each one that is missing. Answering from the brief alone produces answers that recite the Environment line, which is the outcome this pipeline exists to prevent. A case with no projects at all has nothing to bind to and still runs.
 
 `<interview>/candidate-profile.txt` is an **optional** client brief describing what the client wants in a candidate. It is rare, it never blocks, and when present it weights what every mode generates. The gate always reports whether it was found.
 
