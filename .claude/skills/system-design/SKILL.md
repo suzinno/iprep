@@ -22,7 +22,7 @@ Read the file at `<project>/inputs.txt` and extract:
 - **Environment** — the text under the "Environment:" heading
 - **Responsibilities** — the bullet list under the "Responsibilities:" heading
 
-Read only `<project>/inputs.txt` and this skill's own references. Do not read other projects or other cases, even where a sibling folder holds a similarly-named project — designs are independent, and a resemblance absorbed from a neighbouring case is indistinguishable in the finished output from one the brief actually called for.
+Read ONLY `<project>/inputs.txt` and this skill's own references. Do NOT read other projects or other cases, even where a sibling folder holds a similarly-named project — designs are independent, and a resemblance absorbed from a neighbouring case is indistinguishable in the finished output from one the brief actually called for.
 
 Then read `references/re-system-design.md` (bundled in this skill's directory) in full. This is your **primary reference** — it defines the framework, all required sub-sections, and output format. The instructions below extend it but do not replace it. Every sub-point in that template **MUST** appear in your output.
 
