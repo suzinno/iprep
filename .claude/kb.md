@@ -4,7 +4,7 @@ Concise notes on the technologies, techniques and protocols the cases use — en
 
 Each entry is a `###` term heading, the topic tags it can be found by, and one sentence saying what it is in essence, followed by an expandable block holding **How it works**, **Boundary** — what it is not and what it is confused with — an optional **Alternatives** comparison, and an **Example**. Categories are `##` headings; terms are alphabetical within their category.
 
-**Tags in use:** `identity-provisioning` · `iot` · `messaging` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
+**Tags in use:** `directory` · `identity-provisioning` · `iot` · `messaging` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
 
 ## Protocols
 
@@ -24,6 +24,23 @@ A binary protocol for passing messages between services through a broker, with d
 - **STOMP** — a text-based frame protocol that any language can speak in a few lines. Much simpler to implement and debug, with none of the routing or delivery machinery.
 
 **Example:** An order service publishes to the `orders` exchange with routing key `order.placed`. A `billing` queue and an `analytics` queue are both bound to that key, so each gets a copy; the billing worker acks only after the payment row is committed, so a crash mid-charge returns the message to the queue rather than losing it.
+
+</details>
+
+### LDAP
+`directory`
+
+A protocol for reading and writing entries in a hierarchical directory. A client connects to a directory server, searches under a branch of the tree, and can also hand the server a name and password for it to verify.
+
+<details><summary>Details</summary>
+
+**How it works:** Entries sit in a tree, each identified by a *distinguished name* built from its path — `cn=jsmith,ou=people,dc=example,dc=com` — and each holding attributes whose permitted names and types come from a schema. A client authenticates with a *bind*: a simple bind sends a distinguished name and a password, and the server answers whether it accepted them. A bind carrying an empty password is an *unauthenticated* bind that many servers accept, so an application must reject empty passwords itself rather than read any success as proof. Reads use a *search*, given a *base* to start from, a scope saying how deep to go, and a filter such as `(&(objectClass=person)(department=cardiology))`. Writes exist but are single-entry operations; the protocol runs over TCP, wrapped in TLS in any deployment that matters.
+
+**Boundary:** A protocol, not a product. Active Directory is a directory server that speaks it alongside Kerberos and much else, and OpenLDAP is another; most claims about "LDAP behaviour" are really claims about one of them. An accepted bind says the server accepted those credentials at that instant and nothing more — no token, no session, no expiry — so an application still has to issue its own session afterwards. And it is not a relational database: entries are read far more often than written, there are no joins and no transaction spanning two entries.
+
+**Alternatives:** OIDC, where the application redirects to an identity provider instead of taking the password itself and binding with it. Safer, since the application never sees the credential, and it carries a session where a bind does not — but it gives no way to query the tree, so anything that needs to list a department's members still wants a directory.
+
+**Example:** An intranet application authenticates someone by binding as `cn=jsmith,ou=people,dc=example,dc=com` with the password they typed, having refused it first if it was empty; an accepted bind then means the credentials were valid. It then searches from base `ou=groups,dc=example,dc=com` with the filter `(member=cn=jsmith,ou=people,dc=example,dc=com)` to learn which groups they belong to.
 
 </details>
 
