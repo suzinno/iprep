@@ -33,14 +33,30 @@ The opening sentence carries no label; its position under the tags identifies it
 
 **Accuracy first, then the facts that make the term click, then brevity — in that order.** Length is what falls out of choosing the right facts; it is never a thing to hit. Do not count words, do not report lengths, and never lengthen or shorten a sentence to reach a number. If an entry reads long, remove a fact belonging to another field or another entry — never compress a sentence until it is vague. If it reads short, leave it short: a term that takes one sentence to explain is finished in one sentence. The entries already in `.claude/kb.md` are the reference for register; match them, and where a term genuinely needs more room than any of them, take it.
 
-- **Tags** — one to three, drawn from the list in the file header, as backticked tokens on their own line directly under the heading. Add a tag to that header list only when none fits, and say that you did. Tag what the term *is*, never the neighbourhood it appears in: SCIM is `identity-provisioning`, not `authentication` — the **Boundary** field of its own entry says why. A tag is one token: hyphenate where the bare word means something else elsewhere in this file, since `provisioning` alone would collect infrastructure terms as readily as identity ones. A compound tag is already found by searching either of its parts, so do not also list the parts beside it.
+- **Tags** — one to three, drawn from the list in the file header, as backticked tokens on their own line directly under the heading. Add a tag to that header list only when none fits, and say that you did. A tag is one token, hyphenated where the bare word means something else elsewhere in this file: `provisioning` alone would collect infrastructure terms as readily as identity ones.
 - **The opening sentence** — what it is and what it does, in language someone meeting the term cold would follow. Mechanism first. No jargon that does not itself have an entry here. Everything else waits for the block.
 - **How it works** — the mechanism the opening sentence cannot carry: what moves, in which direction, driven by whom, plus any vocabulary a reader needs in order to follow the **Example**. One mechanism, told once; a second concept large enough to need explaining is a second entry.
-- **Boundary** — what it is *not*, what it is confused with, and what it pairs with. Usually the most valuable field: *SCIM cannot authenticate anyone.* State it as a contrast, not a caveat, and cover the confusions a reader will actually arrive with rather than enumerating everything the term is not.
-- **Alternatives** — optional, and only where real equivalents exist: what you would reach for instead, and the one thing you would trade. Every entry must be a substitute at the same layer, something that could take the term's place in the same slot; a technology the term is normally deployed *alongside* is a complement and belongs in **Boundary**, however often the two are discussed together. This is substitution, where **Boundary** is category confusion; if a line would serve in either field, it belongs in **Boundary**. List the ones a reader would genuinely weigh — if the list runs long you are surveying the field rather than naming the contenders. Omit the field rather than pad it; a term with no genuine equivalent has no alternatives. One alternative sits inline after the label; two or more become a bulleted list, each opening with the alternative in bold.
+- **Boundary** — what it is *not*, what it is confused with, and what it pairs with. Usually the most valuable field: *SCIM cannot authenticate anyone.* State it as a contrast, not a caveat.
+- **Alternatives** — optional: what you would reach for instead of this term, and the one thing you would trade. Omit the field rather than pad it; a term with no genuine equivalent has no alternatives. One alternative sits inline after the label; two or more become a bulleted list, each opening with the alternative in bold.
 - **Example** — one concrete scenario or a short snippet, using only vocabulary the entry has already introduced. Not a restatement of **How it works** in other words.
 
 No links, no source URLs.
+
+## Verify the draft before writing it
+
+Draft the entry, then hand it to a subagent for review. It gets the draft and the checks below and nothing else — no part of this conversation — because the point is a reader who did not talk itself into the draft's mistakes. Ask it to answer every check with `PASS`, or with the offending line quoted and one sentence on why it fails, and tell it plainly that `PASS` on all seven is an expected outcome: a reviewer that must find something will invent something. It reports only; it does not rewrite the entry, or it is merely laundering its own opinion into the file.
+
+Then act on what comes back. Apply each finding, or reject it and say which and why when you report the entry.
+
+1. **Is every alternative the same kind of thing as the term?** Protocol against protocol, product against product, pattern against pattern. Kafka replaces RabbitMQ, not AMQP. Something that fills the same slot in an architecture without being the same kind of thing is not an alternative.
+2. **Is anything in Alternatives something the term is normally deployed *alongside*?** That is a complement, not a substitute, however often the two are discussed together — move it to **Boundary**.
+3. **Would any Alternatives line serve equally well in Boundary?** Then it belongs in **Boundary**. Alternatives is substitution; Boundary is category confusion.
+4. **Does the Example use a word the entry never introduced?** Introduce it in **How it works**, or change the example.
+5. **Does Boundary answer a confusion a reader would actually arrive with**, rather than listing things the term happens not to be?
+6. **Is every tag what the term is**, rather than the neighbourhood it appears in? SCIM is `identity-provisioning`, not `authentication` — its own **Boundary** says why.
+7. **Is there a sentence that is not certainly true?** Cut it, or qualify it as version- or vendor-specific.
+
+Each check exists because the mistake it names has already been made here. The review buys independence from this conversation, not from the model: it catches momentum and carelessness, and can still share a blind spot with the draft it is reading.
 
 ## Placement
 
@@ -52,4 +68,4 @@ Write only what you are confident is correct. Say so where a detail is version- 
 
 ## Then
 
-Write the file, print the entry as it landed, and name the file and category. Nothing else.
+Write the file, print the entry as it landed, and name the file and category. Add a line for any check the review raised — including one you rejected, with why — and a line for any tag added to the header list. Nothing else.
