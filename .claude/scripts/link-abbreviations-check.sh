@@ -201,6 +201,20 @@ check 0 EMPTY --check --glossary "$FIX/glossary.md" "$FIX/excluded.md"
 echo "--- an enriched document is clean under --check ---"
 check 0 EMPTY --check --glossary "$FIX/glossary.md" "$FIX/inline.md"
 
+echo "--- a term that appears only inside a fence is never linked ---"
+cat > "$FIX/fence-only.md" <<'DOC'
+# Diagram
+
+```mermaid
+graph TD
+  A[ORM] --> B
+```
+
+Nothing outside the fence mentions it.
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/fence-only.md"
+want_file "$FIX/fence-only.md" HAS '  A[ORM] --> B'
+
 echo "--- self-test: the harness must be able to report a failure ---"
 before=$fail
 check 99 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md" >/dev/null 2>&1
