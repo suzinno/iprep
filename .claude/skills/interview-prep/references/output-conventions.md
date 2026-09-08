@@ -89,6 +89,8 @@ The document then opens with an index, directly under the header notes, giving t
 
 1. **Abbreviations** — On first use, write the full term followed by the abbreviation in parentheses: "Object-Relational Mapping (ORM)", "Single Sign-On (SSO)". Use the abbreviation freely afterwards.
 
+   Linking and hover text for abbreviations are owned by `.claude/glossary.md` and applied by `.claude/scripts/link-abbreviations.py` after the document is written. This rule and that file do not overlap: this rule governs the prose, the glossary governs the link.
+
 2. **Tone** — Technical and precise, but conversational enough to reproduce in a live interview. Avoid academic phrasing ("it is worth noting that...", "one might argue..."). Prefer direct statements ("Use X when...", "The tradeoff is...").
 
 3. **Depth** — Go beyond definitions. Real-world seniority, not textbook. Every detailed answer covers: *why* it matters, *when* to use or avoid it, *what goes wrong* when misapplied, and *how* it connects to the broader system.

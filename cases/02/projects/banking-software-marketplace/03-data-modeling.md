@@ -15,12 +15,12 @@
 
 ## The Split: Spine in PostgreSQL, Body in MongoDB
 
-Two responsibilities in the brief look contradictory and are not: MongoDB holds product metadata "without a fixed column set", while PostgreSQL holds "product listings used by search, shortlists, and the admin workspace". The resolution is that a listing has two halves with different governance.
+Two responsibilities in the brief look contradictory and are not: [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents") holds product metadata "without a fixed column set", while [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") holds "product listings used by search, shortlists, and the admin workspace". The resolution is that a listing has two halves with different governance.
 
 - The **spine** — identity, ownership, category, status, publication timestamp, and the handful of attributes every category shares — is relational. It has referential integrity to vendors and categories, it participates in shortlists and connections, and it is what search and the admin workspace query. It lives in `postgres-core`.
-- The **body** — everything specific to being a POS, an inventory system or a loyalty engine — has no schema the platform can fix in advance without blocking the next category. It lives in `mongo-catalog` as a document validated against a per-category facet schema rather than a table definition.
+- The **body** — everything specific to being a [POS](https://en.wikipedia.org/wiki/Point_of_sale "Point of Sale — The system and moment at which a retail transaction is completed"), an inventory system or a loyalty engine — has no schema the platform can fix in advance without blocking the next category. It lives in `mongo-catalog` as a document validated against a per-category facet schema rather than a table definition.
 
-Filterable attributes are the seam. A facet a retailer can filter on must be queryable relationally, so `indexer-worker` **projects** the facetable subset of the Mongo document into `product_listing_facets` in Postgres. That projection is the price of the split, and it is why catalog reads are AP in `01-requirements.md`: the projection trails the document by seconds.
+Filterable attributes are the seam. A facet a retailer can filter on must be queryable relationally, so `indexer-worker` **projects** the facetable subset of the Mongo document into `product_listing_facets` in Postgres. That projection is the price of the split, and it is why catalog reads are [AP](https://en.wikipedia.org/wiki/CAP_theorem "Available and Partition tolerant — Names the CAP-theorem choice a subsystem makes to stay available under a network partition at the cost of strict consistency") in `01-requirements.md`: the projection trails the document by seconds.
 
 ## Entity-Relationship Model
 
@@ -49,14 +49,14 @@ erDiagram
 
 ## PostgreSQL Schema
 
-Every table carries `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz NOT NULL DEFAULT now()` and, where mutable, `updated_at timestamptz`. Monetary values are integer minor units with an explicit ISO-4217 `currency char(3)` — never floating point.
+Every table carries `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at timestamptz NOT NULL DEFAULT now()` and, where mutable, `updated_at timestamptz`. Monetary values are integer minor units with an explicit [ISO-4217](https://www.six-group.com/en/products-services/financial-information/data-standards.html "ISO 4217 — Standardizes three-letter currency codes for unambiguous monetary values") `currency char(3)` — never floating point.
 
 **Organisations and people**
 
 | Table | Columns beyond the common set | Notes |
 |---|---|---|
 | `vendor` | `legal_name`, `slug UNIQUE`, `status` (`pending`,`active`,`suspended`), `hq_country char(2)`, `website` | Vetting state gates publication |
-| `vendor_user` | `vendor_id FK`, `email CITEXT`, `auth_subject UNIQUE`, `role` (`owner`,`editor`,`viewer`), `status` | `auth_subject` is the JWT `sub`; no password material is stored here |
+| `vendor_user` | `vendor_id FK`, `email CITEXT`, `auth_subject UNIQUE`, `role` (`owner`,`editor`,`viewer`), `status` | `auth_subject` is the [JWT](https://datatracker.ietf.org/doc/html/rfc7519 "JSON Web Token — Compact, signed token format for carrying claims between parties") `sub`; no password material is stored here |
 | `retail_group` | `legal_name`, `slug UNIQUE`, `country char(2)`, `store_count_band`, `status` | The buying organisation |
 | `store` | `retail_group_id FK`, `external_ref`, `country char(2)`, `region`, `city`, `format` (`hypermarket`,`supermarket`,`convenience`,`specialty`), `is_active bool` | `UNIQUE (retail_group_id, external_ref)`. 250k rows at year 5; feeds coverage matching |
 | `retailer_user` | `retail_group_id FK`, `email CITEXT`, `auth_subject UNIQUE`, `role` (`admin`,`category_manager`,`viewer`), `status` | |
@@ -122,9 +122,9 @@ Database `mongo-catalog`, four collections. Document `_id` for product metadata 
 | `product_metadata` | `{ _id: product_id, category_slug, revision int, schema_version, attributes: {…free form…}, modules: [], integrations: [], compliance: [], media: [{blob_key, kind, caption}], updated_at, updated_by }` | `{category_slug: 1}`, `{updated_at: -1}` |
 | `product_metadata_revisions` | Immutable snapshot per publish: `{ _id: revision_id, product_id, revision, document, created_at, created_by }` | `{product_id: 1, revision: -1}` |
 | `facet_schemas` | Per category: which `attributes` keys are typed, which are facetable, their value domains and display order. `product_category.facet_schema_ref` points here | `{_id: 1}`, `{category_slug: 1, version: -1}` |
-| `import_staging` | One document per parsed import row, with the raw payload, the mapped result and per-row errors | `{job_id: 1}`, `{created_at: 1}` with a **TTL of 30 days** |
+| `import_staging` | One document per parsed import row, with the raw payload, the mapped result and per-row errors | `{job_id: 1}`, `{created_at: 1}` with a **[TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires") of 30 days** |
 
-`facet_schemas` is what makes the schemaless store governable: Pydantic validates a vendor's submitted `attributes` against the category's schema at write time in `vendor-service`, so "no fixed column set" does not degrade into "no contract". Adding a category is a document insert plus a facet-projection mapping, not a migration.
+`facet_schemas` is what makes the schemaless store governable: [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") validates a vendor's submitted `attributes` against the category's schema at write time in `vendor-service`, so "no fixed column set" does not degrade into "no contract". Adding a category is a document insert plus a facet-projection mapping, not a migration.
 
 Media and datasheets are **never** stored in Mongo. `media[].blob_key` references `blob-media`; the 16 MB document limit is not a constraint the design should ever approach.
 
@@ -133,10 +133,10 @@ Media and datasheets are **never** stored in Mongo. `media[].blob_key` reference
 | Prefix | Contents | Lifecycle |
 |---|---|---|
 | `listings/{product_id}/{revision}/…` | Vendor-supplied logos, screenshots, datasheets | Cool tier after 180 days |
-| `listings/{product_id}/{revision}/derived/…` | Thumbnails and PDF previews written by `fn-media-process` | Regenerable; deleted with the revision |
+| `listings/{product_id}/{revision}/derived/…` | Thumbnails and [PDF](https://en.wikipedia.org/wiki/PDF "Portable Document Format — Fixed-layout document format for reliable printing and viewing") previews written by `fn-media-process` | Regenerable; deleted with the revision |
 | `imports/{vendor_id}/{job_id}.{csv,json}` | Raw import uploads | Deleted after 90 days |
-| `admin-console/{build_sha}/…` | Static SPA bundle, served through Front Door | Last five builds retained |
-| `tfstate/…` | Terraform state, versioning and lease locking enabled | Indefinite |
+| `admin-console/{build_sha}/…` | Static [SPA](https://en.wikipedia.org/wiki/Single-page_application "Single Page Application — Web application that updates its content in place without full page reloads") bundle, served through Front Door | Last five builds retained |
+| `tfstate/…` | [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files") state, versioning and lease locking enabled | Indefinite |
 
 ## Storage Choice, Partitioning and Sharding
 
@@ -144,12 +144,12 @@ Media and datasheets are **never** stored in Mongo. `media[].blob_key` reference
 
 What is used instead:
 
-- **Vertical plus read replicas.** A zone-redundant Azure Database for PostgreSQL Flexible Server primary with one read replica. `catalog-service` reads the replica; every write path and every read that must be read-your-writes uses the primary. Replica lag is an SLI in `05-reliability.md`.
+- **Vertical plus read replicas.** A zone-redundant Azure Database for PostgreSQL Flexible Server primary with one read replica. `catalog-service` reads the replica; every write path and every read that must be read-your-writes uses the primary. Replica lag is an [SLI](https://sre.google/sre-book/service-level-objectives/ "Service Level Indicator — Measured metric, such as latency or error rate, used to judge service health") in `05-reliability.md`.
 - **Declarative range partitioning by month** on the only two tables that grow without bound — `audit_event` and `connection_message`. Partitions older than the retention window detach in one metadata operation rather than a long-running `DELETE`.
 - **MongoDB as a three-member replica set**, primary for writes and revisions, secondaries readable for the detail-page hydration path where a few hundred milliseconds of staleness is irrelevant.
-- **Redis is not a store.** `redis-cache` holds nothing that cannot be rebuilt from Postgres and Mongo. `redis-broker` holds in-flight Celery tasks, which `04-deep-dive.md` treats as a durability question with a specific answer.
+- **[Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is not a store.** `redis-cache` holds nothing that cannot be rebuilt from Postgres and Mongo. `redis-broker` holds in-flight [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") tasks, which `04-deep-dive.md` treats as a durability question with a specific answer.
 
-The evolution triggers from `01-requirements.md` restated as this file's own: shard `postgres-core` **only** above ~2,000 sustained write TPS or ~1 TB working set; the far likelier first move is moving `audit_event` out to Blob-backed cold storage, which removes ~25 GB and most of the growth.
+The evolution triggers from `01-requirements.md` restated as this file's own: shard `postgres-core` **only** above ~2,000 sustained write [TPS](https://en.wikipedia.org/wiki/Transaction_processing "Transactions Per Second — Throughput measure of how many transactions a system completes each second") or ~1 TB working set; the far likelier first move is moving `audit_event` out to Blob-backed cold storage, which removes ~25 GB and most of the growth.
 
 > **Deep Dive Reference:** Facet schema evolution — when a category's `facet_schemas` document changes shape, existing `product_metadata` documents remain on the old `schema_version` and the projection must handle both. Whether that is a lazy migrate-on-read, a backfill job, or a hard version cutover per category determines how expensive category changes are for the rest of the platform's life, and it deserves a prototype before the first category ships.
 
@@ -171,4 +171,4 @@ The two stores are updated in one logical operation that cannot be one transacti
 | `product_metadata_revisions` | Latest 10 revisions per product, minimum 12 months | Compaction job on the `indexing` queue |
 | `import_staging` | 30 days | Mongo TTL index |
 | `refresh_token` | 30 days past `expires_at` | Nightly delete |
-| Departed user | Immediate access revocation; `auth_subject` and `email` tombstoned | Message bodies are retained as the counterparty's business record — the GDPR reasoning and its cost are owned by `06-security.md` |
+| Departed user | Immediate access revocation; `auth_subject` and `email` tombstoned | Message bodies are retained as the counterparty's business record — the [GDPR](https://gdpr-info.eu/ "General Data Protection Regulation — EU regulation governing the processing of personal data") reasoning and its cost are owned by `06-security.md` |

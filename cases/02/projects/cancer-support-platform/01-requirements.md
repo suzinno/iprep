@@ -17,10 +17,10 @@ The platform serves two populations with opposing access models, and that asymme
 
 | Audience | Type | Volume | Access model |
 |---|---|---|---|
-| **Patients** diagnosed with cancer | B2C | ~250K registered over 5 years | Self-registered into the patient portal; sees only their own record |
-| **Clinicians** (oncologists, nurse specialists) | B2B | ~3.5K seats | Provisioned from the hospital directory via SCIM 2.0; sees patients they have a care relationship with |
+| **Patients** diagnosed with cancer | [B2C](https://en.wikipedia.org/wiki/Retail "Business to Consumer — Describes commerce sold directly to individual consumers") | ~250K registered over 5 years | Self-registered into the patient portal; sees only their own record |
+| **Clinicians** (oncologists, nurse specialists) | [B2B](https://en.wikipedia.org/wiki/Business-to-business "Business to Business — Describes commerce conducted between organizations rather than to individual consumers") | ~3.5K seats | Provisioned from the hospital directory via [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") 2.0; sees patients they have a care relationship with |
 | **Care-team coordinators** | B2B | ~400 seats | Directory-provisioned; manages care-team membership and appointment logistics |
-| **Clinical content authors** | Internal | ~30 seats | Directory-provisioned; authors and approves guidance that the NLP pipeline may draw on |
+| **Clinical content authors** | Internal | ~30 seats | Directory-provisioned; authors and approves guidance that the [NLP](https://en.wikipedia.org/wiki/Natural_language_processing "Natural Language Processing — Computational techniques for analyzing and generating human language") pipeline may draw on |
 | **Platform operators** | Internal | ~15 seats | Directory-provisioned; no routine access to patient data (break-glass only) |
 
 Clinician accounts originate in the hospital's Azure Entra ID tenant and are **never** valid on the patient portal — the two identity planes are separate audiences enforced at the gateway (see [`06-security.md`](./06-security.md)). A clinician who leaves the trust loses platform access through directory deprovisioning, not through a manual step in this product.
@@ -34,7 +34,7 @@ Clinician accounts originate in the hospital's Azure Entra ID tenant and are **n
 3. **Diagnosis- and treatment-specific education.** Guidance pages assembled for the patient's diagnosis, treatment line, and stage from a clinician-approved corpus, with visible provenance.
 4. **Clinical content search.** Full-text and filtered search across visit notes, guidance, and visit history, scoped to what the requester is entitled to see, so neither patient nor clinician scans a whole record to find one fact.
 5. **Appointment and check-in reminders.** Scheduled, delivered asynchronously, with delivery receipts — a missed reminder is a clinical safety issue, not a UX annoyance.
-6. **Directory-driven identity.** SCIM 2.0 provisioning of clinician and care-team accounts from Azure Entra ID, with OAuth2/OIDC JWT authentication.
+6. **Directory-driven identity.** SCIM 2.0 provisioning of clinician and care-team accounts from Azure Entra ID, with [OAuth2](https://datatracker.ietf.org/doc/html/rfc6749 "OAuth 2.0 — Authorization framework that lets an application access resources on a user's behalf")/[OIDC](https://openid.net/developers/how-connect-works/ "OpenID Connect — Identity layer on top of OAuth 2.0 for authenticating users") [JWT](https://datatracker.ietf.org/doc/html/rfc7519 "JSON Web Token — Compact, signed token format for carrying claims between parties") authentication.
 
 ### Nice to have
 
@@ -51,12 +51,12 @@ Clinician accounts originate in the hospital's Azure Entra ID tenant and are **n
 | **Availability** | 99.9% monthly for record read/write and diary capture; 99.5% for search and content generation | Record access is the product; search and generation degrade to a usable fallback (chronological browse, previously published page) rather than an outage |
 | **Latency** | Timeline read p95 < 120 ms (cached) / < 250 ms (cold); search p95 < 400 ms; write p95 < 300 ms; education page generation p95 < 45 s (asynchronous, never on the request path) | Clinicians open a timeline mid-consultation; a 2 s load is the behaviour the product exists to remove |
 | **Reminder timeliness** | Delivered within ±2 min of the scheduled window, p99 < 5 min late | The reminder pipeline's whole justification is reliability, not speed |
-| **Scalability** | Horizontal on stateless services; vertical + read replicas on `pg-clinical` until the documented evolution triggers below | Peak load is ~200 QPS — this is not a sharding-scale system, and pretending otherwise buys operational cost for nothing |
-| **Consistency** | **CP for the clinical record.** `pg-clinical` is the single source of truth; a clinician's write is read-your-writes for every party on the next read. **AP/eventual for derived views** — `es-clinical` search index lag p50 < 8 s, p95 < 15 s, p99 < 30 s (budget itemised in `05-reliability.md`), content pages eventually consistent on publish | A stale search hit is recoverable; a lost prescription write is not. The record refuses to trade correctness for availability |
-| **Durability** | RPO 5 min, RTO 30 min for `pg-clinical`; RPO 0 for accepted check-ins (durable on the broker before acknowledgement) | Health record loss is not commercially or legally survivable |
+| **Scalability** | Horizontal on stateless services; vertical + read replicas on `pg-clinical` until the documented evolution triggers below | Peak load is ~200 [QPS](https://en.wikipedia.org/wiki/Queries_per_second "Queries Per Second — Throughput measure of how many requests a system serves each second") — this is not a sharding-scale system, and pretending otherwise buys operational cost for nothing |
+| **Consistency** | **[CP](https://en.wikipedia.org/wiki/CAP_theorem "Consistent and Partition tolerant — Names the CAP-theorem choice a subsystem makes to stay strictly consistent under a network partition at the cost of availability") for the clinical record.** `pg-clinical` is the single source of truth; a clinician's write is read-your-writes for every party on the next read. **[AP](https://en.wikipedia.org/wiki/CAP_theorem "Available and Partition tolerant — Names the CAP-theorem choice a subsystem makes to stay available under a network partition at the cost of strict consistency")/eventual for derived views** — `es-clinical` search index lag p50 < 8 s, p95 < 15 s, p99 < 30 s (budget itemised in `05-reliability.md`), content pages eventually consistent on publish | A stale search hit is recoverable; a lost prescription write is not. The record refuses to trade correctness for availability |
+| **Durability** | [RPO](https://en.wikipedia.org/wiki/Disaster_recovery "Recovery Point Objective — Maximum acceptable amount of data loss, measured in time since the last recovery point") 5 min, [RTO](https://en.wikipedia.org/wiki/Disaster_recovery "Recovery Time Objective — Maximum acceptable duration to restore a system after a disruption") 30 min for `pg-clinical`; RPO 0 for accepted check-ins (durable on the broker before acknowledgement) | Health record loss is not commercially or legally survivable |
 | **Auditability** | Every read and write of patient data recorded, retained 7 years, immutable | Regulatory floor, not a feature |
 
-**CAP positioning.** Under a partition, the record layer chooses consistency and returns `503` rather than serving a possibly-stale prescription or accepting a write it cannot durably order. The diary ingest path chooses availability — a check-in is accepted onto the broker and acknowledged before it is projected into `pg-clinical`, because losing a patient's symptom entry to a partition is worse than showing it a few seconds late.
+**[CAP](https://en.wikipedia.org/wiki/CAP_theorem "Consistency, Availability and Partition tolerance — Names the theorem that a distributed system can guarantee only two of the three during a network partition") positioning.** Under a partition, the record layer chooses consistency and returns `503` rather than serving a possibly-stale prescription or accepting a write it cannot durably order. The diary ingest path chooses availability — a check-in is accepted onto the broker and acknowledged before it is projected into `pg-clinical`, because losing a patient's symptom entry to a partition is worse than showing it a few seconds late.
 
 ## Scale Estimation
 
@@ -65,18 +65,18 @@ Back-of-the-envelope figures below are the baseline every capacity decision in `
 **Users**
 
 - 250K registered patients over 5 years; ~60K monthly-active (patients leave the platform as treatment concludes)
-- 25K patient DAU + 2.5K clinician DAU
+- 25K patient [DAU](https://en.wikipedia.org/wiki/Active_users "Daily Active Users — Count of distinct users who use a product on a given day") + 2.5K clinician DAU
 
 **Request volume**
 
 | Source | Calculation | Result |
 |---|---|---|
-| Patient API calls | 25K DAU × 4 sessions × 15 calls | 1.5M/day |
+| Patient [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") calls | 25K DAU × 4 sessions × 15 calls | 1.5M/day |
 | Clinician API calls | 2.5K DAU × 200 calls | 0.5M/day |
 | **Total** | | **~2.0M/day → 23 QPS average** |
 | Business-hours concentration | 70% of traffic in an 8-hour window | ~50 QPS sustained |
 | **Peak (clinic hours)** | 4× the in-window average | **~200 QPS sustained, ~400 QPS burst** |
-| Check-in ingest burst | 25K check-ins, most between 07:00–09:00 | ~50 msg/s peak on MQTT |
+| Check-in ingest burst | 25K check-ins, most between 07:00–09:00 | ~50 msg/s peak on [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") |
 
 **5-year storage**
 
@@ -85,17 +85,17 @@ Back-of-the-envelope figures below are the baseline every capacity decision in `
 | `pg-clinical` — check-ins | 60K active × 1/day × 365 × 5 ≈ 110M rows × ~1 KB | ~110 GB + ~40 GB indexes |
 | `pg-clinical` — visit notes | 60K × 8/yr × 5 = 2.4M × 4 KB | ~10 GB |
 | `pg-clinical` — appointments + prescriptions | 6M + 4.5M rows | ~12 GB |
-| `pg-clinical` — audit events | ~1M/day (the PHI-touching subset of 2.0M API calls; health checks, static content and unauthenticated routes are not audited) × 1825 = 1.8B × 300 B | ~550 GB (13 months retained hot ≈ 110 GB; older archived to `blob-documents`) |
+| `pg-clinical` — audit events | ~1M/day (the [PHI](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160/subpart-A/section-160.103 "Protected Health Information — Individually identifiable health data that HIPAA regulates")-touching subset of 2.0M API calls; health checks, static content and unauthenticated routes are not audited) × 1825 = 1.8B × 300 B | ~550 GB (13 months retained hot ≈ 110 GB; older archived to `blob-documents`) |
 | **`pg-clinical` hot total** | | **~1.0 TB** |
 | `mongo-content` | ~500K page versions + templates + NLP extractions | ~120 GB |
 | `es-clinical` | 2.4M notes + 500K pages, ~3× source with per-field indexing | ~150 GB |
 | `redis-cache` | working set of hot timelines, sessions, counters | ~24 GB |
 | `blob-documents` | 250K patients × ~25 documents × 1.5 MB + audit archive | **~12 TB** |
 
-**Evolution triggers.** A single `pg-clinical` primary with two read replicas carries this comfortably. Revisit only when sustained write throughput exceeds ~3K TPS or the primary's hot volume exceeds 4 TB — at which point the first move is extracting `audit_event` and `wellbeing_checkin` to their own instance, **not** sharding the record by patient.
+**Evolution triggers.** A single `pg-clinical` primary with two read replicas carries this comfortably. Revisit only when sustained write throughput exceeds ~3K [TPS](https://en.wikipedia.org/wiki/Transaction_processing "Transactions Per Second — Throughput measure of how many transactions a system completes each second") or the primary's hot volume exceeds 4 TB — at which point the first move is extracting `audit_event` and `wellbeing_checkin` to their own instance, **not** sharding the record by patient.
 
 > **Deep Dive Reference:** Audit volume dominance — audit events outweigh all clinical data combined by roughly 5:1. Before build, validate the real per-session event count against a clinical pilot; a factor-of-two error here changes the storage plan more than any other single assumption.
 
 ## Explicit Scope Boundaries
 
-Out of scope, stated so the design is not read as claiming them: no diagnostic or triage decision support; no e-prescribing or order entry (prescriptions are recorded, not issued); no DICOM imaging viewer (imaging *reports* are stored as documents, pixel data is not); no billing or claims; no direct EHR write-back — the hospital directory is consumed via SCIM, but clinical integration is one-way import in this iteration.
+Out of scope, stated so the design is not read as claiming them: no diagnostic or triage decision support; no e-prescribing or order entry (prescriptions are recorded, not issued); no [DICOM](https://www.dicomstandard.org/ "Digital Imaging and Communications in Medicine — Standard for storing and transmitting medical images and related data") imaging viewer (imaging *reports* are stored as documents, pixel data is not); no billing or claims; no direct [EHR](https://en.wikipedia.org/wiki/Electronic_health_record "Electronic Health Record — Digital record of a patient's medical history maintained by a provider") write-back — the hospital directory is consumed via SCIM, but clinical integration is one-way import in this iteration.

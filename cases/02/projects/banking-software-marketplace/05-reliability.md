@@ -27,7 +27,7 @@ Access patterns first; every index below exists to serve a named one, and every 
 | A thread's messages, newest first | Medium | `idx_msg_thread` on each monthly `connection_message` partition |
 | A vendor's open connections | Medium | `idx_conn_vendor` — served by the denormalised `vendor_id`, no join to `product`. `idx_conn_group` is its retailer-side mirror |
 | Unpublished outbox rows | Constant, small | `BTREE (occurred_at) WHERE published_at IS NULL` |
-| Import staging cleanup | Background | Mongo **TTL** index on `import_staging.created_at`, 30 days |
+| Import staging cleanup | Background | Mongo **[TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires")** index on `import_staging.created_at`, 30 days |
 
 **Composite, partial, full-text and TTL are all present and each is doing distinct work**: composite for ordered browse, partial to keep unpublished and archived rows out of the hot indexes entirely, `GIN`/`tsvector` for text and containment, TTL for staging that must expire without a job.
 
@@ -36,9 +36,9 @@ Write-side optimizations:
 - **`search_vector` is maintained by `indexer-worker`, not by a trigger.** A trigger would run inside the vendor's publish transaction, coupling write latency to text-search maintenance for a value only the projection needs.
 - **Batched projection upserts** — 200 rows per statement during imports (`04-deep-dive.md`).
 - **`connection_message` and `audit_event` inserts are append-only into the current monthly partition**, so index maintenance stays in a small, cache-resident B-tree.
-- **Connection pooling** sized so the sum of all pod pool maxima stays below the Flexible Server connection limit; FastAPI's async handlers make a small pool per pod sufficient.
+- **Connection pooling** sized so the sum of all pod pool maxima stays below the Flexible Server connection limit; [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation")'s async handlers make a small pool per pod sufficient.
 
-> **Deep Dive Reference:** Text search quality — `to_tsvector` with a single dictionary handles a monolingual catalog well and handles "Kassensystem" versus "POS" not at all. A multilingual European marketplace needs a language-per-listing configuration and probably trigram similarity for vendor-name fuzziness. Prototype against real vendor copy before assuming the `GIN` index is sufficient; this is also the most likely trigger for the dedicated search engine deferred in `01-requirements.md`.
+> **Deep Dive Reference:** Text search quality — `to_tsvector` with a single dictionary handles a monolingual catalog well and handles "Kassensystem" versus "[POS](https://en.wikipedia.org/wiki/Point_of_sale "Point of Sale — The system and moment at which a retail transaction is completed")" not at all. A multilingual European marketplace needs a language-per-listing configuration and probably trigram similarity for vendor-name fuzziness. Prototype against real vendor copy before assuming the `GIN` index is sufficient; this is also the most likely trigger for the dedicated search engine deferred in `01-requirements.md`.
 
 ## Caching Strategy
 
@@ -46,8 +46,8 @@ Three layers, each with an explicit invalidation rule. `redis-cache` is the only
 
 | Layer | Contents | TTL | Invalidation |
 |---|---|---|---|
-| **CDN (Front Door)** | Admin console bundle, listing media and derived thumbnails from `blob-media` | 7 days for immutable, build-SHA and revision-keyed paths | None needed — paths are content-addressed, a new revision is a new URL |
-| **Redis — `cat:listing:{product_id}:v{rev}`** | Fully hydrated listing detail (spine + metadata + signed media URLs) | 15 min | **Cache-aside with event-driven purge.** `indexer-worker` deletes the key on `catalog.listing.updated`/`.published`. The `v{rev}` suffix means a stale key is unreachable even if the purge is lost |
+| **[CDN](https://en.wikipedia.org/wiki/Content_delivery_network "Content Delivery Network — Distributes cached content across edge locations to reduce latency") (Front Door)** | Admin console bundle, listing media and derived thumbnails from `blob-media` | 7 days for immutable, build-[SHA](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm — Family of cryptographic hash functions used to verify content integrity") and revision-keyed paths | None needed — paths are content-addressed, a new revision is a new [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web") |
+| **[Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") — `cat:listing:{product_id}:v{rev}`** | Fully hydrated listing detail (spine + metadata + signed media URLs) | 15 min | **Cache-aside with event-driven purge.** `indexer-worker` deletes the key on `catalog.listing.updated`/`.published`. The `v{rev}` suffix means a stale key is unreachable even if the purge is lost |
 | **Redis — `cat:search:{filter_hash}`** | Ordered `product_id` list for one filter+cursor combination | 60 s | TTL only. Enumerating every filter combination a listing change affects is intractable, so freshness is bought with a short TTL instead |
 | **Redis — `cat:facets:{category_slug}`** | Facet value counts for a category | 5 min | Purged by `indexer-worker` on any projection write in that category |
 | **Redis — `authz:jwks`** | Identity provider signing keys | 10 min | Refreshed on an unknown `kid`; the reason authorization costs 1 ms in the `04-deep-dive.md` budget |
@@ -60,30 +60,30 @@ The stampede protections that make this survivable under concentrated traffic �
 
 ## Telemetry
 
-**Metrics — SLIs and SLOs.** Emitted in-process through the same OpenTelemetry SDK used for tracing and exported to Azure Monitor, so metrics, logs and traces share one instrumentation dependency and one set of resource attributes.
+**Metrics — SLIs and SLOs.** Emitted in-process through the same OpenTelemetry [SDK](https://en.wikipedia.org/wiki/Software_development_kit "Software Development Kit — Packaged set of tools and libraries for building against a platform") used for tracing and exported to Azure Monitor, so metrics, logs and traces share one instrumentation dependency and one set of resource attributes.
 
-| SLI | SLO | Why it exists |
+| [SLI](https://sre.google/sre-book/service-level-objectives/ "Service Level Indicator — Measured metric, such as latency or error rate, used to judge service health") | [SLO](https://sre.google/sre-book/service-level-objectives/ "Service Level Objective — Target value for a service level indicator that a service commits to meet") | Why it exists |
 |---|---|---|
 | `catalog_search_latency_seconds` (p95) | < 200 ms | The `01-requirements.md` target, decomposed in `04-deep-dive.md` |
 | `catalog_read_availability` (non-5xx / total) | 99.9% monthly | Catalog read SLO |
 | `write_path_availability` | 99.5% monthly | Connections, listings, billing |
-| `indexer_lag_seconds` (event `occurred_at` → `projected_at`) | p95 < 5 s, p99 < 30 s | The staleness the AP choice bought; the number that tells you the projection died |
+| `indexer_lag_seconds` (event `occurred_at` → `projected_at`) | p95 < 5 s, p99 < 30 s | The staleness the [AP](https://en.wikipedia.org/wiki/CAP_theorem "Available and Partition tolerant — Names the CAP-theorem choice a subsystem makes to stay available under a network partition at the cost of strict consistency") choice bought; the number that tells you the projection died |
 | `outbox_unpublished_age_seconds` | p99 < 30 s | Detects a stalled relay before consumers notice |
-| `celery_queue_depth{queue}` | `imports` < 500, others < 100 | Also the HPA signal |
+| `celery_queue_depth{queue}` | `imports` < 500, others < 100 | Also the [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ "Horizontal Pod Autoscaler — Automatically adjusts the number of Kubernetes pod replicas to match load") signal |
 | `celery_task_failures_total{task}` | Alert on any sustained rate | The brief's "job failures" |
 | `redis_cache_hit_ratio{keyspace}` | > 0.85 for `cat:search` | The latency budget assumes it |
 | `postgres_replica_lag_seconds` | < 5 s | Above 30 s, `catalog-service` fails back to the primary |
 | `connection_first_response_hours` (p50) | Tracked, not targeted | Whether the platform actually shortens sourcing — the liquidity metric flagged in `01-requirements.md` |
 
-**Structured logging.** JSON to stdout, collected by Azure Monitor. Every line carries `request_id`, `trace_id`, `service`, `actor_side`, `org_id`, `route` and `status`. Two standing rules: **no log line contains a `connection_message.body`, a token, or a client secret**, and `org_id` is always present so a support query can be scoped to one tenant without a full-text sweep. Application logs are diagnostic and are not the audit trail — `audit_event` in `03-data-modeling.md` is, and it is written from the outbox rather than from a log pipeline.
+**Structured logging.** [JSON](https://www.json.org/json-en.html "JavaScript Object Notation — Lightweight text format for structured data exchange") to stdout, collected by Azure Monitor. Every line carries `request_id`, `trace_id`, `service`, `actor_side`, `org_id`, `route` and `status`. Two standing rules: **no log line contains a `connection_message.body`, a token, or a client secret**, and `org_id` is always present so a support query can be scoped to one tenant without a full-text sweep. Application logs are diagnostic and are not the audit trail — `audit_event` in `03-data-modeling.md` is, and it is written from the outbox rather than from a log pipeline.
 
-**Distributed tracing.** OpenTelemetry auto-instrumentation for FastAPI, SQLAlchemy, the Mongo driver, Redis and Celery, exported to Application Insights. Trace context propagates through Service Bus message properties, so a trace spans the whole publish → project → invalidate → notify chain — which is precisely the chain nobody can debug from logs alone. Sampling: 100% of errors and of write-path requests, 5% of catalog reads.
+**Distributed tracing.** OpenTelemetry auto-instrumentation for FastAPI, [SQLAlchemy](https://www.sqlalchemy.org/ "SQLAlchemy — Python SQL toolkit and ORM that maps objects to relational tables and builds queries"), the Mongo driver, Redis and [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle"), exported to Application Insights. Trace context propagates through Service Bus message properties, so a trace spans the whole publish → project → invalidate → notify chain — which is precisely the chain nobody can debug from logs alone. Sampling: 100% of errors and of write-path requests, 5% of catalog reads.
 
 > **Verify Before Build:** Trace continuity across Service Bus and Celery is the claim most likely to be false as written. Context propagation depends on the OpenTelemetry Python instrumentation versions for `azure-servicebus` and `celery` actually injecting and extracting the `traceparent` — both have been partly manual in the past. Pin the versions, then assert an end-to-end trace ID across a publish-to-notify flow in an integration test before relying on it during an incident.
 
 ## Alerting
 
-The brief asks for API errors and job failures on catalog and connection flows specifically. Azure Monitor alert rules, each naming an owner and a runbook:
+The brief asks for [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") errors and job failures on catalog and connection flows specifically. Azure Monitor alert rules, each naming an owner and a runbook:
 
 | Alert | Condition | Severity |
 |---|---|---|
@@ -98,7 +98,7 @@ The brief asks for API errors and job failures on catalog and connection flows s
 
 ## Automation: CI/CD and Deployment
 
-GitLab CI is the only path to production. One repository, one pipeline, nine deployable images.
+GitLab [CI](https://en.wikipedia.org/wiki/Continuous_integration "Continuous Integration — Automatically builds and tests code on every change") is the only path to production. One repository, one pipeline, nine deployable images.
 
 ```mermaid
 flowchart LR
@@ -114,7 +114,7 @@ flowchart LR
     P --> C["contract<br/>alembic contract migration<br/>(separate, later MR)"]
 ```
 
-- **Integration tests run against real data stores**, not mocks — Docker Compose brings up PostgreSQL, MongoDB and Redis at the pinned versions. The projection pipeline and the `GIN` query plans are exactly the things a mocked test would pass while broken.
+- **Integration tests run against real data stores**, not mocks — Docker Compose brings up [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees"), [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents") and Redis at the pinned versions. The projection pipeline and the `GIN` query plans are exactly the things a mocked test would pass while broken.
 - **Migrations are expand/contract and run before deploy.** `alembic upgrade head` only ever adds nullable columns, new tables and new indexes (`CONCURRENTLY`), so the previous image keeps running against the new schema throughout the rollout. Dropping a column is a separate merge request landed at least one release later. This is what makes rollback possible at all: the old image must be able to run against the new schema.
 - **Canary for `catalog-service`, rolling for everything else.** `catalog-service` takes the traffic and carries the risky query plans, so it gets a second Deployment receiving ~10% via Ingress canary weighting, held for 15 minutes against its error rate and p95 before the weight advances. The other five services and three workers use a rolling update with readiness and liveness probes. **Blue/green was rejected**: it doubles the pod footprint and, because both colours share `postgres-core`, delivers no database-level isolation — which is the only part of the risk the expand/contract discipline does not already cover.
 - **Rollback is a redeploy of the previous image digest**, safe by construction because the schema is compatible in both directions during the window.
@@ -123,7 +123,7 @@ flowchart LR
 
 ## Infrastructure as Code
 
-Terraform owns every Azure resource named in `02-high-level-design.md`: AKS and its node pools, PostgreSQL Flexible Server and its replica, Azure Cache for Redis (both instances), the MongoDB deployment, Blob Storage containers and lifecycle rules, Service Bus namespace with its topics, subscriptions and dead-letter settings, the Function Apps, API Management, Front Door with WAF, Key Vault, and every Azure Monitor alert rule above.
+[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files") owns every Azure resource named in `02-high-level-design.md`: [AKS](https://learn.microsoft.com/en-us/azure/aks/ "Azure Kubernetes Service — Managed Kubernetes hosting on Azure") and its node pools, PostgreSQL Flexible Server and its replica, Azure Cache for Redis (both instances), the MongoDB deployment, Blob Storage containers and lifecycle rules, Service Bus namespace with its topics, subscriptions and dead-letter settings, the Function Apps, API Management, Front Door with [WAF](https://owasp.org/www-community/Web_Application_Firewall "Web Application Firewall — Filters and blocks malicious HTTP traffic before it reaches an application"), Key Vault, and every Azure Monitor alert rule above.
 
 State lives in the `tfstate/` container of `blob-media` with versioning and lease locking. Environments are separate workspaces over one module set, differing only in a variables file — so staging is the same topology at smaller instance sizes, which is what makes a staging smoke test meaningful. Applies run only from GitLab CI on the default branch, authenticated by workload identity rather than a stored service principal secret; `06-security.md` owns that decision.
 

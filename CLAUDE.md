@@ -20,6 +20,8 @@
 | The exact precondition contract | `.claude/skills/interview-prep/scripts/preflight.sh` |
 | What the gate is actually proven to do | `.claude/skills/interview-prep/scripts/gate-check.sh` |
 | How design docs are produced | `.claude/skills/system-design/SKILL.md` |
+| What an abbreviation means, and where its link points | `.claude/glossary.md` |
+| How abbreviation links are applied and verified | `.claude/scripts/link-abbreviations.py` |
 
 ## Don't touch without reading
 
@@ -32,7 +34,8 @@
 
 ## Language / Stack rules
 
-- Shell is the only executable code. `preflight.sh` must pass `shellcheck .claude/skills/interview-prep/scripts/*.sh` — run it as a directory sweep, not on one file, because a solo invocation silences findings the sweep reports.
+- Shell and Python are the only executable code, and the split is fixed. **Shell owns every gate and fixture suite**: `preflight.sh` must pass `shellcheck .claude/skills/interview-prep/scripts/*.sh` — run it as a directory sweep, not on one file, because a solo invocation silences findings the sweep reports.
+- **Python is admitted for Markdown-aware tooling only** — work where shell's quoting and substitution rules would themselves be the main source of defects, such as rewriting prose that carries tables, nested links and `&` in URLs. `awk`'s `sub()` treating `&` as a backreference is the specific trap this avoids. Standard library only; no third-party dependencies, no `pip install`, no virtualenv. Anything outside that description is shell.
 - Markdown in `.claude/skills/` is **unwrapped**: one long line per paragraph and per list item. Do not reflow it. Code fences, tables and frontmatter are exempt and stay line-broken.
 - Prose in the skills names the artifact, never the folder tree it happened to sit in when written. `<project>` means `<case>/projects/<name>`; `<interview>` means `<case>/interview`.
 - `system-design` owns the `inputs.txt` schema (`Title:` / `Description:` / `Environment:` / `Responsibilities:`). Reference those heading labels as an interface; never restate what belongs in each section.
@@ -52,12 +55,14 @@ Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning not
 - **One owner per fact.** `output-conventions.md` owns format; `candidate-profile.md` owns client weighting; `SKILL.md` owns the chain; each mode file owns only its own logic. Restating a fact elsewhere is duplication even when the wording differs. `[UNGUARDED]` — a prose convention; nothing fails when it is broken.
 - **Cases are independent.** Nothing infers a link between two cases from folder numbering or content resemblance, however similar their projects. `[UNGUARDED]` — an absence, and nothing tests for one.
 - **Question order is never rearranged.** A client's bank is pooled from prior candidates and already grouped; its order is what the interviewer reads from. Per-project separation is carried by the `**Project:**` tag and the index — an attribution, not a partition. `[UNGUARDED]` — a content convention, checked only by the review checklist.
+- **Abbreviation facts have one owner and are applied mechanically.** `.claude/glossary.md` owns the expansion, the one-sentence purpose and the official source of every linked term; no skill file and no generated document restates them, and no link is written by hand. *(guard: `link-abbreviations.py --check` — reports a glossary term left unlinked, a title or source that has drifted, and a link to a term the glossary does not hold; mutation-tested by `.claude/scripts/link-abbreviations-check.sh`)*
 
 ### Forbidden patterns
 
 - No mode reads an input the gate did not report. If a mode needs a new file, the gate learns about it first.
 - No `-s`-only usability test on a file a human is expected to fill in.
 - No second copy of the answer format, the style rules, or the chain outside their owner files.
+- No hand-written abbreviation link. A term that needs one gets a glossary row first, then the linker writes it.
 
 ## Security and honesty rules
 
@@ -72,11 +77,17 @@ Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning not
 **Commands.**
 
 ```
-shellcheck .claude/skills/interview-prep/scripts/*.sh
+shellcheck .claude/skills/interview-prep/scripts/*.sh .claude/scripts/*.sh
 .claude/skills/interview-prep/scripts/gate-check.sh
+.claude/scripts/link-abbreviations-check.sh
+python3 .claude/scripts/link-abbreviations.py --check cases/02/projects/*/*.md
 ```
 
+Case 01 is out of scope for the glossary back-fill and is not passed to `--check`; running it against case 01 reports findings by design, not by error.
+
 `gate-check.sh` builds every fixture in a temp directory and exits non-zero on any failure. It ends with a self-test that plants a wrong expectation and confirms it is reported — a suite that only ever passes confirms whatever you already expected.
+
+`link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Four mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, and dropping the title-divergence finding.
 
 **Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Four mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, and removing the `projects` parent-directory guard.
 
@@ -95,6 +106,10 @@ $PF frobnicate cases/01                                 # 2 CANNOT-RUN
 ```
 
 **Patterns.** Always pair a known-pass with a known-fail, and include a deliberately-wrong control — a check suite that only ever passes confirms whatever you already expected. Three states per check, never two: pass, fail, and could-not-run. Build fixtures in a scratch directory, never inside `cases/`.
+
+**One fixture, one behaviour.** A fixture exercising several behaviours at once can only honestly test the first that fires; every later assertion on it is decoration. Four checks here passed for reasons unrelated to what they named — a fixture carrying an already-linked term short-circuited before the fence and inline-code logic was ever reached, so both looked covered and neither was. Give each behaviour its own fixture in which the trigger appears **only** in the region under test, and confirm the check fails under a mutation of the behaviour it names before accepting it. A check that has never failed has not been shown to test anything.
+
+**A mutation must leave the file parsable.** A mutation that introduces a syntax error makes every check fail at once, which reads as overwhelming evidence and is worthless — it is a could-not-run, not a catch. Parse the file after mutating and before drawing any conclusion.
 
 Known traps, each of which has produced a false FAIL here: `from-cv` treats the project brief as *required*, so it appears under `verified:`, not among the optional `notes:`; `notes:` print on BLOCKED as well as READY, so asserting a note says nothing about the exit code; and `ABSENT` wraps its path in parentheses while `SOURCED` and `FOUND` do not.
 

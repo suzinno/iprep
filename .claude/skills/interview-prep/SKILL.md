@@ -126,3 +126,5 @@ Follow the mode file. It owns the inputs to read, the generation logic, the docu
 Re-read every file you wrote and verify the shared checklist in `references/output-conventions.md` plus the mode-specific checks in the mode file.
 
 Fix what fails. Report anything you could not fix rather than reporting done.
+
+Then run `python3 .claude/scripts/link-abbreviations.py <the files you wrote>` to apply the abbreviation glossary. Never write these links by hand — `.claude/glossary.md` owns them, and a term it does not hold gets a row there before it gets a link.
