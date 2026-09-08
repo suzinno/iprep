@@ -8,6 +8,25 @@ Each entry is a `###` term heading, the topic tags it can be found by, and one s
 
 ## Protocols
 
+### AMQP
+`messaging`
+
+A binary protocol for passing messages between services through a broker, with delivery confirmed rather than assumed. The sender hands a message to the broker, which holds it in a queue until a consumer acknowledges having processed it.
+
+<details><summary>Details</summary>
+
+**How it works:** In the 0-9-1 model, a publisher never names a queue. It publishes to an *exchange* with a *routing key*, and *bindings* declared on the exchange decide which queues receive a copy — one, several, or none. A consumer takes messages from a queue and returns an *ack*; an unacknowledged message whose consumer dies is redelivered, and a rejected one can be dropped, requeued or sent to a dead-letter queue. Prefetch limits how many a consumer may hold unacknowledged at once, which is what keeps a slow worker from being buried.
+
+**Boundary:** Two protocols share the name, and they are not interchangeable — a 1.0 client cannot talk to a 0-9-1 broker. The exchange and binding model above is 0-9-1, which is what RabbitMQ speaks; AMQP 1.0 is a different, lower-level link protocol used by Azure Service Bus and others, and leaves routing to the broker's own concepts. It is also a protocol, not a product: RabbitMQ is one implementation, and much of what people call AMQP behaviour is RabbitMQ's. Like a queue and unlike a log, an acknowledged message is gone — which is the real contrast with Kafka, a system rather than a protocol, whose consumers keep a position in a log they can rewind.
+
+**Alternatives:**
+- **MQTT** — topic matching instead of exchanges and bindings, and far lighter on constrained clients. The right trade for telemetry from many devices, the wrong one for work queues that must not lose a job.
+- **STOMP** — a text-based frame protocol that any language can speak in a few lines. Much simpler to implement and debug, with none of the routing or delivery machinery.
+
+**Example:** An order service publishes to the `orders` exchange with routing key `order.placed`. A `billing` queue and an `analytics` queue are both bound to that key, so each gets a copy; the billing worker acks only after the payment row is committed, so a crash mid-charge returns the message to the queue rather than losing it.
+
+</details>
+
 ### MQTT
 `messaging` `iot`
 
