@@ -14,17 +14,17 @@
 
 ---
 
-Component names follow [`02-high-level-design.md`](./02-high-level-design.md) exactly. Every entity below is reachable through an API contract in `02` and has a declared access pattern in [`05-reliability.md`](./05-reliability.md).
+Component names follow [`02-high-level-design.md`](./02-high-level-design.md) exactly. Every entity below is reachable through an [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") contract in `02` and has a declared access pattern in [`05-reliability.md`](./05-reliability.md).
 
 ## Store Allocation
 
 | Store | Owns | Written by | Consistency |
 |---|---|---|---|
 | `pg-clinical` | The clinical record and everything authorization depends on | `care-core`, `scim-provisioning-svc`, `celery-worker` | Strong; the only store a client read can be served from without qualification |
-| `mongo-content` | Education pages, guidance corpus, templates, NLP artifacts | `clinical-nlp-svc`, `care-core` (`clinical-content`) | Eventual; published versions are immutable |
+| `mongo-content` | Education pages, guidance corpus, templates, [NLP](https://en.wikipedia.org/wiki/Natural_language_processing "Natural Language Processing — Computational techniques for analyzing and generating human language") artifacts | `clinical-nlp-svc`, `care-core` (`clinical-content`) | Eventual; published versions are immutable |
 | `es-clinical` | Derived search index — no data originates here | `celery-worker` (`celery.index` only) | Eventual; composed lag budget p95 < 15 s, itemised in [`05-reliability.md`](./05-reliability.md) |
 | `redis-cache` | Nothing durable. Caches, counters, locks, idempotency keys | All services | Volatile by design; flushing it costs latency, and may permit one duplicate mutation — see below |
-| `blob-documents` | Document bytes and the audit archive | Clients (SAS), `fn-blob-ingest`, `celery-worker` | Immutable once written |
+| `blob-documents` | Document bytes and the audit archive | Clients ([SAS](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview "Shared Access Signature — Time-limited token granting scoped access to an Azure Storage resource")), `fn-blob-ingest`, `celery-worker` | Immutable once written |
 
 **The rule that keeps this coherent:** a fact has exactly one owning store. `es-clinical` and `redis-cache` are projections and are rebuildable from `pg-clinical` and `mongo-content` at any time — a property the reindex job in `05` depends on.
 
@@ -116,17 +116,17 @@ erDiagram
 
 ## PostgreSQL Schema Design
 
-One database, one PostgreSQL schema per `care-core` module — `identity`, `records`, `diary`, `content`, `audit`. Modules read their own schema directly and each other's only through the in-process interface, so the module boundary that exists in code also exists in the database and does not decay into a shared-table free-for-all.
+One database, one [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema per `care-core` module — `identity`, `records`, `diary`, `content`, `audit`. Modules read their own schema directly and each other's only through the in-process interface, so the module boundary that exists in code also exists in the database and does not decay into a shared-table free-for-all.
 
 **Design decisions worth stating**
 
-- **`care_relationship` is the authorization table, and it is temporal.** `valid_period` is a `tstzrange` with a GiST exclusion constraint, so a clinician's access to a patient has a start and an end and history is not overwritten. Row-level security policies in [`06-security.md`](./06-security.md) join through exactly this table; there is no second definition of "may this clinician see this patient".
+- **`care_relationship` is the authorization table, and it is temporal.** `valid_period` is a `tstzrange` with a [GiST](https://www.postgresql.org/docs/current/gist.html "Generalized Search Tree — PostgreSQL index type supporting range and exclusion constraints") exclusion constraint, so a clinician's access to a patient has a start and an end and history is not overwritten. Row-level security policies in [`06-security.md`](./06-security.md) join through exactly this table; there is no second definition of "may this clinician see this patient".
 - **Every timeline-feeding table carries `timeline_at timestamptz`.** The five tables order by different natural columns — `starts_at`, `prescribed_on`, `encounter_date` (a `date`), `uploaded_at`, `recorded_at` — and a `UNION ALL` mixing `date` and `timestamptz` can neither be ordered deterministically nor served from one index shape. `timeline_at` is populated from each table's natural column and is the only column the timeline query orders on; the keyset cursor is the tuple `(timeline_at, source_table, id)`, so ties across sources break deterministically. The natural columns remain, because `encounter_date` is the clinical fact and `timeline_at` is only a presentation key.
-- **`wellbeing_checkin` is unique on `(patient_id, recorded_for)`.** The MQTT ingest path is at-least-once, so the projection is an idempotent `INSERT ... ON CONFLICT DO UPDATE` keyed on that pair rather than an application-side dedupe.
-- **`symptom_scores` is `jsonb`, not columns.** The symptom set differs by cancer type and evolves with the clinical protocol; a GIN index on the document supports the trend query without a migration per symptom.
+- **`wellbeing_checkin` is unique on `(patient_id, recorded_for)`.** The [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") ingest path is at-least-once, so the projection is an idempotent `INSERT ... ON CONFLICT DO UPDATE` keyed on that pair rather than an application-side dedupe.
+- **`symptom_scores` is `jsonb`, not columns.** The symptom set differs by cancer type and evolves with the clinical protocol; a [GIN](https://www.postgresql.org/docs/current/gin.html "Generalized Inverted Index — PostgreSQL index type suited to values containing multiple keys, such as arrays or text search") index on the document supports the trend query without a migration per symptom.
 - **`outbox_event`** — `(event_id, aggregate_type, aggregate_id, event_type, payload jsonb, occurred_at, published_at NULL)`. Written in the same transaction as the business change; the relay publishes to `care.events`. This is the only mechanism that writes to `es-clinical` or `sb-integration`, which is why dual-write drift cannot occur (see [`04-deep-dive.md`](./04-deep-dive.md)).
 - **`reminder` / `reminder_delivery` are separate.** One reminder, many attempts, each with a channel, provider message id, and terminal state. Reporting on missed reminders is a query, not a log grep — the measurable claim in the brief depends on the delivery table existing.
-- **`external_mrn` is encrypted but still searchable.** Hospital sync looks a patient up by MRN, which non-deterministic encryption would make impossible. The row stores the encrypted value alongside an HMAC-SHA256 blind index over the normalised MRN, keyed separately in Key Vault; lookups match the blind index and only the matched row is ever decrypted.
+- **`external_mrn` is encrypted but still searchable.** Hospital sync looks a patient up by [MRN](https://en.wikipedia.org/wiki/Medical_record "Medical Record Number — Unique identifier a healthcare provider assigns to a patient's record"), which non-deterministic encryption would make impossible. The row stores the encrypted value alongside an [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key")-[SHA256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm 256-bit — Produces a fixed-size digest used to verify content integrity") blind index over the normalised MRN, keyed separately in Key Vault; lookups match the blind index and only the matched row is ever decrypted.
 - **`document` holds metadata only**; bytes live in `blob-documents`. The row carries `blob_path`, `sha256`, `scan_state`, and `content_type`, and is not visible to a client until `scan_state = 'clean'`.
 - **`audit_event` is append-only** — `REVOKE UPDATE, DELETE` from every application role, enforced additionally by a trigger. Columns: `(audit_event_id, actor_id, actor_kind, patient_id, action, resource_type, resource_id, reason, trace_id, occurred_at)`.
 - **Soft deletion is not used on clinical rows.** Retention law governs the record; withdrawal of consent restricts processing through `consent`, it does not tombstone a prescription.
@@ -163,7 +163,7 @@ Every document in every index carries **`patient_id` and `care_team_ids`**, and 
 
 ## Redis Keyspace
 
-| Key pattern | Contents | TTL |
+| Key pattern | Contents | [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires") |
 |---|---|---|
 | `sess:{session_id}` | Portal session metadata | 30 min sliding |
 | `jwks:{tenant}` | Entra ID signing keys | 12 h |
@@ -171,8 +171,8 @@ Every document in every index carries **`patient_id` and `care_team_ids`**, and 
 | `page:{page_id}:{version}:{locale}` | Rendered content page | 24 h, write-through on publish |
 | `rl:{subject_id}:{bucket}` | Rate-limit token bucket | window-scoped |
 | `idem:{idempotency_key}` | Stored response for a completed mutation | 24 h |
-| `lock:scim:{entra_object_id}` | SCIM serialization lock | 30 s |
-| `celery-result:{task_id}` | Celery result backend | 1 h |
+| `lock:scim:{entra_object_id}` | [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") serialization lock | 30 s |
+| `celery-result:{task_id}` | [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") result backend | 1 h |
 
 Nothing here is authoritative and nothing here holds free-text clinical content beyond a rendered page a caller was already entitled to read. One honest qualification: `idem:` keys are the *optimisation* for duplicate suppression, not the guarantee. Losing them to a flush permits a duplicate `POST` to be reprocessed, so any mutation that must not double-apply carries a natural key in `pg-clinical` — `(patient_id, recorded_for)` for check-ins, `reminder_delivery_id` for dispatches — and the database, not the cache, is what makes it idempotent.
 
@@ -182,24 +182,24 @@ Nothing here is authoritative and nothing here holds free-text clinical content 
 |---|---|---|
 | `documents` | `{patient_id}/{document_id}/{sha256}` | Hot 90 d → Cool 1 y → Archive |
 | `ingest-quarantine` | `{upload_id}` | Deleted on promotion or after 24 h |
-| `audit-archive` | `{yyyy}/{mm}/audit-{partition}.parquet.zst` | Immutable (WORM policy), 7-year legal hold |
+| `audit-archive` | `{yyyy}/{mm}/audit-{partition}.parquet.zst` | Immutable ([WORM](https://en.wikipedia.org/wiki/Write_once_read_many "Write Once Read Many — Storage mode that prevents a written object from being modified or deleted before a retention period ends") policy), 7-year legal hold |
 
 Uploads land in `ingest-quarantine` and are promoted to `documents` only after `fn-blob-ingest` reports a clean scan — an unscanned file is never addressable by a `document` row.
 
 ## Partitioning and Sharding Strategy
 
-**`pg-clinical` is not sharded, and at this scale it should not be.** At ~200 QPS peak and ~1 TB hot, a single primary with two read replicas has ample headroom. What the design does do:
+**`pg-clinical` is not sharded, and at this scale it should not be.** At ~200 [QPS](https://en.wikipedia.org/wiki/Queries_per_second "Queries Per Second — Throughput measure of how many requests a system serves each second") peak and ~1 TB hot, a single primary with two read replicas has ample headroom. What the design does do:
 
 - **Declarative range partitioning by month** on `diary.wellbeing_checkin` (110M rows over 5 years) and `audit.audit_event` (1.8B). Both are written append-only and read by recent time window, so partition pruning removes almost all of the table from every query, and detaching an old partition is how archival happens — a metadata operation, not a 500 GB `DELETE`.
-- **BRIN indexes** on the time column of both partitioned tables; the physical order matches insert order, so BRIN costs a fraction of a B-tree's size for the same range scan.
+- **[BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables") indexes** on the time column of both partitioned tables; the physical order matches insert order, so BRIN costs a fraction of a B-tree's size for the same range scan.
 - **Composite B-tree `(patient_id, timeline_at DESC)`** on every timeline-feeding table, which is the single access pattern behind the record view.
-- **Read replicas carry no audited patient reads.** Every PHI read writes an `audit_event` in the same transaction (see [`06-security.md`](./06-security.md)), and a replica cannot write, so patient-facing reads are served by the primary. At ~200 QPS peak that is comfortable, and it preserves read-your-writes for the CP guarantee in [`01-requirements.md`](./01-requirements.md). Replicas carry only unaudited work: index rebuilds, reporting aggregates, and backup verification. The cost is that read availability is coupled to the primary — recorded as such in [`04-deep-dive.md`](./04-deep-dive.md) rather than glossed.
+- **Read replicas carry no audited patient reads.** Every [PHI](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160/subpart-A/section-160.103 "Protected Health Information — Individually identifiable health data that HIPAA regulates") read writes an `audit_event` in the same transaction (see [`06-security.md`](./06-security.md)), and a replica cannot write, so patient-facing reads are served by the primary. At ~200 QPS peak that is comfortable, and it preserves read-your-writes for the [CP](https://en.wikipedia.org/wiki/CAP_theorem "Consistent and Partition tolerant — Names the CAP-theorem choice a subsystem makes to stay strictly consistent under a network partition at the cost of availability") guarantee in [`01-requirements.md`](./01-requirements.md). Replicas carry only unaudited work: index rebuilds, reporting aggregates, and backup verification. The cost is that read availability is coupled to the primary — recorded as such in [`04-deep-dive.md`](./04-deep-dive.md) rather than glossed.
 
 `mongo-content` runs as a **single 3-node replica set, unsharded** — 120 GB with a read-mostly pattern does not warrant a shard key decision that would be hard to reverse. `es-clinical` shards as described above. `redis-cache` runs primary + replica, not Cluster, since no single key set approaches a node's capacity.
 
 **Evolution triggers, in the order they should be taken:**
 
-1. Sustained write throughput > 3K TPS, or hot volume > 4 TB → move `audit_event` to its own PostgreSQL instance (it is append-only, referenced by no foreign key, and read by nothing on the request path).
+1. Sustained write throughput > 3K [TPS](https://en.wikipedia.org/wiki/Transaction_processing "Transactions Per Second — Throughput measure of how many transactions a system completes each second"), or hot volume > 4 TB → move `audit_event` to its own PostgreSQL instance (it is append-only, referenced by no foreign key, and read by nothing on the request path).
 2. Still constrained → move `wellbeing_checkin` likewise.
 3. Only then consider sharding the record by `patient_id`. Reaching this point means roughly 20× the modelled load.
 

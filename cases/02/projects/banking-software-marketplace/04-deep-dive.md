@@ -20,15 +20,15 @@ The rule is one sentence: **synchronous when the caller cannot act without the a
 
 | Flow | Pattern | Why |
 |---|---|---|
-| Client → any service | Sync REST via Front Door → APIM → Ingress | The user is waiting |
+| Client → any service | Sync [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs") via Front Door → [APIM](https://learn.microsoft.com/en-us/azure/api-management/ "Azure API Management — Publishes, secures and rate limits APIs behind a managed gateway") → Ingress | The user is waiting |
 | `catalog-service` → `postgres-core` replica, `mongo-catalog`, `redis-cache` | Sync | Inside the response the user is waiting for |
 | `connection-service` → `retailer-service` (does this group already have an open thread?) | Sync REST | The answer changes what the caller returns |
 | `vendor-service` / `connection-service` → downstream effects | Async via `outbox_event` → Service Bus | Publishing a listing must not fail because the notifier is down |
 | `sb-catalog-events` → `indexer-worker` | Async, competing consumers | Projection is allowed to trail; `01-requirements.md` budgets p95 < 5 s |
 | `sb-connection-events` → `billing-service`, `notification-worker` | Async, one subscription each | Billing a connection is not on the retailer's critical path |
 | `notification-worker` → `sb-notification-dispatch` → `fn-notify-dispatch` | Async queue | Policy in Python, delivery in a Function; the split is a rule from `02-high-level-design.md` |
-| API upload → `blob-media` → `fn-media-process` | Async blob trigger | Thumbnailing a 40-page PDF datasheet must never hold an HTTP connection |
-| `vendor-service` → `redis-broker` → `catalog-import-worker` | Async Celery | A 20,000-row import is not a request |
+| [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") upload → `blob-media` → `fn-media-process` | Async blob trigger | Thumbnailing a 40-page [PDF](https://en.wikipedia.org/wiki/PDF "Portable Document Format — Fixed-layout document format for reliable printing and viewing") datasheet must never hold an [HTTP](https://datatracker.ietf.org/doc/html/rfc9110 "Hypertext Transfer Protocol — Application protocol used to request and transfer web resources") connection |
+| `vendor-service` → `redis-broker` → `catalog-import-worker` | Async [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") | A 20,000-row import is not a request |
 
 **No synchronous call crosses more than one service boundary.** `connection-service` calling `retailer-service` is the only inter-service sync hop in the design, and it has a 250 ms timeout with a fallback that permits the connection rather than blocking it — an availability choice, since refusing a legitimate connection request costs the marketplace more than allowing an occasional duplicate thread, which the `UNIQUE (retail_group_id, idempotency_key)` constraint in `03-data-modeling.md` catches anyway.
 
@@ -54,17 +54,17 @@ The p95 < 200 ms catalog search target from `01-requirements.md`, decomposed. Tw
 
 | Hop | Cached path | Uncached path |
 |---|---|---|
-| Front Door + APIM (routing, quota, JWT signature check against cached JWKS) | 12 ms | 12 ms |
+| Front Door + APIM (routing, quota, [JWT](https://datatracker.ietf.org/doc/html/rfc7519 "JSON Web Token — Compact, signed token format for carrying claims between parties") signature check against cached [JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "JSON Web Key Set — Publishes the public keys a party needs to verify a signed token")) | 12 ms | 12 ms |
 | Ingress → pod | 3 ms | 3 ms |
 | Authorization: local claim check, no network call | 1 ms | 1 ms |
-| Redis `GET cat:search:{filter_hash}` | 3 ms | 3 ms (miss) |
-| PostgreSQL replica: keyset query on `product_listing_facets` | — | 45 ms |
+| [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") `GET cat:search:{filter_hash}` | 3 ms | 3 ms (miss) |
+| [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") replica: keyset query on `product_listing_facets` | — | 45 ms |
 | Redis `MGET cat:listing:*` | 4 ms | 4 ms |
-| MongoDB bulk `$in` hydration of misses | — | 25 ms |
-| Serialization (Pydantic, ~30 summaries) | 12 ms | 14 ms |
+| [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents") bulk `$in` hydration of misses | — | 25 ms |
+| Serialization ([Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime"), ~30 summaries) | 12 ms | 14 ms |
 | **Total (server-side)** | **~35 ms** | **~107 ms** |
 
-At the modelled 85% search-page hit ratio the p95 falls on the uncached path, ~107 ms, leaving roughly 90 ms of margin for the tail: a cold Postgres buffer cache, a GC pause, an autoscaling cold start. The p99 < 500 ms target absorbs a full uncached page with a `GIN` scan over an unselective predicate. **The budget only holds because authorization requires no network call** — JWTs are verified locally against a JWKS cached in `redis-cache`, and an introspection round-trip per request would add 15–30 ms to every hop in both columns.
+At the modelled 85% search-page hit ratio the p95 falls on the uncached path, ~107 ms, leaving roughly 90 ms of margin for the tail: a cold Postgres buffer cache, a [GC](https://en.wikipedia.org/wiki/Garbage_collection "Garbage Collection — Automatically reclaims memory no longer reachable by a running program") pause, an autoscaling cold start. The p99 < 500 ms target absorbs a full uncached page with a `GIN` scan over an unselective predicate. **The budget only holds because authorization requires no network call** — JWTs are verified locally against a JWKS cached in `redis-cache`, and an introspection round-trip per request would add 15–30 ms to every hop in both columns.
 
 ## Bottleneck 1: The Faceted Search Query
 
@@ -75,14 +75,14 @@ Mitigations, in the order they matter:
 1. **Query on one denormalised table.** `product_listing_facets` copies `vendor_id`, `status` and `published_at` from `product` so the hot query touches exactly one relation and never joins (`03-data-modeling.md`).
 2. **A partial index carrying the status predicate.** `idx_plf_browse` is defined `WHERE status = 'published'`, which keeps roughly 40,000 rows out of ~55,000 in the index and removes the filter from every plan.
 3. **Keyset pagination.** `(published_at, product_id) < (cursor)` rather than `OFFSET`. Page 40 of a comparison costs the same as page 1.
-4. **A category is required for facet-heavy queries.** The API refuses an uncategorised query carrying more than two facet predicates, which guarantees `idx_plf_browse` or `idx_plf_price` is always a viable leading index. This is a product constraint that buys a performance guarantee, and it matches how sourcing actually works — nobody compares a POS against a loyalty engine.
+4. **A category is required for facet-heavy queries.** The API refuses an uncategorised query carrying more than two facet predicates, which guarantees `idx_plf_browse` or `idx_plf_price` is always a viable leading index. This is a product constraint that buys a performance guarantee, and it matches how sourcing actually works — nobody compares a [POS](https://en.wikipedia.org/wiki/Point_of_sale "Point of Sale — The system and moment at which a retail transaction is completed") against a loyalty engine.
 5. **`total_estimate`, not `total`.** Exact counts over a filtered `GIN` scan cost as much as the page itself. The API returns an estimate derived from the planner and stops counting at 1,000.
 
 > **Verify Before Build:** The claim that `idx_plf_arrays` and `idx_plf_facets` combine into a bitmap `AND` rather than degrading to a sequential scan depends on the planner's selectivity estimates for `text[]` containment and `jsonb_path_ops`, which are poor for high-cardinality arrays. Confirm with `EXPLAIN (ANALYZE, BUFFERS)` against a seeded 40,000-row table on the pinned PostgreSQL 15 minor version *before* relying on the 45 ms figure above. If the plan is wrong, the fix is a composite covering index per high-traffic category, not a bigger instance.
 
 ## Bottleneck 2: Cache Stampede on a Popular Listing
 
-The brief calls for caching hot catalog reads to cut database load on popular POS and inventory listings. Naive TTL caching does the opposite at exactly the wrong moment: a widely-viewed listing's key expires, and every concurrent request misses together and hits Postgres and Mongo simultaneously.
+The brief calls for caching hot catalog reads to cut database load on popular POS and inventory listings. Naive [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires") caching does the opposite at exactly the wrong moment: a widely-viewed listing's key expires, and every concurrent request misses together and hits Postgres and Mongo simultaneously.
 
 Two mechanisms, both in `catalog-service`:
 
@@ -108,16 +108,16 @@ Eventual consistency is invisible to a retailer and glaring to the vendor who ju
 
 | Component | Failure impact | Mitigation | Residual risk |
 |---|---|---|---|
-| `postgres-core` primary | Total write outage; catalog browse survives on the replica and cache | Zone-redundant HA, automatic failover 60–120 s; app retries with exponential backoff; PgBouncer-style pooling so reconnect storms do not follow | 1–2 min of failed writes. Accepted at 99.5% write availability |
+| `postgres-core` primary | Total write outage; catalog browse survives on the replica and cache | Zone-redundant [HA](https://en.wikipedia.org/wiki/High_availability "High Availability — System design goal of remaining operational despite component failure"), automatic failover 60–120 s; app retries with exponential backoff; PgBouncer-style pooling so reconnect storms do not follow | 1–2 min of failed writes. Accepted at 99.5% write availability |
 | `postgres-core` replica | Catalog reads fail over to the primary | `catalog-service` health-checks replica lag and falls back above 30 s | Elevated primary load during the window |
 | `mongo-catalog` primary | Listing publishes and imports fail; browse and detail survive from `redis-cache` and secondaries | 3-member replica set, automatic election ~10–30 s | Vendor writes rejected briefly with a retryable 503 |
 | `redis-cache` | **Not an outage.** Cache-aside means every read falls through to Postgres and Mongo | Rate limiting and idempotency degrade with it — both fail *closed* for writes and *open* for reads | Latency rises from ~35 ms to ~107 ms and Postgres load multiplies ~6×. Capacity is sized to survive this |
-| `redis-broker` | In-flight Celery tasks at risk; queued work stalls | AOF persistence with `everysec`, `acks_late=True` and a visibility timeout so an unacknowledged task is redelivered rather than lost | See the note below |
+| `redis-broker` | In-flight Celery tasks at risk; queued work stalls | [AOF](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/ "Append Only File — Redis persistence mode that logs every write for durability") persistence with `everysec`, `acks_late=True` and a visibility timeout so an unacknowledged task is redelivered rather than lost | See the note below |
 | Azure Service Bus | Events queue at the outbox; nothing is lost | `outbox_event.published_at` stays null and the relay resumes; consumers are idempotent | Projection and notification lag for the outage's duration |
-| APIM / Front Door | Total outage — a genuine SPOF | Both are Azure-managed, zone-redundant, and multi-instance | Accepted. A second edge is not proportional at this scale |
+| APIM / Front Door | Total outage — a genuine [SPOF](https://en.wikipedia.org/wiki/Single_point_of_failure "Single Point of Failure — A component whose failure alone can bring down the whole system") | Both are Azure-managed, zone-redundant, and multi-instance | Accepted. A second edge is not proportional at this scale |
 | Azure Functions | Notifications and thumbnails stall | Service Bus retains messages; dead-letter after 10 attempts with an Azure Monitor alert | Delayed email, no data loss |
 | `indexer-worker` down | New listings never become searchable — a silent failure | `indexer_lag_seconds` alerts at 60 s; the reconciliation job in `03-data-modeling.md` re-projects any stale row | Bounded to the reconciliation interval |
-| Whole region | Total outage | Geo-redundant backups; RTO 4 h, RPO 15 min from `01-requirements.md` | Deliberate. Active-active multi-region for a B2B sourcing tool at 35 QPS is cost the business would not choose |
+| Whole region | Total outage | Geo-redundant backups; [RTO](https://en.wikipedia.org/wiki/Disaster_recovery "Recovery Time Objective — Maximum acceptable duration to restore a system after a disruption") 4 h, [RPO](https://en.wikipedia.org/wiki/Disaster_recovery "Recovery Point Objective — Maximum acceptable amount of data loss, measured in time since the last recovery point") 15 min from `01-requirements.md` | Deliberate. Active-active multi-region for a [B2B](https://en.wikipedia.org/wiki/Business-to-business "Business to Business — Describes commerce conducted between organizations rather than to individual consumers") sourcing tool at 35 [QPS](https://en.wikipedia.org/wiki/Queries_per_second "Queries Per Second — Throughput measure of how many requests a system serves each second") is cost the business would not choose |
 
 > **Verify Before Build:** `acks_late` plus a visibility timeout is what makes Celery-on-Redis tolerable, but Redis is not a broker with real acknowledgement semantics — a worker killed mid-task relies on the visibility timeout expiring, and a `redis-broker` failover can still drop unacknowledged tasks. Confirm the behaviour on the pinned Celery and Redis versions with a kill-the-worker test before treating imports as durable. If they must be durable, the correct move is to run the `imports` queue on Azure Service Bus, which is already in the stack, and keep Redis only for `notifications` and `indexing`, whose work is fully rebuildable from the outbox.
 
@@ -126,7 +126,7 @@ Eventual consistency is invisible to a retailer and glaring to the vendor who ju
 | Trade-off | Choice | What it costs |
 |---|---|---|
 | **Consistency vs. latency** on catalog reads | Eventual; replica-served and Redis-cached | A listing edit is invisible to retailers for a few seconds. Bought back for vendors by the read-routing in Bottleneck 4 |
-| **Two data stores vs. one** | Postgres + MongoDB | A projection pipeline, a lag SLI, and a reconciliation job that would not exist under a Postgres-only `JSONB` design. Bought: a genuinely open metadata surface where a new category is a document, not a migration |
+| **Two data stores vs. one** | Postgres + MongoDB | A projection pipeline, a lag [SLI](https://sre.google/sre-book/service-level-objectives/ "Service Level Indicator — Measured metric, such as latency or error rate, used to judge service health"), and a reconciliation job that would not exist under a Postgres-only `JSONB` design. Bought: a genuinely open metadata surface where a new category is a document, not a migration |
 | **Accuracy vs. cost** on result counts | `total_estimate` capped at 1,000 | The UI cannot show "1,247 results". It shows "1,000+" — which is what a sourcing workflow needs anyway |
 | **Throughput vs. cost** on infrastructure | Single region, one replica, autoscale 3–8 nodes | A regional outage is a four-hour event, not a failover |
 | **Isolation vs. operational complexity** | Six services, three worker pools, one repository | More deployments to observe than 35 QPS justifies; the boundary the brief asked for is enforced rather than documented |
