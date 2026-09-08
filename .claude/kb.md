@@ -4,9 +4,29 @@ Concise notes on the technologies, techniques and protocols the cases use — en
 
 Each entry is a `###` term heading, the topic tags it can be found by, and one sentence saying what it is in essence, followed by an expandable block holding **How it works**, **Boundary** — what it is not and what it is confused with — an optional **Alternatives** comparison, and an **Example**. Categories are `##` headings; terms are alphabetical within their category.
 
-**Tags in use:** `identity-provisioning` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
+**Tags in use:** `identity-provisioning` · `iot` · `messaging` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
 
 ## Protocols
+
+### MQTT
+`messaging` `iot`
+
+A lightweight publish and subscribe protocol for devices on slow or unreliable networks. Clients never address each other — they publish to a named topic on a broker, which fans each message out to whoever subscribed.
+
+<details><summary>Details</summary>
+
+**How it works:** A client opens one long-lived TCP connection with a `CONNECT` packet, then publishes to slash-separated topic strings such as `sensors/aisle-4/temp`. Subscribers match those with wildcards — `+` for one level, `#` for the rest of the tree — so `sensors/+/temp` catches every aisle. The broker owns the subscription table and does all the routing; neither side knows the other exists. Delivery is negotiated per message: QoS 0 at most once, 1 at least once, 2 exactly once. A client can also register a *last will* that the broker publishes on its behalf if the connection drops.
+
+**Boundary:** Not a queue and not a log: topic matching is the only routing, and while retained messages give a last known value and persistent sessions replay what was missed, nothing rewinds history. Kafka is therefore the usual complement rather than a rival — a connector bridges device topics into a replayable log. MQTT 5's shared subscriptions are the closest it comes to a consumer group.
+
+**Alternatives:**
+- **CoAP** — the same job over UDP with a REST-shaped request model. Lighter still and works without a broker, but has no equivalent of a persistent session.
+- **AMQP** — durable queues, exchanges, per-message acknowledgement. Far richer broker semantics, at a cost on the wire and in the client that MQTT exists to avoid.
+- **Plain HTTPS requests** — no broker to operate and no new protocol, but each device pays a full connection per reading and nothing is pushed back to it.
+
+**Example:** A cold store's sensors each publish to `sensors/aisle-4/freezer-2/temp` every thirty seconds. An alerting service subscribes to `sensors/+/+/temp` and sees every reading; adding a freezer needs no change to it.
+
+</details>
 
 ### SCIM
 `identity-provisioning`
