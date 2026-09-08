@@ -1,6 +1,6 @@
 # Abbreviation Glossary and Link Enrichment
 
-**Status:** approved design, not yet implemented
+**Status:** implemented on this branch
 **Scope:** a generation convention inherited by every case, plus a one-time back-fill of case 02
 **Branch:** `docs/case-02-interview-packs`
 
@@ -95,6 +95,7 @@ A Python script, `.claude/scripts/link-abbreviations.py`, applies the glossary t
 | Existing Markdown links, both text and target | Prevents nested links; 168 already exist in case 02 |
 | `<summary>` lines | Structural, not prose |
 | YAML frontmatter | None in the current corpus; handled defensively |
+| HTML tags, `<...>` | Attribute values and tag names are not prose |
 
 **Table cells are eligible.** They render links and titles normally, and they hold 438 of case 02's prose occurrences — more than body paragraphs do. Excluding them would leave most of the corpus unenriched.
 
@@ -149,11 +150,11 @@ Measured across all 16 Markdown files of case 02 on `docs/case-02-interview-pack
 
 | | Files | Terms | Link sites |
 |---|---|---|---|
-| `system-design` documents | 14 | 99 abbreviations + 14 products | 412 |
-| Answer packs (`interview-questions.md`) | 2 | 55 abbreviations + 14 products | 96 |
-| **Corpus total, terms deduplicated** | **16** | **110 abbreviations + 14 products = 124** | **508** |
+| `system-design` documents | 14 | 106 abbreviations + 12 products | 417 |
+| Answer packs (`interview-questions.md`) | 2 | 59 abbreviations + 14 products | 101 |
+| **Corpus total, terms deduplicated** | **16** | **118 abbreviations + 14 products = 132** | **518** |
 
-A further 23 terms are recorded in Section C as deliberately not linked, so the glossary holds 147 rows.
+A further 15 terms are recorded in Section C as deliberately not linked, so the glossary holds 147 rows.
 
 Correctly skipped and therefore never enriched: 450 occurrences inside fenced blocks, all in the design documents, and 295 occurrences in headings, 283 of them in the answer packs whose question titles are all headings and whose tables of contents depend on the anchors.
 
@@ -175,13 +176,13 @@ Short tokens carry a false-positive risk that no rule eliminates — `AP` and `C
 | `CLAUDE.md` — Where to find things | Rows for `.claude/glossary.md` and the linker |
 | `CLAUDE.md` — Architectural Invariants | One invariant, naming `--check` as its guard |
 | `CLAUDE.md` — Testing | The two new commands |
-| `.claude/glossary.md` | New — 124 linked terms plus 23 recorded exclusions |
+| `.claude/glossary.md` | New — 132 linked terms plus 15 recorded exclusions |
 | `.claude/scripts/link-abbreviations.py` | New |
 | `.claude/scripts/link-abbreviations-check.sh` | New — fixture suite |
 | `.claude/skills/system-design/SKILL.md` | One line in Step 5 |
 | `.claude/skills/interview-prep/SKILL.md` | One line in Step 4 |
 | `.claude/skills/interview-prep/references/output-conventions.md` | One line under Language & style |
-| `cases/02/projects/*/*.md` | Back-fill, 508 link sites across 16 files |
+| `cases/02/projects/*/*.md` | Back-fill, 518 link sites across 16 files |
 
 ## Effort
 

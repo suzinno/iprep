@@ -2,7 +2,7 @@
 
 Sole owner of what every abbreviation in a generated document expands to, what it is for, and where its official source lives.
 
-Links are written by `.claude/scripts/link-abbreviations.py`, never by hand. It links the **first eligible occurrence per file** — skipping fenced blocks, headings, inline code and existing links — and composes the hover title from context: where the prose already expands the term, the title carries the purpose alone; where it does not, the title carries `Expansion — purpose`. No fact is stated twice.
+Links are written by `.claude/scripts/link-abbreviations.py`, never by hand. It links the **first eligible occurrence per file** — skipping non-prose regions such as code and headings; see `eligible_lines` and `eligible_mask` in the script for the definitive list — and composes the hover title from context: where the prose already expands the term, the title carries the purpose alone; where it does not, the title carries `Expansion — purpose`. No fact is stated twice.
 
 A term used in a generated document belongs in one of the two tables below. `--check` reports any that is in neither.
 

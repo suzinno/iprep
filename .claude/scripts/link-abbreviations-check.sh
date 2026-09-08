@@ -215,6 +215,44 @@ DOC
 check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/fence-only.md"
 want_file "$FIX/fence-only.md" HAS '  A[ORM] --> B'
 
+echo "--- a term that appears only inside inline code is never linked ---"
+cat > "$FIX/code-only.md" <<'DOC'
+# T
+
+The `ORM` term appears only inside a code span in this file.
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/code-only.md"
+# shellcheck disable=SC2016  # literal backticks: this asserts inline code, not a command substitution
+want_file "$FIX/code-only.md" HAS 'The `ORM` term appears only inside a code span in this file.'
+want_file "$FIX/code-only.md" LACKS '[ORM]('
+
+echo "--- a term that appears only in a <summary> line is never linked ---"
+cat > "$FIX/summary-only.md" <<'DOC'
+<details>
+<summary>The SHA term appears only in this summary line.</summary>
+
+Body text that does not mention it.
+
+</details>
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/summary-only.md"
+want_file "$FIX/summary-only.md" HAS 'The SHA term appears only in this summary line.'
+want_file "$FIX/summary-only.md" LACKS '[SHA]('
+
+echo "--- a term that appears only in YAML frontmatter is never linked ---"
+cat > "$FIX/frontmatter-only.md" <<'DOC'
+---
+title: SCIM notes
+---
+
+# T
+
+Nothing else in this file mentions it.
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/frontmatter-only.md"
+want_file "$FIX/frontmatter-only.md" HAS 'title: SCIM notes'
+want_file "$FIX/frontmatter-only.md" LACKS '[SCIM]('
+
 echo "--- self-test: the harness must be able to report a failure ---"
 before=$fail
 check 99 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md" >/dev/null 2>&1

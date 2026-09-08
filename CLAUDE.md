@@ -80,8 +80,10 @@ Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning not
 shellcheck .claude/skills/interview-prep/scripts/*.sh .claude/scripts/*.sh
 .claude/skills/interview-prep/scripts/gate-check.sh
 .claude/scripts/link-abbreviations-check.sh
-python3 .claude/scripts/link-abbreviations.py --check cases/*/projects/*/*.md
+python3 .claude/scripts/link-abbreviations.py --check cases/02/projects/*/*.md
 ```
+
+Case 01 is out of scope for the glossary back-fill and is not passed to `--check`; running it against case 01 reports findings by design, not by error.
 
 `gate-check.sh` builds every fixture in a temp directory and exits non-zero on any failure. It ends with a self-test that plants a wrong expectation and confirms it is reported — a suite that only ever passes confirms whatever you already expected.
 
