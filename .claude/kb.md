@@ -4,7 +4,7 @@ Concise notes on the technologies, techniques and protocols the cases use — en
 
 Each entry is a `###` term heading, the topic tags it can be found by, and one sentence saying what it is in essence, followed by an expandable block holding **How it works**, **Boundary** — what it is not and what it is confused with — an optional **Alternatives** comparison, and an **Example**. Categories are `##` headings; terms are alphabetical within their category.
 
-**Tags in use:** `directory` · `identity-provisioning` · `iot` · `messaging` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
+**Tags in use:** `directory` · `identity-provisioning` · `iot` · `messaging` · `static-analysis` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
 
 ## Protocols
 
@@ -80,5 +80,26 @@ A standard REST API one system uses to create, update and delete user accounts i
 - **Just-in-time provisioning** from SAML or OIDC claims — creates the account at first sign-in and needs no extra API, but nothing ever deprovisions.
 
 **Example:** HR marks an employee as a leaver. The identity provider sends `PATCH /Users/<id>` with `active: false` to every connected application, and access ends everywhere without an administrator touching any of them.
+
+</details>
+
+## Tools
+
+### SonarQube
+`static-analysis`
+
+A server that inspects source code without running it and judges whether a change is fit to merge. A scanner runs inside the build and uploads what it found; the server weighs that against a policy and records a pass or fail.
+
+<details><summary>Details</summary>
+
+**How it works:** The scanner parses each file against a *quality profile* — the set of rules active for that language — and reports *issues*, each with a rule, a location and a severity. The server keeps them per project and per branch, then evaluates the *quality gate*: a small list of threshold conditions, such as no new issues above a given severity, or coverage on new code at or above a percentage. The shipped default applies its conditions to *new code* only — lines added or changed since a chosen baseline — so an old codebase with years of debt is not permanently red. Coverage is not measured here: the build produces a report with its own tool, such as JaCoCo or lcov, and the scanner uploads it to be judged against the gate. The upload is asynchronous and the scanner exits successfully whatever the verdict, so a red gate blocks nothing unless the build is told to wait for it — `sonar.qualitygate.wait=true` on the scanner, or a `waitForQualityGate` step in Jenkins. A gate wired without that is a gate that cannot fail.
+
+**Boundary:** Not a test runner and not a coverage tool — it never executes the code, and a coverage figure it shows was measured by something else. Nor is it a replacement for the linter in an editor: it is a server holding history and a policy, and the local companion that flags the same rules as you type is a separate product (SonarQube for IDE, formerly SonarLint) run alongside it. It reads the code you wrote, not the dependencies you pulled in, so vulnerable third-party packages remain a separate scanner's job — recent commercial editions have begun adding that, so treat it as edition-specific. Branch and pull-request analysis is likewise edition-specific rather than universal.
+
+**Alternatives:**
+- **Codacy Cloud** — a hosted platform with the same scan, history and gate-on-a-pull-request shape, and nothing to operate. The code leaves your network to be analysed, which is often the reason SonarQube is self-hosted in the first place.
+- **Per-language linters wired into CI**, each failing the build on its own exit code. No server to run and no new vocabulary, and the build genuinely fails by default — but no shared history, no cross-language view, and no notion of new code, so a large legacy codebase either fails from the first day or has the check turned off.
+
+**Example:** A pull request adds two hundred lines. The build runs the tests, writes a JaCoCo report, and the scanner uploads it with the issues it found, waiting for the verdict. Coverage on those new lines is 55% against a gate condition of 80%, so the gate fails, the waiting step exits non-zero and the merge is blocked — the older code sitting at 40% is outside the new-code baseline and counts for nothing.
 
 </details>
