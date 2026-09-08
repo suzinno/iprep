@@ -97,6 +97,49 @@ echo "--- a document with no glossary term is OK and unchanged ---"
 check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md"
 want_file "$FIX/plain.md" HAS "Nothing to see."
 
+echo "--- write mode links the first eligible occurrence only ---"
+cat > "$FIX/prose.md" <<'DOC'
+# Heading with SCIM in it
+
+SCIM is the provisioning standard. A second SCIM mention must stay bare.
+
+| Feature | Note |
+|---|---|
+| Provisioning | SCIM in a table cell is eligible |
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/prose.md"
+want_file "$FIX/prose.md" HAS '[SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — An open REST standard'
+want_file "$FIX/prose.md" HAS 'A second SCIM mention must stay bare.'
+want_file "$FIX/prose.md" HAS '# Heading with SCIM in it'
+
+echo "--- fenced blocks, inline code, headings and existing links are skipped ---"
+cat > "$FIX/skips.md" <<'DOC'
+## SCIM heading
+
+```mermaid
+graph TD
+  A[SCIM] --> B
+```
+
+The `SCIM` service identifier is code, and [SCIM](https://example.com/) is already linked.
+
+Only this bare SHA is eligible.
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/skips.md"
+want_file "$FIX/skips.md" HAS '  A[SCIM] --> B'
+# shellcheck disable=SC2016  # literal backticks: this asserts inline code, not a command substitution
+want_file "$FIX/skips.md" HAS 'The `SCIM` service identifier'
+want_file "$FIX/skips.md" HAS '[SCIM](https://example.com/) is already linked'
+want_file "$FIX/skips.md" HAS 'Only this bare [SHA](https://csrc.nist.gov/projects/hash-functions "Secure Hash Algorithm — A family'
+
+echo "--- a term inside a longer token is not matched ---"
+printf '# T\n\nThe value SHA-256 appears, and nothing else does.\n' > "$FIX/longest.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/longest.md"
+want_file "$FIX/longest.md" HAS '[SHA-256](https://csrc.nist.gov/projects/hash-functions "Secure Hash Algorithm 256-bit'
+want_file "$FIX/longest.md" LACKS '[SHA](https://csrc.nist.gov/projects/hash-functions "Secure Hash Algorithm —'
+# SHA has no standalone occurrence here, so the only way it could appear is by
+# matching inside SHA-256 -- which is exactly what longest-match-first prevents.
+
 echo "--- self-test: the harness must be able to report a failure ---"
 before=$fail
 check 99 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md" >/dev/null 2>&1

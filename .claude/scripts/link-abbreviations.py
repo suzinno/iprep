@@ -125,6 +125,89 @@ def load_glossary(path: Path):
     return terms, excluded
 
 
+FENCE = re.compile(r"^\s*(```|~~~)")
+HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
+INLINE_CODE = re.compile(r"`[^`]*`")
+MD_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def eligible_lines(text):
+    """Yield (index, line) for lines whose prose may be linked.
+
+    Fenced blocks hold Mermaid, SQL and code. Headings are skipped because a
+    link changes the GitHub anchor slug and every generated document has a
+    table of contents that depends on it. `<details>` bodies are *not* skipped:
+    GitHub renders Markdown inside them and they hold most of an answer pack.
+    """
+    lines = text.split("\n")
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for index in range(1, len(lines)):
+            if lines[index].strip() == "---":
+                start = index + 1
+                break
+    in_fence, marker = False, None
+    for index in range(start, len(lines)):
+        line = lines[index]
+        fence = FENCE.match(line)
+        if fence:
+            if not in_fence:
+                in_fence, marker = True, fence.group(1)
+            elif fence.group(1) == marker:
+                in_fence, marker = False, None
+            continue
+        if in_fence or HEADING.match(line):
+            continue
+        if line.lstrip().startswith("<summary"):
+            continue
+        yield index, line
+
+
+def eligible_mask(line):
+    """True for each character of `line` that may take part in a match.
+
+    Whole Markdown links are masked before inline code, because link text may
+    itself contain backticks and masking the link first keeps both halves out.
+    """
+    mask = [True] * len(line)
+    for pattern in (MD_LINK, INLINE_CODE, HTML_TAG):
+        for match in pattern.finditer(line):
+            for position in range(match.start(), match.end()):
+                mask[position] = False
+    return mask
+
+
+def render_title(term: Term, inline_expanded: bool) -> str:
+    """The link title. Purpose alone where the prose already expanded the term."""
+    if inline_expanded:
+        return term.purpose
+    return f"{term.expansion} — {term.purpose}"
+
+
+def already_linked(text: str, term: Term) -> bool:
+    return re.search(r"\[" + re.escape(term.term) + r"\]\(", text) is not None
+
+
+def link_first(text: str, term: Term):
+    """Link the first eligible occurrence. Returns (text, linked?)."""
+    if already_linked(text, term):
+        return text, False
+    pattern = re.compile(r"\b" + re.escape(term.term) + r"\b")
+    expanded = re.compile(re.escape(term.expansion) + r"\s*\($")
+    lines = text.split("\n")
+    for index, line in eligible_lines(text):
+        mask = eligible_mask(line)
+        for match in pattern.finditer(line):
+            if not all(mask[match.start():match.end()]):
+                continue
+            inline = bool(expanded.search(line[:match.start()]))
+            link = f'[{term.term}]({term.source} "{render_title(term, inline)}")'
+            lines[index] = line[:match.start()] + link + line[match.end():]
+            return "\n".join(lines), True
+    return text, False
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="link-abbreviations.py",
@@ -153,6 +236,13 @@ def main(argv=None) -> int:
             return EXIT_CANNOT_RUN
         targets.append(path)
 
+    for path in targets:
+        original = path.read_text(encoding="utf-8")
+        updated = original
+        for term in terms:
+            updated, _ = link_first(updated, term)
+        if updated != original:
+            path.write_text(updated, encoding="utf-8")
     return EXIT_OK
 
 
