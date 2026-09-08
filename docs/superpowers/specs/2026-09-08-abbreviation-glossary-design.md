@@ -186,4 +186,4 @@ Short tokens carry a false-positive risk that no rule eliminates — `AP` and `C
 
 ## Effort
 
-Populating and URL-verifying 124 glossary entries dominates. The linker and its fixture suite is the next largest piece. Everything else is a line or two per file.
+Populating and URL-verifying 132 glossary entries dominates. The linker and its fixture suite is the next largest piece. Everything else is a line or two per file.

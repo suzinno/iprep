@@ -34,7 +34,7 @@
 | `.claude/skills/system-design/SKILL.md` | One line in Step 5 |
 | `.claude/skills/interview-prep/SKILL.md` | One line in Step 4 |
 | `.claude/skills/interview-prep/references/output-conventions.md` | One line under Language & style |
-| `cases/02/projects/*/*.md` | Back-filled, 508 link sites across 16 files |
+| `cases/02/projects/*/*.md` | Back-filled, 518 link sites across 16 files |
 
 ---
 
@@ -842,7 +842,7 @@ Expected: no modifications listed, harness reports `OK`. If any mutation was **n
 
 **Interfaces:**
 - Consumes: the schema from Task 1.
-- Produces: 124 linked terms and 23 recorded exclusions.
+- Produces: 132 linked terms and 15 recorded exclusions.
 
 - [ ] **Step 1: Enumerate the terms the corpus actually uses**
 
@@ -874,7 +874,7 @@ for term, count in sorted(seen.items()):
 EOF
 ```
 
-Expected: **147 distinct tokens**. Every one must end up in exactly one of the glossary's two tables — 124 linked, 23 excluded. That partition is the deliverable, and `--check` will name anything you miss.
+Expected: **147 distinct tokens**. Every one must end up in exactly one of the glossary's two tables — 132 linked, 15 excluded. That partition is the deliverable, and `--check` will name anything you miss.
 
 - [ ] **Step 2: Write the convention statement**
 
@@ -892,7 +892,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 
 - [ ] **Step 3: Write the linked-term rows**
 
-Fill `## Linked terms` with 124 rows. Expansion is what the term stands for; purpose is **one** sentence on what it is for; source is the official specification, standard body, or project homepage — not a blog post, not a vendor comparison page.
+Fill `## Linked terms` with 132 rows. Expansion is what the term stands for; purpose is **one** sentence on what it is for; source is the official specification, standard body, or project homepage — not a blog post, not a vendor comparison page.
 
 Anchors for the terms that carry the most weight in this corpus:
 
