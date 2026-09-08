@@ -1,11 +1,11 @@
 ---
 description: Add a technology, technique or protocol to the essentials knowledgebase in .claude/kb.md.
-argument-hint: <term> | <file>:<line> [--dry]
+argument-hint: <term> [--dry]
 ---
 
 ## Task
 
-`$ARGUMENTS` names a term to write into `.claude/kb.md` — either the term itself, or a `<file>:<line>` reference to take it from. If that line holds more than one candidate term, ask which; do not guess. `--dry` prints the entry and writes nothing.
+`$ARGUMENTS` is the term to write into `.claude/kb.md`. `--dry` prints the entry and writes nothing.
 
 ## First, look
 
@@ -44,7 +44,17 @@ No links, no source URLs.
 
 ## Verify the draft before writing it
 
-Draft the entry, then hand it to a subagent for review. It gets the draft and the checks below and nothing else — no part of this conversation — because the point is a reader who did not talk itself into the draft's mistakes. Ask it to answer every check with `PASS`, or with the offending line quoted and one sentence on why it fails, and tell it plainly that `PASS` on all seven is an expected outcome: a reviewer that must find something will invent something. It reports only; it does not rewrite the entry, or it is merely laundering its own opinion into the file.
+Draft the entry, then hand it to a subagent for review. It gets the draft, the current contents of `.claude/kb.md`, and the checks below — but no part of this conversation, because the point is a reader that did not talk itself into the draft's mistakes. Withholding the conversation is what buys independence; withholding the file would only blind it to the entries the new one has to sit beside.
+
+Brief it to:
+
+- answer every check with `PASS`, or with the offending line quoted and one sentence on why it fails;
+- close with an overall verdict of `SOUND` or `CHANGES NEEDED`, so that finding nothing has a shape to report rather than feeling like a job undone;
+- name what makes a factual finding wrong — the standard, the version, the counter-example — rather than asserting it, and say so where it is uncertain rather than stating it flat or dropping it;
+- flag a claim that contradicts an entry already in the file, or a term the file already covers;
+- report only: it does not rewrite the entry, or it is merely laundering its own opinion into the file.
+
+Tell it both of these, and in the same breath. **A draft that is sound is a valid and expected result** — `PASS` throughout is a real verdict, and a reviewer that must find something will invent something. **And do not soften a genuine finding** to arrive at a clean sheet — an instruction not to fabricate is not an instruction to approve. Uncertainty is reportable as uncertainty; silence is not.
 
 Then act on what comes back. Apply each finding, or reject it and say which and why when you report the entry.
 
