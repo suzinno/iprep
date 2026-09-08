@@ -80,15 +80,15 @@ shellcheck .claude/skills/interview-prep/scripts/*.sh
 
 **Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Four mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, and removing the `projects` parent-directory guard.
 
-**Spot checks against real cases** (these depend on live data and go stale as work is done — the harness deliberately does not):
+**Spot checks against real cases** (these depend on live data and go stale as work is done — the harness deliberately does not). `extend cases/02` is currently the only BLOCKED example, so it is the one to preserve or replace when case 02 progresses — a block with no exit-1 row stops exercising the middle state:
 
 ```
 PF=.claude/skills/interview-prep/scripts/preflight.sh
 $PF from-cv cases/01/projects/cancer-support-platform   # 0 READY
 $PF from-cv cases/02/projects/cancer-support-platform   # 0 READY
-$PF from-cv cases/02/projects/banking-software-marketplace  # 1 BLOCKED, remedy names /system-design
-$PF answer  cases/02                                    # 1 BLOCKED, on the project above
-$PF extend  cases/02                                    # 1 BLOCKED, remedy names /interview-prep answer
+$PF from-cv cases/02/projects/banking-software-marketplace  # 0 READY
+$PF answer  cases/02                                    # 0 READY
+$PF extend  cases/02                                    # 1 BLOCKED, remedies name /interview-prep answer and from-cv
 $PF from-cv cases/01                                    # 2 CANNOT-RUN, a case is not a project
 $PF answer  cases/01/projects/cancer-support-platform    # 2 CANNOT-RUN, a project is not a case
 $PF frobnicate cases/01                                 # 2 CANNOT-RUN
