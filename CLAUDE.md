@@ -107,6 +107,10 @@ $PF frobnicate cases/01                                 # 2 CANNOT-RUN
 
 **Patterns.** Always pair a known-pass with a known-fail, and include a deliberately-wrong control — a check suite that only ever passes confirms whatever you already expected. Three states per check, never two: pass, fail, and could-not-run. Build fixtures in a scratch directory, never inside `cases/`.
 
+**One fixture, one behaviour.** A fixture exercising several behaviours at once can only honestly test the first that fires; every later assertion on it is decoration. Four checks here passed for reasons unrelated to what they named — a fixture carrying an already-linked term short-circuited before the fence and inline-code logic was ever reached, so both looked covered and neither was. Give each behaviour its own fixture in which the trigger appears **only** in the region under test, and confirm the check fails under a mutation of the behaviour it names before accepting it. A check that has never failed has not been shown to test anything.
+
+**A mutation must leave the file parsable.** A mutation that introduces a syntax error makes every check fail at once, which reads as overwhelming evidence and is worthless — it is a could-not-run, not a catch. Parse the file after mutating and before drawing any conclusion.
+
 Known traps, each of which has produced a false FAIL here: `from-cv` treats the project brief as *required*, so it appears under `verified:`, not among the optional `notes:`; `notes:` print on BLOCKED as well as READY, so asserting a note says nothing about the exit code; and `ABSENT` wraps its path in parentheses while `SOURCED` and `FOUND` do not.
 
 ## AI pair behavior
