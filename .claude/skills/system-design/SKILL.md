@@ -73,6 +73,7 @@ After all files are written, re-read them and verify:
 - Security boundaries in `06` reflect the topology from `02` and communication patterns from `04`
 - Scale estimates in `01` are proportional to infrastructure decisions in `02`–`05`
 - If any inconsistency is found, fix it before finishing. Where the fix meant choosing between two defensible designs, state the choice and its cost in the affected file — a contradiction resolved silently leaves the reader unable to tell that a decision was ever made
+- Once the files are consistent, run `python3 .claude/scripts/link-abbreviations.py <project>/*.md` to link the first occurrence of every glossary term. Never write these links by hand: `.claude/glossary.md` owns what each abbreviation expands to, what it is for, and where its source lives. If the design uses a term the glossary does not hold, add the row first, then re-run.
 
 ---
 

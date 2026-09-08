@@ -20,6 +20,8 @@
 | The exact precondition contract | `.claude/skills/interview-prep/scripts/preflight.sh` |
 | What the gate is actually proven to do | `.claude/skills/interview-prep/scripts/gate-check.sh` |
 | How design docs are produced | `.claude/skills/system-design/SKILL.md` |
+| What an abbreviation means, and where its link points | `.claude/glossary.md` |
+| How abbreviation links are applied and verified | `.claude/scripts/link-abbreviations.py` |
 
 ## Don't touch without reading
 
@@ -53,12 +55,14 @@ Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning not
 - **One owner per fact.** `output-conventions.md` owns format; `candidate-profile.md` owns client weighting; `SKILL.md` owns the chain; each mode file owns only its own logic. Restating a fact elsewhere is duplication even when the wording differs. `[UNGUARDED]` — a prose convention; nothing fails when it is broken.
 - **Cases are independent.** Nothing infers a link between two cases from folder numbering or content resemblance, however similar their projects. `[UNGUARDED]` — an absence, and nothing tests for one.
 - **Question order is never rearranged.** A client's bank is pooled from prior candidates and already grouped; its order is what the interviewer reads from. Per-project separation is carried by the `**Project:**` tag and the index — an attribution, not a partition. `[UNGUARDED]` — a content convention, checked only by the review checklist.
+- **Abbreviation facts have one owner and are applied mechanically.** `.claude/glossary.md` owns the expansion, the one-sentence purpose and the official source of every linked term; no skill file and no generated document restates them, and no link is written by hand. *(guard: `link-abbreviations.py --check` — reports a glossary term left unlinked, a title or source that has drifted, and a link to a term the glossary does not hold; mutation-tested by `.claude/scripts/link-abbreviations-check.sh`)*
 
 ### Forbidden patterns
 
 - No mode reads an input the gate did not report. If a mode needs a new file, the gate learns about it first.
 - No `-s`-only usability test on a file a human is expected to fill in.
 - No second copy of the answer format, the style rules, or the chain outside their owner files.
+- No hand-written abbreviation link. A term that needs one gets a glossary row first, then the linker writes it.
 
 ## Security and honesty rules
 
@@ -73,11 +77,15 @@ Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning not
 **Commands.**
 
 ```
-shellcheck .claude/skills/interview-prep/scripts/*.sh
+shellcheck .claude/skills/interview-prep/scripts/*.sh .claude/scripts/*.sh
 .claude/skills/interview-prep/scripts/gate-check.sh
+.claude/scripts/link-abbreviations-check.sh
+python3 .claude/scripts/link-abbreviations.py --check cases/*/projects/*/*.md
 ```
 
 `gate-check.sh` builds every fixture in a temp directory and exits non-zero on any failure. It ends with a self-test that plants a wrong expectation and confirms it is reported — a suite that only ever passes confirms whatever you already expected.
+
+`link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Four mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, and dropping the title-divergence finding.
 
 **Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Four mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, and removing the `projects` parent-directory guard.
 
