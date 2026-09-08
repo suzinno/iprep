@@ -140,6 +140,33 @@ want_file "$FIX/longest.md" LACKS '[SHA](https://csrc.nist.gov/projects/hash-fun
 # SHA has no standalone occurrence here, so the only way it could appear is by
 # matching inside SHA-256 -- which is exactly what longest-match-first prevents.
 
+echo "--- where the prose already expands the term, the title carries purpose only ---"
+printf '# T\n\nWe use Object-Relational Mapping (ORM) throughout.\n' > "$FIX/inline.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/inline.md"
+want_file "$FIX/inline.md" HAS 'Object-Relational Mapping ([ORM](https://en.wikipedia.org/wiki/Object-relational_mapping "Maps relational rows onto objects so queries are written in the host language."))'
+want_file "$FIX/inline.md" LACKS 'Object-Relational Mapping — Maps relational rows'
+
+echo "--- where it does not, the title carries expansion and purpose ---"
+printf '# T\n\nThe ORM layer is generated.\n' > "$FIX/bare.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/bare.md"
+want_file "$FIX/bare.md" HAS '[ORM](https://en.wikipedia.org/wiki/Object-relational_mapping "Object-Relational Mapping — Maps relational rows'
+
+echo "--- slash compounds link on both sides ---"
+printf '# T\n\nThe SCIM/SHA pairing appears once.\n' > "$FIX/slash.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/slash.md"
+want_file "$FIX/slash.md" HAS '[SCIM](https://scim.cloud/'
+want_file "$FIX/slash.md" HAS '[SHA](https://csrc.nist.gov/projects/hash-functions'
+
+echo "--- a second run is a no-op ---"
+cp "$FIX/prose.md" "$FIX/prose.first.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/prose.md"
+if diff -q "$FIX/prose.first.md" "$FIX/prose.md" >/dev/null; then
+    printf 'PASS   [idempotent: second run changed nothing]\n'; pass=$((pass+1))
+else
+    printf 'FAIL   [idempotent: second run modified the file]\n'; fail=$((fail+1))
+    diff "$FIX/prose.first.md" "$FIX/prose.md" | head -5
+fi
+
 echo "--- self-test: the harness must be able to report a failure ---"
 before=$fail
 check 99 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md" >/dev/null 2>&1
