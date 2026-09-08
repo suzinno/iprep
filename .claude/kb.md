@@ -4,12 +4,12 @@ Concise notes on the technologies, techniques and protocols the cases use — en
 
 Each entry is a `###` term heading, the topic tags it can be found by, and one sentence saying what it is in essence, followed by an expandable block holding **How it works**, **Boundary** — what it is not and what it is confused with — an optional **Alternatives** comparison, and an **Example**. Categories are `##` headings; terms are alphabetical within their category.
 
-**Tags in use:** `identity` · `provisioning` — extend this list rather than coining a synonym for a tag already on it.
+**Tags in use:** `identity-provisioning` — extend this list rather than coining a synonym for a tag already on it. Tags are single tokens, hyphenated where a bare word would mean something else in another part of this file.
 
 ## Protocols
 
 ### SCIM
-`identity` `provisioning`
+`identity-provisioning`
 
 A standard REST API one system uses to create, update and delete user accounts inside another — the identity provider pushes the changes, and the application only implements the endpoints.
 
