@@ -140,6 +140,8 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | ES | Elasticsearch | Distributed search and analytics engine used to index and query documents | https://www.elastic.co/elasticsearch |
 | GC | Garbage Collection | Automatically reclaims memory no longer reachable by a running program | https://en.wikipedia.org/wiki/Garbage_collection |
 | RU | Request Unit | Azure Cosmos DB's currency for provisioned throughput, charged per request regardless of operation type | https://learn.microsoft.com/en-us/azure/cosmos-db/request-units |
+| CD | Continuous Deployment | Automatically releases every build that passes the pipeline's gates to production without a manual step | https://en.wikipedia.org/wiki/Continuous_deployment |
+| SHA | Secure Hash Algorithm | Family of cryptographic hash functions used to verify content integrity | https://csrc.nist.gov/pubs/fips/180-4/upd1/final |
 
 ## Deliberately not linked
 
@@ -160,5 +162,3 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | IT | universally known; a link would be clutter |
 | EU | universally known; a link would be clutter |
 | US | universally known; a link would be clutter |
-| CD | only ever appears inside the compound CI/CD, never standalone prose |
-| SHA | only ever appears inside the compound build-SHA, never standalone prose |
