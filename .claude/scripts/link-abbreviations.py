@@ -208,6 +208,44 @@ def link_first(text: str, term: Term):
     return text, False
 
 
+LINKED_TERM = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9.+-]*)\]\((\S+?)\s+\"([^\"]*)\"\)")
+ABBREVIATION = re.compile(r"^[A-Z][A-Za-z0-9]*[A-Z0-9](?:-[A-Z0-9]{1,5})?$")
+
+
+def findings(text: str, terms, excluded) -> list:
+    """Every divergence between a document and the glossary, as one line each."""
+    by_term = {entry.term: entry for entry in terms}
+    reported = []
+
+    for match in LINKED_TERM.finditer(text):
+        label, source, title = match.group(1), match.group(2), match.group(3)
+        entry = by_term.get(label)
+        if entry is None:
+            if ABBREVIATION.match(label) and label not in excluded:
+                reported.append(f"not in the glossary: {label}")
+            continue
+        if source != entry.source:
+            reported.append(
+                f"source differs from the glossary: {label} ({source} != {entry.source})"
+            )
+        if title not in (render_title(entry, True), render_title(entry, False)):
+            reported.append(f"title differs from the glossary: {label}")
+
+    for entry in terms:
+        if already_linked(text, entry):
+            continue
+        pattern = re.compile(r"\b" + re.escape(entry.term) + r"\b")
+        for _, line in eligible_lines(text):
+            mask = eligible_mask(line)
+            if any(
+                all(mask[match.start():match.end()])
+                for match in pattern.finditer(line)
+            ):
+                reported.append(f"unlinked: {entry.term}")
+                break
+    return reported
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="link-abbreviations.py",
@@ -236,14 +274,20 @@ def main(argv=None) -> int:
             return EXIT_CANNOT_RUN
         targets.append(path)
 
+    found = False
     for path in targets:
         original = path.read_text(encoding="utf-8")
+        if args.check:
+            for line in findings(original, terms, excluded):
+                print(f"{path}: {line}")
+                found = True
+            continue
         updated = original
         for term in terms:
             updated, _ = link_first(updated, term)
         if updated != original:
             path.write_text(updated, encoding="utf-8")
-    return EXIT_OK
+    return EXIT_FINDINGS if found else EXIT_OK
 
 
 if __name__ == "__main__":

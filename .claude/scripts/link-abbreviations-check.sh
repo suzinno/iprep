@@ -172,6 +172,35 @@ else
     diff "$FIX/prose.first.md" "$FIX/prose.md" | head -5
 fi
 
+echo "--- --check reports and never writes ---"
+printf '# T\n\nBare SCIM here.\n' > "$FIX/unlinked.md"
+cp "$FIX/unlinked.md" "$FIX/unlinked.before.md"
+check 1 "unlinked: SCIM" --check --glossary "$FIX/glossary.md" "$FIX/unlinked.md"
+if diff -q "$FIX/unlinked.before.md" "$FIX/unlinked.md" >/dev/null; then
+    printf 'PASS   [--check wrote nothing]\n'; pass=$((pass+1))
+else
+    printf 'FAIL   [--check modified the file]\n'; fail=$((fail+1))
+fi
+
+echo "--- --check reports a title that has drifted from the glossary ---"
+printf '# T\n\n[SCIM](https://scim.cloud/ "Something else entirely.") here.\n' > "$FIX/drift.md"
+check 1 "title differs from the glossary: SCIM" --check --glossary "$FIX/glossary.md" "$FIX/drift.md"
+
+echo "--- --check reports a URL that has drifted ---"
+printf '# T\n\n[SCIM](https://example.invalid/ "System for Cross-domain Identity Management — An open REST standard for provisioning users and groups between an identity provider and an application.") here.\n' > "$FIX/url.md"
+check 1 "source differs from the glossary: SCIM" --check --glossary "$FIX/glossary.md" "$FIX/url.md"
+
+echo "--- --check reports a link to a term the glossary does not hold ---"
+printf '# T\n\n[LDAP](https://ldap.com/ "Lightweight Directory Access Protocol — A directory protocol.") here.\n' > "$FIX/unknown.md"
+check 1 "not in the glossary: LDAP" --check --glossary "$FIX/glossary.md" "$FIX/unknown.md"
+
+echo "--- a recorded exclusion is not a finding ---"
+printf '# T\n\nThe CPU is busy and PATIENT is a node id.\n' > "$FIX/excluded.md"
+check 0 EMPTY --check --glossary "$FIX/glossary.md" "$FIX/excluded.md"
+
+echo "--- an enriched document is clean under --check ---"
+check 0 EMPTY --check --glossary "$FIX/glossary.md" "$FIX/inline.md"
+
 echo "--- self-test: the harness must be able to report a failure ---"
 before=$fail
 check 99 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md" >/dev/null 2>&1
