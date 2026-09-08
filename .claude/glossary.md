@@ -52,7 +52,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | GUC | Grand Unified Configuration | PostgreSQL's mechanism for setting configuration parameters at the server, session or transaction scope | https://www.postgresql.org/docs/current/config-setting.html |
 | GiST | Generalized Search Tree | PostgreSQL index type supporting range and exclusion constraints | https://www.postgresql.org/docs/current/gist.html |
 | HA | High Availability | System design goal of remaining operational despite component failure | https://en.wikipedia.org/wiki/High_availability |
-| HIPAA | Health Insurance Portability and Accountability Act | US law setting standards for protecting health information | https://www.hhs.gov/hipaa/index.html |
+| HIPAA | Health Insurance Portability and Accountability Act | US law setting standards for protecting health information | https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160 |
 | HMAC | Hash based Message Authentication Code | Verifies both the integrity and authenticity of a message using a shared secret key | https://datatracker.ietf.org/doc/html/rfc2104 |
 | HPA | Horizontal Pod Autoscaler | Automatically adjusts the number of Kubernetes pod replicas to match load | https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ |
 | HSTS | HTTP Strict Transport Security | Instructs browsers to only ever connect to a site over HTTPS | https://datatracker.ietf.org/doc/html/rfc6797 |
@@ -60,7 +60,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | HTTPS | HTTP Secure | HTTP encrypted with TLS to protect requests and responses in transit | https://datatracker.ietf.org/doc/html/rfc9110 |
 | IRIS | InterSystems IRIS | Multi-model database combining a relational surface with globals-based storage | https://docs.intersystems.com/ |
 | ISO | International Organization for Standardization | Publishes international standards, including information security management | https://en.wikipedia.org/wiki/International_Organization_for_Standardization |
-| ISO-4217 | ISO 4217 | Standardizes three-letter currency codes for unambiguous monetary values | https://en.wikipedia.org/wiki/ISO_4217 |
+| ISO-4217 | ISO 4217 | Standardizes three-letter currency codes for unambiguous monetary values | https://www.six-group.com/en/products-services/financial-information/data-standards.html |
 | IdP | Identity Provider | Service that authenticates users and issues identity assertions to relying applications | https://en.wikipedia.org/wiki/Identity_provider |
 | JSON | JavaScript Object Notation | Lightweight text format for structured data exchange | https://www.json.org/json-en.html |
 | JWKS | JSON Web Key Set | Publishes the public keys a party needs to verify a signed token | https://datatracker.ietf.org/doc/html/rfc7517 |
@@ -134,6 +134,12 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | XML | Extensible Markup Language | Markup format for structured, machine and human readable documents | https://www.w3.org/XML/ |
 | XSS | Cross Site Scripting | Attack that injects malicious script into content viewed by other users | https://owasp.org/www-community/attacks/xss/ |
 | ZRS | Zone Redundant Storage | Replicates Azure storage data synchronously across multiple availability zones | https://learn.microsoft.com/en-us/azure/storage/common/storage-redundancy |
+| AP | Available and Partition tolerant | Names the CAP-theorem choice a subsystem makes to stay available under a network partition at the cost of strict consistency | https://en.wikipedia.org/wiki/CAP_theorem |
+| CP | Consistent and Partition tolerant | Names the CAP-theorem choice a subsystem makes to stay strictly consistent under a network partition at the cost of availability | https://en.wikipedia.org/wiki/CAP_theorem |
+| ER | Entity Relationship | Models entities and the relationships between them as a precursor to a relational schema | https://en.wikipedia.org/wiki/Entity%E2%80%93relationship_model |
+| ES | Elasticsearch | Distributed search and analytics engine used to index and query documents | https://www.elastic.co/elasticsearch |
+| GC | Garbage Collection | Automatically reclaims memory no longer reachable by a running program | https://en.wikipedia.org/wiki/Garbage_collection |
+| RU | Request Unit | Azure Cosmos DB's currency for provisioned throughput, charged per request regardless of operation type | https://learn.microsoft.com/en-us/azure/cosmos-db/request-units |
 
 ## Deliberately not linked
 
@@ -154,11 +160,5 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | IT | universally known; a link would be clutter |
 | EU | universally known; a link would be clutter |
 | US | universally known; a link would be clutter |
-| ER | a Mermaid node identifier or SQL keyword, not prose |
-| ES | a Mermaid node identifier or SQL keyword, not prose |
-| RU | a Mermaid node identifier or SQL keyword, not prose |
-| CD | a Mermaid node identifier or SQL keyword, not prose |
-| SHA | a Mermaid node identifier or SQL keyword, not prose |
-| CP | a Mermaid node identifier or SQL keyword, not prose |
-| AP | a Mermaid node identifier or SQL keyword, not prose |
-| GC | a Mermaid node identifier or SQL keyword, not prose |
+| CD | only ever appears inside the compound CI/CD, never standalone prose |
+| SHA | only ever appears inside the compound build-SHA, never standalone prose |
