@@ -140,6 +140,11 @@ want_file "$FIX/longest.md" LACKS '[SHA](https://csrc.nist.gov/projects/hash-fun
 # SHA has no standalone occurrence here, so the only way it could appear is by
 # matching inside SHA-256 -- which is exactly what longest-match-first prevents.
 
+echo "--- a glossary term inside a longer token is never matched ---"
+printf '# T\n\nThe tokens SCIMv2 and preORMap and SHAsum must all stay bare.\n' > "$FIX/boundary.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/boundary.md"
+want_file "$FIX/boundary.md" HAS 'The tokens SCIMv2 and preORMap and SHAsum must all stay bare.'
+
 echo "--- where the prose already expands the term, the title carries purpose only ---"
 printf '# T\n\nWe use Object-Relational Mapping (ORM) throughout.\n' > "$FIX/inline.md"
 check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/inline.md"
