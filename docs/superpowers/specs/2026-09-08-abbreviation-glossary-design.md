@@ -3,6 +3,7 @@
 **Status:** implemented on this branch
 **Scope:** a generation convention inherited by every case, plus a one-time back-fill of case 02
 **Branch:** `docs/case-02-interview-packs`
+**Implementation plan:** written, executed, then removed — it was a build instruction set, roughly half of it verbatim copies of source that now exists. Recover it with `git show 7ab8158:docs/superpowers/plans/2026-09-08-abbreviation-glossary.md`.
 
 ---
 
