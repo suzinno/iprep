@@ -195,7 +195,7 @@ printf '# T\n\n[LDAP](https://ldap.com/ "Lightweight Directory Access Protocol â
 check 1 "not in the glossary: LDAP" --check --glossary "$FIX/glossary.md" "$FIX/unknown.md"
 
 echo "--- a recorded exclusion is not a finding ---"
-printf '# T\n\nThe CPU is busy and PATIENT is a node id.\n' > "$FIX/excluded.md"
+printf '# T\n\nThe [CPU](https://example.com/ "Central Processing Unit is the processor.") is linked but excluded, and PATIENT stays bare.\n' > "$FIX/excluded.md"
 check 0 EMPTY --check --glossary "$FIX/glossary.md" "$FIX/excluded.md"
 
 echo "--- an enriched document is clean under --check ---"
