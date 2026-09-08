@@ -32,7 +32,8 @@
 
 ## Language / Stack rules
 
-- Shell is the only executable code. `preflight.sh` must pass `shellcheck .claude/skills/interview-prep/scripts/*.sh` — run it as a directory sweep, not on one file, because a solo invocation silences findings the sweep reports.
+- Shell and Python are the only executable code, and the split is fixed. **Shell owns every gate and fixture suite**: `preflight.sh` must pass `shellcheck .claude/skills/interview-prep/scripts/*.sh` — run it as a directory sweep, not on one file, because a solo invocation silences findings the sweep reports.
+- **Python is admitted for Markdown-aware tooling only** — work where shell's quoting and substitution rules would themselves be the main source of defects, such as rewriting prose that carries tables, nested links and `&` in URLs. `awk`'s `sub()` treating `&` as a backreference is the specific trap this avoids. Standard library only; no third-party dependencies, no `pip install`, no virtualenv. Anything outside that description is shell.
 - Markdown in `.claude/skills/` is **unwrapped**: one long line per paragraph and per list item. Do not reflow it. Code fences, tables and frontmatter are exempt and stay line-broken.
 - Prose in the skills names the artifact, never the folder tree it happened to sit in when written. `<project>` means `<case>/projects/<name>`; `<interview>` means `<case>/interview`.
 - `system-design` owns the `inputs.txt` schema (`Title:` / `Description:` / `Environment:` / `Responsibilities:`). Reference those heading labels as an interface; never restate what belongs in each section.
