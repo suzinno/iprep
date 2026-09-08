@@ -1,6 +1,6 @@
 # Interview Questions — Personalized Cancer Support Platform
 
-> Auto-generated from CV and system design documents. Questions target stated responsibilities and technical pillars.
+> Auto-generated from [CV](https://en.wikipedia.org/wiki/Curriculum_vitae "Curriculum Vitae — Document summarizing a candidate's work history and qualifications") and system design documents. Questions target stated responsibilities and technical pillars.
 > Weighted toward the client brief in `candidate-profile.txt`.
 
 ## Table of Contents
@@ -28,7 +28,7 @@ A queue holds messages for one logical consumer group; a topic exchange is a rou
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-In Advanced Message Queuing Protocol (AMQP) terms a publisher never writes to a queue — it writes to an exchange, and bindings decide where the copy lands. A direct exchange matches the routing key exactly, a fanout ignores it, and a topic exchange matches it against wildcard patterns (`*` for one word, `#` for any number). `care.events` is a topic exchange carrying `checkin.recorded`, `visitnote.created`, `appointment.scheduled`, and `carerelationship.changed`.
+In Advanced Message Queuing Protocol ([AMQP](https://www.amqp.org/ "Standardizes reliable message queueing and routing between applications")) terms a publisher never writes to a queue — it writes to an exchange, and bindings decide where the copy lands. A direct exchange matches the routing key exactly, a fanout ignores it, and a topic exchange matches it against wildcard patterns (`*` for one word, `#` for any number). `care.events` is a topic exchange carrying `checkin.recorded`, `visitnote.created`, `appointment.scheduled`, and `carerelationship.changed`.
 
 The reason that matters here is coupling. When a visit note is created, the search projection worker on `celery.index` needs to know, the timeline cache invalidator needs to know, and tomorrow something else will too. If `care-core` enqueued directly to a named queue, adding the third consumer would mean editing the publisher and redeploying the module that owns the clinical record — the highest-risk deployable in the system — to satisfy a downstream feature. With a topic exchange the new consumer declares its own queue, binds `visitnote.*`, and the publisher never changes.
 
@@ -50,7 +50,7 @@ The guarantee comes from acknowledgement timing. With late acknowledgement, a co
 
 The consequence is that idempotency is a design obligation on every handler, and the cheapest place to enforce it is the database rather than the application. In this platform the check-in projection is `INSERT ... ON CONFLICT (patient_id, recorded_for) DO UPDATE` against `diary.wellbeing_checkin`, which carries a unique constraint on that pair. A redelivered check-in becomes an update of the row it already wrote — arithmetic, not a bug. Nothing counts duplicates in Python, and nothing consults a "have I seen this message id" set that could itself be lost.
 
-Redis idempotency keys (`idem:{idempotency_key}`) exist too, but they are explicitly the optimisation and not the guarantee: flushing `redis-cache` permits a duplicate `POST` to be reprocessed, and what makes that safe is the natural key in PostgreSQL underneath. The rule I apply is that any mutation which must not double-apply needs a natural key or a unique constraint in the system of record; a cache-based dedupe is a latency saving that must never be load-bearing.
+[Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") idempotency keys (`idem:{idempotency_key}`) exist too, but they are explicitly the optimisation and not the guarantee: flushing `redis-cache` permits a duplicate `POST` to be reprocessed, and what makes that safe is the natural key in [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") underneath. The rule I apply is that any mutation which must not double-apply needs a natural key or a unique constraint in the system of record; a cache-based dedupe is a latency saving that must never be load-bearing.
 
 The one place duplicates are accepted rather than removed is reminder delivery. A receipt lost between `fn-notify-dispatch` and `celery.reminders` can produce a second send, and a patient seeing a reminder twice is a much better failure than not seeing it at all.
 
@@ -61,18 +61,18 @@ The one place duplicates are accepted rather than removed is reminder delivery. 
 ### Q1. What is Message Queuing Telemetry Transport (MQTT) Quality of Service (QoS) 1, and why is it the transport for patient check-ins instead of a plain Hypertext Transfer Protocol Secure (HTTPS) POST?
 
 **Brief answer**
-QoS 1 is at-least-once publish with a broker acknowledgement (PUBACK) and client-side retry, so the phone holds the message until the broker confirms it. It is chosen because a patient on a lossy mobile connection must never lose a check-in they believe they submitted.
+[QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1 is at-least-once publish with a broker acknowledgement ([PUBACK](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT PUBACK packet — Confirms receipt of a QoS 1 published message")) and client-side retry, so the phone holds the message until the broker confirms it. It is chosen because a patient on a lossy mobile connection must never lose a check-in they believe they submitted.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-MQTT defines three delivery levels: QoS 0 fires and forgets, QoS 1 retries until a PUBACK arrives, and QoS 2 performs a four-step handshake for exactly-once. QoS 1 is the right level here because the duplicate it can produce is already absorbed by the unique key on `(patient_id, recorded_for)`, and QoS 2's extra round trips buy nothing once the receiving side is idempotent.
+[MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") defines three delivery levels: QoS 0 fires and forgets, QoS 1 retries until a PUBACK arrives, and QoS 2 performs a four-step handshake for exactly-once. QoS 1 is the right level here because the duplicate it can produce is already absorbed by the unique key on `(patient_id, recorded_for)`, and QoS 2's extra round trips buy nothing once the receiving side is idempotent.
 
-The reason it beats an HTTPS POST is the client library, not the wire protocol. An MQTT client with a persistent session queues publishes locally while offline and flushes them on reconnect without the application writing retry logic. Patients complete check-ins on hospital wifi, in a lift, on a train — the transport was chosen against that behaviour. With a POST, the equivalent reliability means a client-side outbox, a retry schedule, and a way to survive the app being killed, all reimplemented per platform.
+The reason it beats an [HTTPS](https://datatracker.ietf.org/doc/html/rfc9110 "HTTP Secure — HTTP encrypted with TLS to protect requests and responses in transit") [POST](https://datatracker.ietf.org/doc/html/rfc9110 "HTTP POST — HTTP method that submits data to a server to create or process a resource") is the client library, not the wire protocol. An MQTT client with a persistent session queues publishes locally while offline and flushes them on reconnect without the application writing retry logic. Patients complete check-ins on hospital wifi, in a lift, on a train — the transport was chosen against that behaviour. With a POST, the equivalent reliability means a client-side outbox, a retry schedule, and a way to survive the app being killed, all reimplemented per platform.
 
-The design keeps a Representational State Transfer (REST) alternative (`POST /api/v1/diary/check-ins` returning `202 Accepted`) for the web client, with identical downstream semantics — both land as a `checkin.recorded` event and both project through the same idempotent write. That symmetry is deliberate: one ingestion path, two front doors, so there is no second copy of the projection logic to drift.
+The design keeps a Representational State Transfer ([REST](https://en.wikipedia.org/wiki/REST "Architectural style for stateless, resource-oriented HTTP APIs")) alternative (`POST /api/v1/diary/check-ins` returning `202 Accepted`) for the web client, with identical downstream semantics — both land as a `checkin.recorded` event and both project through the same idempotent write. That symmetry is deliberate: one ingestion path, two front doors, so there is no second copy of the projection logic to drift.
 
-RabbitMQ makes this work by bridging: its MQTT plugin translates the topic `care/checkin/{patient_id}` into the AMQP routing key `care.checkin.{patient_id}` on the same `care.events` exchange, so device traffic and internal events are consumed by the same workers rather than through a separate ingestion service.
+[RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers") makes this work by bridging: its MQTT plugin translates the topic `care/checkin/{patient_id}` into the AMQP routing key `care.checkin.{patient_id}` on the same `care.events` exchange, so device traffic and internal events are consumed by the same workers rather than through a separate ingestion service.
 
 </details>
 
@@ -90,7 +90,7 @@ A classic queue lives on one node. If that node dies, the queue and everything d
 
 Publisher confirms are the other half and are mandatory in this design. Without confirms the client's `publish()` returns as soon as the frame is written to the socket, which says nothing about replication. With confirms plus quorum queues, a confirmed publish has been accepted by a majority; anything unconfirmed is retried by the publisher.
 
-The costs are real and worth stating in an interview. Quorum queues use more memory and disk than classic queues, they do not support some legacy features such as per-message priority in the same way, and every publish pays a majority round trip. There is also a specific risk this design flags: Celery's support for quorum queues is comparatively recent and interacts with `task_acks_late`, global prefetch, and priority settings, so the Celery and RabbitMQ versions have to be pinned and integration-tested together. The documented fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates — the point being that the risky dependency has an exit, not that it is assumed to work.
+The costs are real and worth stating in an interview. Quorum queues use more memory and disk than classic queues, they do not support some legacy features such as per-message priority in the same way, and every publish pays a majority round trip. There is also a specific risk this design flags: [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle")'s support for quorum queues is comparatively recent and interacts with `task_acks_late`, global prefetch, and priority settings, so the Celery and RabbitMQ versions have to be pinned and integration-tested together. The documented fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates — the point being that the risky dependency has an exit, not that it is assumed to work.
 
 </details>
 
@@ -166,12 +166,12 @@ They coexist cleanly because they share one broker, `rmq-core`, but not one abst
 ### Q2. Walk me through the reminder delivery path. Which specific mechanisms turn "did the reminder arrive" from a log grep into a query?
 
 **Brief answer**
-A `reminder` row holds the state machine and a `reminder_delivery` row is written per attempt, with channel, provider message id, and terminal state. Because every attempt is a row in PostgreSQL, missed-reminder reporting is SQL over the delivery table.
+A `reminder` row holds the state machine and a `reminder_delivery` row is written per attempt, with channel, provider message id, and terminal state. Because every attempt is a row in PostgreSQL, missed-reminder reporting is [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database") over the delivery table.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The path: Celery beat ticks every sixty seconds; a `celery.reminders` worker selects reminders due within the next two minutes with `SELECT ... FOR UPDATE SKIP LOCKED`, moves them to `dispatching` and writes a `reminder_delivery` attempt row; the command is enqueued to `sb.notify` on Azure Service Bus keyed by `reminder_delivery_id`; `fn-notify-dispatch` delivers over push, email, or Short Message Service (SMS) and enqueues the provider receipt; a worker consumes the receipt and sets the attempt to `delivered` or `failed`. A terminal failure retries with backoff, then tries an alternate channel, then raises a flag to the care team.
+The path: Celery beat ticks every sixty seconds; a `celery.reminders` worker selects reminders due within the next two minutes with `SELECT ... FOR UPDATE SKIP LOCKED`, moves them to `dispatching` and writes a `reminder_delivery` attempt row; the command is enqueued to `sb.notify` on Azure Service Bus keyed by `reminder_delivery_id`; `fn-notify-dispatch` delivers over push, email, or Short Message Service ([SMS](https://en.wikipedia.org/wiki/SMS "Delivers short text messages over a mobile network")) and enqueues the provider receipt; a worker consumes the receipt and sets the attempt to `delivered` or `failed`. A terminal failure retries with backoff, then tries an alternate channel, then raises a flag to the care team.
 
 Three properties make the 22% reduction in missed reminders a measurable claim rather than a hope:
 
@@ -195,11 +195,11 @@ Uploads land in `ingest-quarantine` and are promoted to the `documents` containe
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The client uploads directly to Blob Storage with a short-lived Shared Access Signature (SAS), which keeps multi-megabyte scans and letters off the `care-core` pods entirely — those pods are serving a clinician's timeline mid-consultation and have no business streaming file bytes. The metadata row is written transactionally by the Application Programming Interface (API); the bytes never pass through it.
+The client uploads directly to Blob Storage with a short-lived Shared Access Signature ([SAS](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview "Time-limited token granting scoped access to an Azure Storage resource")), which keeps multi-megabyte scans and letters off the `care-core` pods entirely — those pods are serving a clinician's timeline mid-consultation and have no business streaming file bytes. The metadata row is written transactionally by the Application Programming Interface ([API](https://en.wikipedia.org/wiki/API "Defines the contract by which software components exchange requests and data")); the bytes never pass through it.
 
 That efficiency creates a problem: the platform now accepts bytes it has not inspected, written by a client, into its own storage account. Quarantine resolves it structurally. `evtgrid-blob` fires `BlobCreated` against the quarantine container, `fn-blob-ingest` scans, validates the content type against the declared one, and extracts text; only then is the blob promoted to `documents/{patient_id}/{document_id}/{sha256}` and the `document` row's `scan_state` set to `clean`. The row is not visible to any client until that transition, so there is no window in which an unscanned file is reachable through the API.
 
-The path-shape choices are worth noting too. The blob path includes the SHA-256 of the content, so the same file uploaded twice is content-addressed rather than duplicated, and a mismatch between the recorded hash and the stored object is detectable. Quarantine objects are deleted on promotion or after 24 hours, so a failed ingestion does not accumulate cost indefinitely.
+The path-shape choices are worth noting too. The blob path includes the [SHA-256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm 256-bit — Produces a fixed-size digest used to verify content integrity") of the content, so the same file uploaded twice is content-addressed rather than duplicated, and a mismatch between the recorded hash and the stored object is detectable. Quarantine objects are deleted on promotion or after 24 hours, so a failed ingestion does not accumulate cost indefinitely.
 
 What I would watch in operations: Event Grid delivery is at-least-once, so `fn-blob-ingest` must be idempotent — scanning the same blob twice must not produce two `document` rows, which the `document_id` in the path already prevents. And the failure mode where the Function scans successfully but the promotion fails needs a reconciliation sweep, otherwise a clean file sits in quarantine until its 24-hour deletion and the patient's upload silently vanishes.
 
@@ -274,11 +274,11 @@ Nothing is lost — `reminder` rows stay `pending` in `pg-clinical` and the next
 
 **What changes under a sixty-second guarantee.** A restart gap of even thirty seconds is now a violation, so:
 
-- Replace the single replica with **leader election** — a Kubernetes Lease, or RedBeat's lock held by several candidates — so a standby takes over in seconds rather than after a pod schedule.
+- Replace the single replica with **leader election** — a [Kubernetes](https://kubernetes.io/ "Kubernetes — Automates deployment, scaling and management of containerized applications") Lease, or RedBeat's lock held by several candidates — so a standby takes over in seconds rather than after a pod schedule.
 - Shorten the tick and widen the lookahead window so a missed tick is covered by the next one; sweeping for reminders due within the next five minutes on a ten-second tick makes any single missed tick harmless.
 - Move claim contention onto the database, which `FOR UPDATE SKIP LOCKED` already supports, so multiple sweepers running simultaneously during a leader handover is safe rather than a double-dispatch bug.
 - Alert on **tick age**, not on pod health. A beat process that is running but wedged on a slow broker publish is the failure a liveness probe on the container will not see.
-- Reconsider the end-to-end budget, not just the scheduler: a sixty-second guarantee spans the sweep, the Service Bus hop, `fn-notify-dispatch`, and a third-party provider whose latency you do not control. I would push back on committing to sixty seconds end to end and instead commit to sixty seconds to *dispatch*, with provider latency measured and reported separately — because promising a number you cannot observe is how an SLO becomes theatre.
+- Reconsider the end-to-end budget, not just the scheduler: a sixty-second guarantee spans the sweep, the Service Bus hop, `fn-notify-dispatch`, and a third-party provider whose latency you do not control. I would push back on committing to sixty seconds end to end and instead commit to sixty seconds to *dispatch*, with provider latency measured and reported separately — because promising a number you cannot observe is how an [SLO](https://sre.google/sre-book/service-level-objectives/ "Service Level Objective — Target value for a service level indicator that a service commits to meet") becomes theatre.
 
 </details>
 
@@ -316,7 +316,7 @@ The shape inverts: ingestion becomes bulk and throughput-bound rather than per-e
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Honest framing first.** I have not built an ERP or retail catalogue system. What transfers is the shape of the problem — high-volume derived-data propagation with a system of record behind it — and I would rather describe the transfer accurately than claim domain experience I do not have.
+**Honest framing first.** I have not built an [ERP](https://en.wikipedia.org/wiki/Enterprise_resource_planning "Enterprise Resource Planning — Integrated software that manages an organization's core business processes") or retail catalogue system. What transfers is the shape of the problem — high-volume derived-data propagation with a system of record behind it — and I would rather describe the transfer accurately than claim domain experience I do not have.
 
 **What changes structurally.**
 
@@ -339,14 +339,14 @@ The shape inverts: ingestion becomes bulk and throughput-bound rather than per-e
 ### Q1. What changed between SQLAlchemy 1.x and SQLAlchemy 2, and why does the typed API matter more on a clinical record than on an ordinary application?
 
 **Brief answer**
-SQLAlchemy 2 unifies Core and Object-Relational Mapping (ORM) around a single `select()` construct and adds real typing, so `pyright --strict` can check a query. On a patient record a wrong join is not a bug, it is a disclosure — so a type checker that catches it before review is a security control.
+[SQLAlchemy](https://www.sqlalchemy.org/ "SQLAlchemy — Python SQL toolkit and ORM that maps objects to relational tables and builds queries") 2 unifies Core and Object-Relational Mapping ([ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping "Object Relational Mapper — Maps application objects to relational database rows and queries")) around a single `select()` construct and adds real typing, so `pyright --strict` can check a query. On a patient record a wrong join is not a bug, it is a disclosure — so a type checker that catches it before review is a security control.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 The mechanical changes: the legacy `Query` object is superseded by `select()` for both Core and ORM, `Session.execute()` returns uniform `Result` objects, lazy loading in an async context raises rather than silently emitting input/output, and `Mapped[...]` annotations make the model's column types visible to a static checker. `DeclarativeBase` with annotated attributes means `patient.diagnosis_code` is typed `str` and `patient.diagnosed_on` is typed `date`, and passing one where the other belongs fails the build.
 
-Why that matters here specifically. The most dangerous defect class in this system is not a crash — it is a query that returns the wrong patient's rows and looks entirely normal. Row-level security (RLS) in PostgreSQL is the real defence and I will not pretend a type checker replaces it. But typing removes an adjacent class of error cheaply: joining `visit_note` to the wrong foreign key, filtering on `clinician_id` where `patient_id` was meant, or passing a `str` where a `UUID` was expected and getting a silent cast. Those are exactly the mistakes that survive code review because the code reads plausibly.
+Why that matters here specifically. The most dangerous defect class in this system is not a crash — it is a query that returns the wrong patient's rows and looks entirely normal. Row-level security ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html "Row Level Security — Restricts which rows a database query can see or modify based on the current user")) in PostgreSQL is the real defence and I will not pretend a type checker replaces it. But typing removes an adjacent class of error cheaply: joining `visit_note` to the wrong foreign key, filtering on `clinician_id` where `patient_id` was meant, or passing a `str` where a `UUID` was expected and getting a silent cast. Those are exactly the mistakes that survive code review because the code reads plausibly.
 
 The migration itself is worth talking about honestly, since the responsibility says "migrated data access to SQLAlchemy 2". The `future=True` flag in 1.4 is the bridge: you move to 2.0-style `select()` and session semantics while still on 1.4, get the test suite green, and only then bump the major version. The genuinely disruptive parts are implicit autocommit disappearing, `Query.get()` moving to `Session.get()`, and lazy-load behaviour under async — all of which surface as test failures rather than runtime surprises if the integration suite runs against a real PostgreSQL container rather than SQLite.
 
@@ -379,7 +379,7 @@ Range partitioning splits one logical table into physical child tables by a key 
 ### Q1. What is a Block Range Index (BRIN), and when is it the right choice over a B-tree?
 
 **Brief answer**
-A BRIN stores the minimum and maximum value per block range rather than an entry per row, so it is orders of magnitude smaller. It works when physical row order correlates with the indexed column — which append-only time-series data gives you for free.
+A [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables") stores the minimum and maximum value per block range rather than an entry per row, so it is orders of magnitude smaller. It works when physical row order correlates with the indexed column — which append-only time-series data gives you for free.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -399,7 +399,7 @@ You can check correlation directly with `pg_stats.correlation` for the column, a
 ### Q1. `symptom_scores` is a `jsonb` column rather than a set of typed columns. Why, and what do you give up?
 
 **Brief answer**
-The symptom set differs by cancer type and changes with the clinical protocol, so columns would mean a migration on a 110-million-row table every time an oncology team revises a questionnaire. A Generalized Inverted Index (GIN) on the document supports the trend query without that.
+The symptom set differs by cancer type and changes with the clinical protocol, so columns would mean a migration on a 110-million-row table every time an oncology team revises a questionnaire. A Generalized Inverted Index ([GIN](https://www.postgresql.org/docs/current/gin.html "PostgreSQL index type suited to values containing multiple keys, such as arrays or text search")) on the document supports the trend query without that.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -408,7 +408,7 @@ The symptom set differs by cancer type and changes with the clinical protocol, s
 
 **What you give up, stated plainly.**
 
-- *Type safety at the database.* Nothing stops a client writing `"3"` where `3` was meant. The defence moves up into Pydantic validation, which means it is only as good as the single write path — acceptable here because `celery.index` is the only writer, but it would not be acceptable if several services wrote the table.
+- *Type safety at the database.* Nothing stops a client writing `"3"` where `3` was meant. The defence moves up into [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") validation, which means it is only as good as the single write path — acceptable here because `celery.index` is the only writer, but it would not be acceptable if several services wrote the table.
 - *Referential integrity.* A symptom code in the document cannot have a foreign key to a symptom catalogue. Validating that a code is real becomes application logic or a check constraint over the document.
 - *Statistics quality.* The planner's estimates for `jsonb` containment are far weaker than for a typed column, so a query that mixes a `jsonb` predicate with a selective one can get a bad plan. In practice you keep the selective predicate — `patient_id` — leading and let `jsonb` filter what remains.
 - *Storage.* Keys are repeated in every row. On 110 million rows that is real, and short key names are worth the ugliness.
@@ -449,7 +449,7 @@ Split it across two releases: the first adds the column as nullable with a defau
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Why it must be two releases.** `care-core` deploys blue-green: for the duration of the cut-over, the old image and the new image are both running against the same schema. A migration that is only compatible with the new code breaks the old colour, which destroys the rollback path — and rollback here is an ArgoCD revision revert with no down-migration, which only works if every schema state is backwards-compatible. That constraint is what makes the expand/contract discipline non-optional rather than a nicety.
+**Why it must be two releases.** `care-core` deploys blue-green: for the duration of the cut-over, the old image and the new image are both running against the same schema. A migration that is only compatible with the new code breaks the old colour, which destroys the rollback path — and rollback here is an [ArgoCD](https://argo-cd.readthedocs.io/en/stable/ "Argo CD — GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository") revision revert with no down-migration, which only works if every schema state is backwards-compatible. That constraint is what makes the expand/contract discipline non-optional rather than a nicety.
 
 **Release one — expand.**
 
@@ -462,7 +462,7 @@ Split it across two releases: the first adds the column as nullable with a defau
 
 **Where the ArgoCD PreSync hook fits.** `alembic upgrade head` runs before the new pods start, so the schema is always ahead of or equal to the code. That ordering is only safe because migrations are additive — a destructive migration in a PreSync hook would break the currently-running version before the new one exists.
 
-**What I would do differently on an unfamiliar database.** Everything above depends on PostgreSQL's specific lock and rewrite semantics. On another engine — the client's InterSystems IRIS, for example — I would not assume any of it. I would establish, with a copy of production-sized data, which alterations are catalogue-only, which rewrite, and which lock, before writing the first migration. Guessing that is how a "quick column add" becomes a two-hour outage.
+**What I would do differently on an unfamiliar database.** Everything above depends on PostgreSQL's specific lock and rewrite semantics. On another engine — the client's InterSystems [IRIS](https://docs.intersystems.com/ "InterSystems IRIS — Multi-model database combining a relational surface with globals-based storage"), for example — I would not assume any of it. I would establish, with a copy of production-sized data, which alterations are catalogue-only, which rewrite, and which lock, before writing the first migration. Guessing that is how a "quick column add" becomes a two-hour outage.
 
 </details>
 
@@ -471,7 +471,7 @@ Split it across two releases: the first adds the column as nullable with a defau
 ### Q2. `external_mrn` is encrypted at rest but hospital sync still has to look a patient up by it. How does that work, and what does the mechanism leak?
 
 **Brief answer**
-The row stores the encrypted value plus a blind index — a keyed Hash-based Message Authentication Code (HMAC-SHA256) over the normalised Medical Record Number (MRN). Lookups match the blind index; only the matched row is ever decrypted. It leaks equality — identical MRNs produce identical index values.
+The row stores the encrypted value plus a blind index — a keyed Hash-based Message Authentication Code ([HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key")-[SHA256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm 256-bit — Produces a fixed-size digest used to verify content integrity")) over the normalised Medical Record Number ([MRN](https://en.wikipedia.org/wiki/Medical_record "Unique identifier a healthcare provider assigns to a patient's record")). Lookups match the blind index; only the matched row is ever decrypted. It leaks equality — identical MRNs produce identical index values.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -498,7 +498,7 @@ Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE,
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Step 1 — establish the fact.** `http_request_duration_seconds` p95 by route tells me whether it is the timeline route or everything, and whether the change is a step or a drift. A step change points at a deploy or a migration; a drift points at data growth or statistics. Elastic APM gives me the span breakdown inside the request — if the database span is 40 ms and the request is 900 ms, the query is not the problem and I have just saved myself a day.
+**Step 1 — establish the fact.** `http_request_duration_seconds` p95 by route tells me whether it is the timeline route or everything, and whether the change is a step or a drift. A step change points at a deploy or a migration; a drift points at data growth or statistics. Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production") gives me the span breakdown inside the request — if the database span is 40 ms and the request is 900 ms, the query is not the problem and I have just saved myself a day.
 
 **Step 2 — reproduce the real plan.** `EXPLAIN (ANALYZE, BUFFERS)` with a patient whose history is representative — not a test patient with six rows. Two things I look at before anything else: rows estimated versus rows actual at each node, because a large divergence is the planner being misled and is the root of most bad plans; and `Buffers: shared read` versus `hit`, which distinguishes a slow query from a cold cache.
 
@@ -534,7 +534,7 @@ Every read of patient data writes an `audit_event` row in the same transaction, 
 
 1. *A routing assertion.* The session factory that binds to a replica engine is a distinct object from the one that binds to the primary, and a test asserts that no request-scoped handler can obtain the replica session. Making it a type distinction rather than a configuration flag means the checker catches the mistake, not a reviewer.
 2. *A behavioural test.* Point a patient read at a replica in a test environment and assert it fails. If it succeeds, the audit write was skipped somewhere — which is the actual defect, and it would otherwise be invisible.
-3. *A detection rule.* One of the Kibana rules over the audit stream fires on any direct query against `pg-clinical` from a non-application principal, and I would pair it with a reconciliation comparing Protected Health Information (PHI) read counts in the API metrics against audit row counts. A sustained gap means some read path is not auditing.
+3. *A detection rule.* One of the Kibana rules over the audit stream fires on any direct query against `pg-clinical` from a non-application principal, and I would pair it with a reconciliation comparing Protected Health Information ([PHI](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160/subpart-A/section-160.103 "Individually identifiable health data that HIPAA regulates")) read counts in the API metrics against audit row counts. A sustained gap means some read path is not auditing.
 
 **When I would revisit it.** The design's own evolution trigger is honest here: at sustained write throughput above 3K transactions per second, the first move is extracting `audit_event` to its own instance — it is append-only and referenced by no foreign key — which decouples audit write load from record read load without weakening the guarantee.
 
@@ -584,7 +584,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 
 **Size the problem honestly first.** Audit events outweigh all clinical data combined by roughly five to one — around 550 GB against about 130 GB of check-ins, notes, appointments, and prescriptions over five years. So the table causing the pressure is not the clinical record; it is the compliance artefact attached to it. Any plan that starts by restructuring the record is optimising the wrong table.
 
-**Why `audit_event` moves cheaply.** It has three properties that make extraction almost free. It is append-only, so there is no update or delete path to keep consistent. No foreign key points at it, so no join breaks. Nothing on the request path reads it — it is queried for compliance and Data Subject Access Requests (DSAR), which tolerate a different instance and a different latency profile. The one genuine coupling is that the audit row is written in the same transaction as the access, and moving the table to another instance breaks that atomicity. That is the real cost of this step and I would want it on the table: either accept a two-phase write with a reconciliation sweep, or keep a small local staging table that is drained. The design should be honest that step one is not free, only *cheapest*.
+**Why `audit_event` moves cheaply.** It has three properties that make extraction almost free. It is append-only, so there is no update or delete path to keep consistent. No foreign key points at it, so no join breaks. Nothing on the request path reads it — it is queried for compliance and Data Subject Access Requests ([DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them")), which tolerate a different instance and a different latency profile. The one genuine coupling is that the audit row is written in the same transaction as the access, and moving the table to another instance breaks that atomicity. That is the real cost of this step and I would want it on the table: either accept a two-phase write with a reconciliation sweep, or keep a small local staging table that is drained. The design should be honest that step one is not free, only *cheapest*.
 
 **Why `wellbeing_checkin` is second.** Same append-only shape, 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
 
@@ -619,7 +619,7 @@ RLS with pooling can leak identity across requests if the session variable is no
 ### Q3. The design uses `jsonb` for a variable attribute set. At ten times the volume, with high-churn attribute updates, would you still make that call?
 
 **Brief answer**
-For a bounded per-row document that is read whole and rarely updated in place, yes. For millions of individually-mutating attributes it is the wrong shape — updating one key rewrites the whole document row, and Multi-Version Concurrency Control (MVCC) makes that expensive.
+For a bounded per-row document that is read whole and rarely updated in place, yes. For millions of individually-mutating attributes it is the wrong shape — updating one key rewrites the whole document row, and Multi-Version Concurrency Control ([MVCC](https://www.postgresql.org/docs/current/mvcc.html "Multi Version Concurrency Control — Lets readers and writers proceed concurrently by keeping multiple versions of a row")) makes that expensive.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -652,7 +652,7 @@ PostgreSQL full-text search is adequate at around 100,000 notes; it is not adequ
 
 **What PostgreSQL gives you.** `tsvector` with a GIN index handles stemming, stop words, and boolean queries well, and it keeps everything in one store with one consistency model and one backup. For a lot of applications that is the correct answer and adding Elasticsearch is over-engineering.
 
-**Where it stops.** Three things break down at this scale and shape. Relevance scoring is coarse — `ts_rank` is not tunable per field the way BM25 with per-field boosts is, so you cannot say a match in a note's title matters more than one in its body. Highlighting via `ts_headline` re-parses the document at query time, which is expensive on a 4 KB note and gets worse the more results you return. And combining a text match with several filters (date range, tags, entity codes, patient scope) tends to produce plans where the planner must choose between the GIN index and the filter indexes and gets it wrong on one side or the other.
+**Where it stops.** Three things break down at this scale and shape. Relevance scoring is coarse — `ts_rank` is not tunable per field the way [BM25](https://en.wikipedia.org/wiki/Okapi_BM25 "Best Matching 25 — Ranking function that scores how relevant a document is to a search query") with per-field boosts is, so you cannot say a match in a note's title matters more than one in its body. Highlighting via `ts_headline` re-parses the document at query time, which is expensive on a 4 KB note and gets worse the more results you return. And combining a text match with several filters (date range, tags, entity codes, patient scope) tends to produce plans where the planner must choose between the GIN index and the filter indexes and gets it wrong on one side or the other.
 
 **What the second store actually costs, which is the part worth saying out loud.** An index to keep consistent, a rebuild procedure to rehearse, and a scope filter that must never be omitted — three new failure modes, one of which is a disclosure path. The design does not pretend those away. It buys them down deliberately: nothing originates in `es-clinical` so it is fully rebuildable from `pg-clinical` and `mongo-content`; the rebuild is rehearsed quarterly rather than assumed; and the scope fields are mandatory in the mapping so a missing filter is a schema violation rather than a code review miss.
 
@@ -879,7 +879,7 @@ An `async def` endpoint runs on the event loop in the main thread; a plain `def`
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-FastAPI sits on Starlette and the Asynchronous Server Gateway Interface (ASGI). When you declare `async def`, your coroutine is scheduled directly on the event loop; every `await` yields control so other requests progress. When you declare `def`, Starlette runs the function in an `anyio` threadpool — by default 40 threads — so synchronous work does not stall the loop. Both are legitimate. Choosing `def` for a genuinely blocking library is the *correct* choice, not a fallback.
+[FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation") sits on Starlette and the Asynchronous Server Gateway Interface ([ASGI](https://asgi.readthedocs.io/en/latest/ "Standard interface between asynchronous Python web servers and applications")). When you declare `async def`, your coroutine is scheduled directly on the event loop; every `await` yields control so other requests progress. When you declare `def`, Starlette runs the function in an `anyio` threadpool — by default 40 threads — so synchronous work does not stall the loop. Both are legitimate. Choosing `def` for a genuinely blocking library is the *correct* choice, not a fallback.
 
 The failure is putting blocking code in an `async def`: a synchronous database driver, `requests`, `time.sleep`, a CPU-heavy loop, or an ordinary file read. Nothing yields, so the single event loop thread stops serving every other in-flight request for that duration. One 500 ms blocking call in an async handler at moderate concurrency turns into seconds of tail latency across unrelated endpoints. It does not raise, it does not log, and it looks like "the service got slow" — which is why it is usually found by tracing rather than by reading code.
 
@@ -899,9 +899,9 @@ It parses and validates the request body against a declared model, coerces types
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-Pydantic compiles each model once into a validator, then runs it per request: parse JavaScript Object Notation (JSON), check types, apply constraints and custom validators, and build the model instance. FastAPI uses the same machinery for responses when `response_model` is declared, which additionally *filters* the output to the declared fields — that filtering is a security feature, not a formality, because it is what stops an internal field added to a database model from leaking into an API response.
+Pydantic compiles each model once into a validator, then runs it per request: parse JavaScript Object Notation ([JSON](https://www.json.org/json-en.html "Lightweight text format for structured data exchange")), check types, apply constraints and custom validators, and build the model instance. FastAPI uses the same machinery for responses when `response_model` is declared, which additionally *filters* the output to the declared fields — that filtering is a security feature, not a formality, because it is what stops an internal field added to a database model from leaking into an API response.
 
-Why it earns its place here beyond convenience: the models are the contract. The OpenAPI document FastAPI emits is generated from them and is contract-tested in continuous integration, so the schema the frontend generates its client from cannot drift from what the server actually accepts. The System for Cross-domain Identity Management (SCIM) 2.0 schemas are Pydantic models too, which makes an externally-specified protocol executable rather than documented. And the sensitive-field marks that the logging redaction filter reads live on the models, so "this field must never be logged" is declared once next to the field rather than remembered at every log call.
+Why it earns its place here beyond convenience: the models are the contract. The [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") document FastAPI emits is generated from them and is contract-tested in continuous integration, so the schema the frontend generates its client from cannot drift from what the server actually accepts. The System for Cross-domain Identity Management ([SCIM](https://scim.cloud/ "Standardizes automated provisioning and deprovisioning of user identities between systems")) 2.0 schemas are Pydantic models too, which makes an externally-specified protocol executable rather than documented. And the sensitive-field marks that the logging redaction filter reads live on the models, so "this field must never be logged" is declared once next to the field rather than remembered at every log call.
 
 **Costs and where they bite.** v2's Rust core made validation roughly an order of magnitude faster than v1, so input validation is rarely the bottleneck. Response serialization of large collections can be — returning a page of 500 timeline entries through a `response_model` does real work per item. Mitigations in rough order of preference: keep pages small (cursor pagination already does), avoid deeply nested response models where a flat one will do, and only in a genuinely hot path consider bypassing the response model in favour of a pre-serialized payload — accepting that you have then given up the output filtering, which on a patient record is a trade I would want written down rather than made quietly.
 
@@ -936,14 +936,14 @@ A modular monolith enforces internal boundaries — separate packages, separate 
 ### Q1. What does moving to Python 3.14 with Poetry-managed dependencies actually give you, and what is the risk?
 
 **Brief answer**
-Poetry's lockfile pins the full resolved dependency graph including transitive packages and hashes, so the image you test is the image you deploy. Pinning the interpreter version identically across services removes a class of "works in one module" bug. The risk is that a major interpreter bump exposes native-extension incompatibilities.
+[Poetry](https://python-poetry.org/docs/ "Poetry — Python dependency and packaging tool that manages, builds and publishes projects")'s lockfile pins the full resolved dependency graph including transitive packages and hashes, so the image you test is the image you deploy. Pinning the interpreter version identically across services removes a class of "works in one module" bug. The risk is that a major interpreter bump exposes native-extension incompatibilities.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 **What the lockfile is for.** A `requirements.txt` with loose bounds resolves differently depending on when the build runs, so a rebuild of an unchanged commit can produce a different image — the deploy-time surprise this migration removed. `poetry.lock` records the exact resolved version and hash of every direct and transitive dependency; installing from it is reproducible and hash-verified, which is also a supply-chain property, since a package swapped upstream fails the hash check rather than silently installing.
 
-Per-service lockfiles matter here because `care-core`, `scim-provisioning-svc`, and `clinical-nlp-svc` have genuinely different dependency sets — the NLP service pulls a deep machine-learning stack that has no business in the API image. Separate locks keep the API image small and its attack surface narrow, while the pinned interpreter version keeps runtime behaviour identical across all three.
+Per-service lockfiles matter here because `care-core`, `scim-provisioning-svc`, and `clinical-nlp-svc` have genuinely different dependency sets — the [NLP](https://en.wikipedia.org/wiki/Natural_language_processing "Natural Language Processing — Computational techniques for analyzing and generating human language") service pulls a deep machine-learning stack that has no business in the API image. Separate locks keep the API image small and its attack surface narrow, while the pinned interpreter version keeps runtime behaviour identical across all three.
 
 **Where the risk lives, and it is not the pure-Python code.** A major interpreter version bump is mostly painless for application code and painful for compiled extensions: database drivers, cryptography, `numpy`-adjacent packages, and machine-learning wheels. If a wheel is not published for the new version, the build either falls back to compiling from source — slow, and dependent on toolchain packages being in the image — or fails. That is where a version migration actually stalls.
 
@@ -969,7 +969,7 @@ Measure where the time goes first, then size the threadpool and the process mode
 
 1. **Threadpool size.** In a synchronous FastAPI app every handler runs in the `anyio` threadpool, default 40 threads. If handlers are input/output-bound at 100 ms, that pool caps you near 400 requests per second per process no matter what the CPU does. Raising it helps until context-switching and — more often — the database connection pool becomes the real limit. This is the single most common misconfiguration and it presents as queueing latency with idle CPU.
 2. **Connection pooling.** Threads are useless without connections. Pool size per pod times pod count must stay under the database's connection limit, which is the constraint people discover during an autoscaling event. A transaction-mode pooler in front is usually the right answer — with the `SET LOCAL` caveat that makes row-level security safe under connection reuse.
-3. **Worker processes.** Because of the Global Interpreter Lock (GIL), one process uses one core for Python bytecode. Run roughly one Uvicorn worker per available core (or several single-worker pods, which is friendlier to Kubernetes autoscaling), and size the container's CPU request accordingly.
+3. **Worker processes.** Because of the Global Interpreter Lock ([GIL](https://wiki.python.org/moin/GlobalInterpreterLock "CPython mechanism that lets only one thread execute Python bytecode at a time")), one process uses one core for Python bytecode. Run roughly one Uvicorn worker per available core (or several single-worker pods, which is friendlier to Kubernetes autoscaling), and size the container's CPU request accordingly.
 4. **Cut per-request work.** This is where the real wins usually are and they are not framework-level: N+1 query patterns from lazy loading, serialization of oversized responses, an authorization check that re-queries what the request already loaded, a chatty external call in the hot path. One removed N+1 typically beats every tuning knob above.
 5. **Take work off the request path entirely.** The pattern this whole platform is built on — accept, enqueue, return `202`. Reminders, indexing, and page generation are asynchronous not because async is fashionable but because they do not belong in a request.
 6. **Cache with an invalidation rule you can state.** The timeline cache is cache-aside with a 60-second time-to-live and explicit invalidation on any record write for that patient. A cache without a stated invalidation rule is a correctness bug scheduled for later.
@@ -992,7 +992,7 @@ Unrelated endpoints get slower and their p95 develops a plateau, while CPU sits 
 
 **How I would find it.**
 
-- *Elastic APM first.* The transaction breakdown shows a large span of time not attributed to any instrumented operation — no database span, no Hypertext Transfer Protocol (HTTP) span, just unaccounted duration. That gap is the blocking call. Because the agent auto-instruments SQLAlchemy and outbound HTTP, anything it cannot see is a strong hint on its own.
+- *Elastic APM first.* The transaction breakdown shows a large span of time not attributed to any instrumented operation — no database span, no Hypertext Transfer Protocol ([HTTP](https://datatracker.ietf.org/doc/html/rfc9110 "Application protocol used to request and transfer web resources")) span, just unaccounted duration. That gap is the blocking call. Because the agent auto-instruments SQLAlchemy and outbound HTTP, anything it cannot see is a strong hint on its own.
 - *`asyncio` debug mode* in a non-production environment logs any callback that occupies the loop beyond a threshold, with a traceback. That turns a hypothesis into a filename and line number in one run.
 - *Correlate with deploys.* A step change in p95 on an unrelated route at a deploy boundary is the shortest path to the commit.
 - *Reproduce under concurrency.* A blocking call is invisible with one request at a time. The load test that shows it needs concurrency at least equal to the number of workers.
@@ -1050,7 +1050,7 @@ Anything that invalidates a previously-valid client: removing or renaming a fiel
 - Narrowing a type or making a nullable field non-nullable in a request, or the reverse in a response.
 - Adding a **required** request field. Adding an optional one is safe.
 - Changing enum members. Adding a value is breaking for a client that exhaustively switches on it, which typed generators encourage — this one surprises people.
-- Changing which status codes an operation can return, or the error body shape. The design uses RFC 9457 problem details, which helps only if it is applied consistently.
+- Changing which status codes an operation can return, or the error body shape. The design uses [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem details, which helps only if it is applied consistently.
 - Changing an `operationId`, which usually renames the generated function.
 
 **How to stop it.** Three mechanisms, none of which is "be careful".
@@ -1201,7 +1201,7 @@ OAuth answers "is this person authenticated right now"; SCIM answers "which acco
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-OAuth 2.0 with OpenID Connect gets a clinician a token at sign-in. It says nothing about the account existing beforehand, about their role, or about what happens the day they leave the trust. Without provisioning you end up with just-in-time account creation on first login and manual deactivation afterwards — and manual deactivation is the step that does not happen. A clinician who left three months ago still has an account, and nobody notices until an audit.
+OAuth 2.0 with [OpenID](https://openid.net/ "OpenID — Federated identity standard letting a user authenticate once and reuse that identity across sites") Connect gets a clinician a token at sign-in. It says nothing about the account existing beforehand, about their role, or about what happens the day they leave the trust. Without provisioning you end up with just-in-time account creation on first login and manual deactivation afterwards — and manual deactivation is the step that does not happen. A clinician who left three months ago still has an account, and nobody notices until an audit.
 
 SCIM 2.0 is a REST protocol with a defined schema for `Users` and `Groups` and defined semantics for create, update, patch, and deactivate. Azure Entra ID is the identity provider and the sole authorized caller of `scim-provisioning-svc`, authenticated with its own client credential and network-restricted. `active: false` in a `PATCH` maps to deactivating the `clinician` row, and — this is the part that matters clinically — it closes every open `care_relationship` for that clinician **in the same transaction**. Access to patient records ends atomically with the deactivation, not on a nightly sweep.
 
@@ -1216,7 +1216,7 @@ The operational consequence the design draws: SCIM sync failure is a **paged** a
 ### Q1. Clinician and patient tokens are separate audiences checked at the gateway. Why is that stronger than checking the user's role in application code?
 
 **Brief answer**
-Because it fails closed before application code runs. A clinician token presented on a patient-portal path is rejected at Azure API Management (APIM) with a `403`, so a routing mistake or a missing role check inside the application cannot expose the wrong plane.
+Because it fails closed before application code runs. A clinician token presented on a patient-portal path is rejected at Azure API Management ([APIM](https://learn.microsoft.com/en-us/azure/api-management/ "Publishes, secures and rate limits APIs behind a managed gateway")) with a `403`, so a routing mistake or a missing role check inside the application cannot expose the wrong plane.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -1312,7 +1312,7 @@ A long-lived mobile connection is authenticated once at connect time, so a token
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**The gap.** HTTP re-presents a token on every request, so expiry and revocation take effect within the token's lifetime — 15 minutes here. MQTT establishes a session and keeps it open; the broker authenticates the CONNECT packet and then authorizes publishes against whatever it decided at that moment. A phone that connects in the morning and stays connected all day was authorized once. If the patient's account is disabled, or the token is revoked, or their consent changes, the connection carries on.
+**The gap.** HTTP re-presents a token on every request, so expiry and revocation take effect within the token's lifetime — 15 minutes here. MQTT establishes a session and keeps it open; the broker authenticates the [CONNECT](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT CONNECT packet — Opens a client session with the broker and authenticates the client") packet and then authorizes publishes against whatever it decided at that moment. A phone that connects in the morning and stays connected all day was authorized once. If the patient's account is disabled, or the token is revoked, or their consent changes, the connection carries on.
 
 **How it is closed.** The listener authenticates the connection with the patient's access token and authorizes publishes only to `care/checkin/{patient_id}` matching the token subject — so a compromised connection cannot publish as someone else, which bounds the damage to the account it belongs to. Then connections carry a **maximum lifetime shorter than the refresh-token window**, forcing a reconnect and a fresh authentication. That converts an unbounded authorization into one bounded by the connection cap.
 
@@ -1363,7 +1363,7 @@ The defence is that a second ingress path needs its own authentication policy, a
 
 **The defence.** APIM does the audience separation that keeps clinician tokens off the patient plane, plus signature and issuer validation and coarse rate limiting. A second ingress means a second implementation of that policy. The failure mode of divergence is not an outage — it is a path where the audience check is subtly weaker, exercised only during an incident, when scrutiny is lowest. Given a choice between a rare, visible, bounded outage and a rare, invisible authorization gap on a health record, the outage is clearly the better failure. The mitigations that remain are multi-instance APIM with Front Door health probes and, underneath, `care-core` re-validating every token so the gateway is not the only thing standing between a request and the data.
 
-**The argument against.** Availability composes: the record's 99.9% monthly budget is about 43 minutes, and that budget is now shared with a component whose failures the team cannot fix, only wait out. A regional APIM control-plane problem is not something a runbook resolves. And the "divergent policy" risk is a risk of *implementation*, which is exactly the class of risk that automation removes — if the policy is Terraform-declared and deployed identically to both paths, with a conformance test asserting that both reject a clinician token on a patient route, then the divergence argument weakens considerably. Rejecting redundancy because a duplicate might drift is, in that light, an argument for testing the duplicate rather than for having none.
+**The argument against.** Availability composes: the record's 99.9% monthly budget is about 43 minutes, and that budget is now shared with a component whose failures the team cannot fix, only wait out. A regional APIM control-plane problem is not something a runbook resolves. And the "divergent policy" risk is a risk of *implementation*, which is exactly the class of risk that automation removes — if the policy is [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")-declared and deployed identically to both paths, with a conformance test asserting that both reject a clinician token on a patient route, then the divergence argument weakens considerably. Rejecting redundancy because a duplicate might drift is, in that light, an argument for testing the duplicate rather than for having none.
 
 **Where I actually land.** The decision is right for now and the reasoning is sound, but the *justification* would be stronger if it were expressed as a condition rather than a principle. Concretely: the accepted exposure is bounded by APIM's own availability, and if observed availability erodes the record's error budget over a couple of quarters, a second path becomes worth its risk — with the policy as shared declarative configuration and a conformance test proving both paths enforce the audience split identically.
 
@@ -1381,7 +1381,7 @@ Existing tokens keep validating for as long as the cached keys survive, so activ
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**What keeps working.** Token *validation* is local: APIM and `care-core` verify the signature against cached JWKS material, plus issuer, expiry, and audience. None of that calls Entra ID. So a clinician mid-shift with a valid token keeps working, their refresh may still succeed if it is served by a cached path, and every data path behaves normally. SCIM operations queue and replay when the provider returns, so provisioning is delayed rather than lost.
+**What keeps working.** Token *validation* is local: APIM and `care-core` verify the signature against cached [JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "JSON Web Key Set — Publishes the public keys a party needs to verify a signed token") material, plus issuer, expiry, and audience. None of that calls Entra ID. So a clinician mid-shift with a valid token keeps working, their refresh may still succeed if it is served by a cached path, and every data path behaves normally. SCIM operations queue and replay when the provider returns, so provisioning is delayed rather than lost.
 
 **What stops.** Any new interactive sign-in, because only the identity provider can authenticate a user and mint a token. With 15-minute access tokens, sessions that cannot refresh degrade within the outage regardless of the JWKS cache — the cache protects validation, not issuance, and it is worth being precise about that distinction because it is often blurred. So a multi-hour outage means clinicians progressively lose access as their refresh attempts fail.
 
@@ -1529,12 +1529,12 @@ From two fine-tuned models together — entity extraction enriching the notes in
 ### Q2. Fine-tuning on real visit notes means patient text in a training corpus. What has to be resolved before the first tuning run?
 
 **Brief answer**
-Lawful basis for that processing, the required de-identification standard, and whether the resulting weights can leak training text. All three need a completed Data Protection Impact Assessment (DPIA) before the first run, not a retrospective one.
+Lawful basis for that processing, the required de-identification standard, and whether the resulting weights can leak training text. All three need a completed Data Protection Impact Assessment ([DPIA](https://gdpr-info.eu/art-35-gdpr/ "GDPR process for assessing privacy risk before high-risk data processing")) before the first run, not a retrospective one.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Why this is the highest-risk processing in the system.** Everything else is storage and retrieval of data the patient provided for their care, under consent bound to that purpose. Training is different: it is a *new* purpose, it produces an artefact derived from many patients' data that is not itself a record, and that artefact is copied, versioned, and deployed. Consent for treatment support does not automatically extend to model training, and under the General Data Protection Regulation (GDPR) health data is Article 9 special-category, so the lawful basis has to be established rather than assumed.
+**Why this is the highest-risk processing in the system.** Everything else is storage and retrieval of data the patient provided for their care, under consent bound to that purpose. Training is different: it is a *new* purpose, it produces an artefact derived from many patients' data that is not itself a record, and that artefact is copied, versioned, and deployed. Consent for treatment support does not automatically extend to model training, and under the General Data Protection Regulation ([GDPR](https://gdpr-info.eu/ "EU regulation governing the processing of personal data")) health data is Article 9 special-category, so the lawful basis has to be established rather than assumed.
 
 **The three questions, and why none has an obvious answer.**
 
@@ -1758,7 +1758,7 @@ I have used Jira for estimates and tracking but not Xray specifically. It is a t
 
 **What I understand it to do, and would confirm on day one.** Xray adds test-management types to Jira: tests, preconditions, test sets, test plans, and executions, with links from a test to the requirement or story it covers. The value is a query that answers "which requirements have passing tests, and when did they last run" — which is the question an audited or regulated project has to answer and which a pipeline's pass/fail history alone does not.
 
-**The engineering integration.** Pytest emits JUnit XML; Xray ingests results and matches them to test issues by a key, usually carried as a marker or in the test id. So the pipeline gains a reporting step that uploads results against a test execution. The two things I would want to get right early: a stable, meaningful mapping between automated tests and test issues, so renaming a test does not orphan its history; and clarity about which tests are managed in Xray at all — mirroring every unit test into a tracker produces thousands of issues nobody reads. Acceptance-level and requirement-linked tests belong there; a parametrised validator unit test does not.
+**The engineering integration.** Pytest emits JUnit [XML](https://www.w3.org/XML/ "Extensible Markup Language — Markup format for structured, machine and human readable documents"); Xray ingests results and matches them to test issues by a key, usually carried as a marker or in the test id. So the pipeline gains a reporting step that uploads results against a test execution. The two things I would want to get right early: a stable, meaningful mapping between automated tests and test issues, so renaming a test does not orphan its history; and clarity about which tests are managed in Xray at all — mirroring every unit test into a tracker produces thousands of issues nobody reads. Acceptance-level and requirement-linked tests belong there; a parametrised validator unit test does not.
 
 **Where I would expect friction, and how I would handle it.** Manual test cases and automated tests can drift, so a requirement can look covered by a manual case that has not been executed in a year. And keeping the tracker in step is administrative work that engineers under deadline pressure skip. Both are process problems rather than technical ones, and the answer is to automate the upload so it happens on every pipeline run rather than depending on anyone remembering.
 
@@ -1784,7 +1784,7 @@ Use it where it is genuinely good — boilerplate, test scaffolding, unfamiliar 
 
 **Meeting the gates rather than arguing with them.** `ruff`, strict typing, SonarQube, and the coverage gate apply identically whatever produced the code, and generated code often needs work to pass them — types the checker rejects, complexity SonarQube flags, tests that assert nothing. Getting it through the gates is part of the authoring, not a separate step.
 
-**On the review culture itself.** A lead who has rejected AI-generated code before will be reading for it, and the way to build trust is to be someone whose submissions are consistently explainable — not to argue about the policy. If I disagreed with a specific review comment I would raise it with reasoning and evidence, with the technical contact for that area, and accept the outcome. Reworking a test to a lead's preference is a normal cost of working on someone else's codebase, and treating it as friction rather than as part of the job is how a good engineer becomes difficult to work with.
+**On the review culture itself.** A lead who has rejected [AI](https://en.wikipedia.org/wiki/Artificial_intelligence "Artificial Intelligence — Software that generates or assists with tasks such as writing code")-generated code before will be reading for it, and the way to build trust is to be someone whose submissions are consistently explainable — not to argue about the policy. If I disagreed with a specific review comment I would raise it with reasoning and evidence, with the technical contact for that area, and accept the outcome. Reworking a test to a lead's preference is a normal cost of working on someone else's codebase, and treating it as friction rather than as part of the job is how a good engineer becomes difficult to work with.
 
 </details>
 
@@ -1886,7 +1886,7 @@ GitOps means the desired state of the cluster lives in a Git repository and an i
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**The mechanism here.** GitLab CI builds, gates, scans, and pushes a digest-pinned image, and its final act is a commit to the GitOps manifest repository recording that digest. ArgoCD, running inside `aro-primary` and `aks-ml`, watches that repository and reconciles both clusters toward what it says. Nothing in the pipeline ever talks to a cluster.
+**The mechanism here.** GitLab [CI](https://en.wikipedia.org/wiki/Continuous_integration "Continuous Integration — Automatically builds and tests code on every change") builds, gates, scans, and pushes a digest-pinned image, and its final act is a commit to the GitOps manifest repository recording that digest. ArgoCD, running inside `aro-primary` and `aks-ml`, watches that repository and reconciles both clusters toward what it says. Nothing in the pipeline ever talks to a cluster.
 
 **What that buys, in order of importance.**
 
@@ -1926,7 +1926,7 @@ Because they fail differently. `care-core` is blue-green for the cleanest possib
 ### Q1. What are the three pillars of observability, and how are they joined in this system?
 
 **Brief answer**
-Metrics (Prometheus), logs (structured JSON to Elasticsearch), and traces (Elastic APM). They are joined by the W3C `traceparent` propagating on every hop — including AMQP, MQTT, and Service Bus message headers — and by Kibana as a single pane.
+Metrics (Prometheus), logs (structured JSON to Elasticsearch), and traces (Elastic APM). They are joined by the [W3C](https://www.w3.org/ "World Wide Web Consortium — Develops open web standards such as trace context propagation") `traceparent` propagating on every hop — including AMQP, MQTT, and Service Bus message headers — and by Kibana as a single pane.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -1984,7 +1984,7 @@ It guarantees the schema is applied before any new pod starts, so the code never
 **The other failure modes.**
 
 - *A long migration blocks the sync.* A backfill inside a PreSync hook stalls the deployment for its duration and may hit the hook timeout, leaving a half-applied state. Backfills belong in batched background jobs, not in the hook — the hook does schema changes that are fast by construction.
-- *Concurrency.* Two syncs, or a retried hook, must not run two migrations at once. Alembic's version table plus an advisory lock is the answer; without it a retry after a timeout can attempt a migration already in progress.
+- *Concurrency.* Two syncs, or a retried hook, must not run two migrations at once. [Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy")'s version table plus an advisory lock is the answer; without it a retry after a timeout can attempt a migration already in progress.
 - *Rollback is not symmetric.* There is no down-migration in this model. Reverting the manifest reverts the image, not the schema. That is a deliberate choice — down-migrations against production data are more dangerous than the forward-only discipline — but it means the schema only ever moves forward, and a genuinely wrong migration needs a new forward migration to correct it.
 
 **What I would verify before trusting it.** That the hook actually fails the sync when the migration fails, rather than being reported as succeeded — a hook whose failure does not block is worse than no hook, because it creates confidence that the schema is current. And I would verify it by breaking a migration deliberately in a scratch environment and watching the sync fail, because a gate that has only ever passed is not evidence of anything.
@@ -2001,7 +2001,7 @@ Prometheus, Elastic APM, and application logs cover the clusters; Azure Monitor 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Why two planes exist at all.** The estate genuinely spans two operating models. OpenShift and AKS workloads are instrumented by agents the team controls. APIM, Functions, Service Bus, Event Grid, and Blob are managed services whose telemetry only Azure produces. Neither can be made to cover the other, so the choice is not "one plane or two" but "two joined or two separate".
+**Why two planes exist at all.** The estate genuinely spans two operating models. OpenShift and [AKS](https://learn.microsoft.com/en-us/azure/aks/ "Azure Kubernetes Service — Managed Kubernetes hosting on Azure") workloads are instrumented by agents the team controls. APIM, Functions, Service Bus, Event Grid, and Blob are managed services whose telemetry only Azure produces. Neither can be made to cover the other, so the choice is not "one plane or two" but "two joined or two separate".
 
 **The concrete failure without the join.** A reminder is dispatched by `celery.reminders`, enqueued to `sb.notify`, delivered by `fn-notify-dispatch`, and the receipt comes back. If the delivery fails, the cluster plane shows a Celery task that enqueued successfully and then a receipt that never arrived; the Azure plane shows a Function invocation that failed. Nothing connects them. The investigator has two half-stories, a timestamp, and a guess — and reconstructing which of thousands of dispatches corresponds to which invocation is manual work performed under incident pressure. That is not a hypothetical inconvenience; reminder delivery is the paged clinical-safety objective, so it is the one path where an unjoined investigation is least acceptable.
 
@@ -2029,7 +2029,7 @@ Sensitive fields are marked on the Pydantic models, a logging formatter drops th
 
 - **Exception messages.** A database driver's integrity error can quote the offending row. A validation error can echo the invalid value. Tracebacks capture local variables in some configurations. None of this passes through a Pydantic model, so none of it is caught by the filter.
 - **Third-party library logging.** An HTTP client at debug level logs request bodies. A search client logs the query — which contains the clinician's search terms, themselves clinical content. These loggers must be configured explicitly, and the default is usually wrong.
-- **URLs and query strings.** A search term in a query parameter reaches access logs at the gateway, the ingress, and the application. The design's rule that no patient identifier appears in a URL path that is not already token-scoped points the right way, but search terms are the case people forget.
+- **URLs and query strings.** A search term in a query parameter reaches access logs at the gateway, the ingress, and the application. The design's rule that no patient identifier appears in a [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web") path that is not already token-scoped points the right way, but search terms are the case people forget.
 - **Structured context added ad hoc.** A developer adds `extra={"note": note}` for debugging. If `note` is a raw string rather than a marked model, the filter never sees a mark.
 - **Aggregate leakage.** A log line saying a patient viewed a page about a specific treatment is clinical information even with no free text in it.
 
@@ -2184,7 +2184,7 @@ Almost always the metric and the experience are measuring different things: a pe
 **The candidate explanations, in the order I would test them.**
 
 1. **The tail is the experience.** p95 within 250 ms means one request in twenty is worse, and a clinician making 200 calls a day meets the slow ones ten times. Check p99 and the maximum. A per-user percentile is the honest view for a workflow complaint: a global p95 can be healthy while a specific clinician's personal p95 is terrible.
-2. **The measurement excludes part of the path.** `http_request_duration_seconds` is measured inside the application. It excludes Front Door, APIM, TLS negotiation, the clinician's network — often hospital wifi — and every millisecond of frontend rendering. A 120 ms server response inside a 2-second page load is a true metric and an irrelevant one. Azure Monitor covers the gateway side, and real-user monitoring in the browser covers the rest; without both, the server metric is a claim about a fragment.
+2. **The measurement excludes part of the path.** `http_request_duration_seconds` is measured inside the application. It excludes Front Door, APIM, [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") negotiation, the clinician's network — often hospital wifi — and every millisecond of frontend rendering. A 120 ms server response inside a 2-second page load is a true metric and an irrelevant one. Azure Monitor covers the gateway side, and real-user monitoring in the browser covers the rest; without both, the server metric is a claim about a fragment.
 3. **The aggregate mixes populations.** Patient timeline reads are small and cache-friendly; a clinician opening a patient with five years of history is not. A single p95 across both is dominated by the numerous cheap requests. Breaking the metric down by actor kind, and by record size, usually makes the complaint appear immediately.
 4. **It is a different operation than reported.** "The timeline is slow" often means the search that precedes it, or the document that fails to open, or a synchronous call the frontend makes before rendering. The trace for a real slow session is the fastest way to find out which.
 5. **Cold versus cached.** The target is under 120 ms cached and under 250 ms cold, and the timeline cache has a 60-second time-to-live with invalidation on any write for that patient. A clinician working actively on a record invalidates their own cache repeatedly, so they may be on the cold path almost every time — meaning the users with the worst experience are the ones using the product most.

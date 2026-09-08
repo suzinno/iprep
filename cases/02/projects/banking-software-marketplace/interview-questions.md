@@ -1,6 +1,6 @@
 # Interview Questions — Retail Software Aggregation Platform
 
-> Auto-generated from CV and system design documents. Questions target stated responsibilities and technical pillars.
+> Auto-generated from [CV](https://en.wikipedia.org/wiki/Curriculum_vitae "Curriculum Vitae — Document summarizing a candidate's work history and qualifications") and system design documents. Questions target stated responsibilities and technical pillars.
 > Weighted toward the client brief in `candidate-profile.txt`.
 
 ## Table of Contents
@@ -23,12 +23,12 @@
 ### Q1. What does "clean architecture" mean concretely in a Python service, and what in the code actually stops the dependency direction from being violated?
 
 **Brief answer**
-It means the domain logic depends on nothing, and everything else — HTTP handlers, the Object-Relational Mapper (ORM), the message broker — depends inward on it. In Python nothing enforces that by construction, so it has to be enforced by import discipline and a linter rule, not by good intentions.
+It means the domain logic depends on nothing, and everything else — [HTTP](https://datatracker.ietf.org/doc/html/rfc9110 "Hypertext Transfer Protocol — Application protocol used to request and transfer web resources") handlers, the Object-Relational Mapper ([ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping "Object Relational Mapper — Maps application objects to relational database rows and queries")), the message broker — depends inward on it. In Python nothing enforces that by construction, so it has to be enforced by import discipline and a linter rule, not by good intentions.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The layering I used across the six marketplace services is the conventional three rings. The innermost holds domain entities and the rules that are true regardless of technology — a listing cannot be published while its vendor is `pending`, a connection request bills at most once. The middle ring holds use cases that orchestrate those rules and speak only to abstract repository interfaces. The outer ring holds the parts that would change if we swapped a technology: the FastAPI routers, the SQLAlchemy repository implementations, the MongoDB document mapper, the Celery task definitions.
+The layering I used across the six marketplace services is the conventional three rings. The innermost holds domain entities and the rules that are true regardless of technology — a listing cannot be published while its vendor is `pending`, a connection request bills at most once. The middle ring holds use cases that orchestrate those rules and speak only to abstract repository interfaces. The outer ring holds the parts that would change if we swapped a technology: the [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation") routers, the [SQLAlchemy](https://www.sqlalchemy.org/ "SQLAlchemy — Python SQL toolkit and ORM that maps objects to relational tables and builds queries") repository implementations, the [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents") document mapper, the [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") task definitions.
 
 The practical payoff is not philosophical purity, it is that the catalog domain rules are testable without a database and that swapping the metadata store would touch one ring. The practical danger is that Python has no visibility modifiers, so `from app.infrastructure.db import session` inside a domain module compiles and runs perfectly. The rule is therefore mechanical: an import-linter contract in the pipeline declares the layer graph and fails the build on a back-edge. Without that check, "clean architecture" degrades within about two sprints into a folder naming convention, which is the state most codebases claiming it are actually in.
 
@@ -50,7 +50,7 @@ The split follows the shape of the marketplace rather than a technical layer. `c
 
 What each boundary buys is specific. A runaway catalog import can saturate `vendor-service` and its workers without touching the pods that serve browse. A bad release of `billing-service` cannot corrupt a live conversation thread, because it has no write path into `connection_thread` — it only consumes `connection.requested` from the event bus. And a vendor-side query physically cannot read `shortlist` rows, because that table lives behind a service the vendor token cannot reach at all.
 
-I would not defend this as free. Six services plus three worker deployments is more operational surface than roughly 35 queries per second (QPS) at peak requires, and it is only affordable because all nine share one repository, one migration history, one Continuous Integration (CI) pipeline and one cluster. If a team split those into nine repositories at this scale, coordination cost would exceed the value of the boundaries within a quarter. The boundary that mattered was the deployment boundary, not the repository boundary.
+I would not defend this as free. Six services plus three worker deployments is more operational surface than roughly 35 queries per second ([QPS](https://en.wikipedia.org/wiki/Queries_per_second "Queries Per Second — Throughput measure of how many requests a system serves each second")) at peak requires, and it is only affordable because all nine share one repository, one migration history, one Continuous Integration ([CI](https://en.wikipedia.org/wiki/Continuous_integration "Automatically builds and tests code on every change")) pipeline and one cluster. If a team split those into nine repositories at this scale, coordination cost would exceed the value of the boundaries within a quarter. The boundary that mattered was the deployment boundary, not the repository boundary.
 
 </details>
 
@@ -59,14 +59,14 @@ I would not defend this as free. Six services plus three worker deployments is m
 ### Q1. What does it mean that a service "owns its tables", and what happens the first time someone breaks that?
 
 **Brief answer**
-One service holds write access to a set of tables, and no peer touches them directly — a peer that needs the data calls an Application Programming Interface (API) or consumes an event. The first violation is invisible and cheap; the cost arrives at the next schema change.
+One service holds write access to a set of tables, and no peer touches them directly — a peer that needs the data calls an Application Programming Interface ([API](https://en.wikipedia.org/wiki/API "Defines the contract by which software components exchange requests and data")) or consumes an event. The first violation is invisible and cheap; the cost arrives at the next schema change.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 Ownership is what makes the service boundary real. If `billing-service` could `SELECT` from `connection_request` directly, the two services would share a schema, and every column rename in `connection-service` would become a coordinated release across two deployables. That is the shared-database anti-pattern, and its symptom is not an outage — it is that migrations stop being safe, so they stop happening, so the schema calcifies.
 
-In this design the enforcement is partly conventional and partly mechanical. Conventionally, each service has its own SQLAlchemy metadata covering only its tables. Mechanically, each service connects with its own database role, and the grants are Terraform-managed, so `billing-service`'s role simply has no `SELECT` on the connection tables. That is the version I would insist on, because a convention enforced only by code review survives exactly until a Friday afternoon.
+In this design the enforcement is partly conventional and partly mechanical. Conventionally, each service has its own SQLAlchemy metadata covering only its tables. Mechanically, each service connects with its own database role, and the grants are [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")-managed, so `billing-service`'s role simply has no `SELECT` on the connection tables. That is the version I would insist on, because a convention enforced only by code review survives exactly until a Friday afternoon.
 
 There is one deliberate exception worth naming, because it looks like a violation and is not. `product_listing_facets` is written only by `indexer-worker` and read only by `catalog-service` — two different deployables against one table. That is a read model, not shared ownership: the writer owns the schema, the reader treats it as a published contract, and the table exists precisely so that the read side never joins back into `vendor-service`'s tables. The distinction I hold is that shared *ownership* is a defect, whereas a single-writer projection with declared readers is a pattern.
 
@@ -82,7 +82,7 @@ It is enforced by `vendor-service` having no write path into `connection_*` or `
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The mechanism is the outbox. Publishing a listing runs one PostgreSQL transaction that updates `product.current_revision_id` and inserts one row into `outbox_event`. Nothing else. A relay process publishes that row to the `sb-catalog-events` topic afterwards and stamps `published_at`. Consumers — `indexer-worker`, `notification-worker` — do their own work in their own transactions. So a listing publish physically cannot fail because the notifier is down, and it cannot write to a conversation thread because it never opens one.
+The mechanism is the outbox. Publishing a listing runs one [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") transaction that updates `product.current_revision_id` and inserts one row into `outbox_event`. Nothing else. A relay process publishes that row to the `sb-catalog-events` topic afterwards and stamps `published_at`. Consumers — `indexer-worker`, `notification-worker` — do their own work in their own transactions. So a listing publish physically cannot fail because the notifier is down, and it cannot write to a conversation thread because it never opens one.
 
 Testing that is the interesting part, because the requirement is an *absence*, and absences are what test suites are worst at. Three checks, at different levels. First, an integration test that publishes a listing inside a transaction wrapped by a SQLAlchemy event listener recording every statement executed, then asserts the set of touched tables equals `{product, outbox_event}` exactly — an equality assertion, not a "does not contain", because a whitelist catches the new table someone adds next year. Second, a database-level test that connects as the `vendor-service` role and asserts `INSERT INTO connection_request` raises a permission error; a test that expects a failure has to assert the specific error, otherwise a missing table would also make it pass. Third, an architecture test asserting no module under `vendor/` imports anything under `connection/` or `billing/`.
 
@@ -120,11 +120,11 @@ Safe: replacing the catalog search query implementation, because it sits behind 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The safe one first. Rewriting the faceted search query — moving from ORM-generated Structured Query Language (SQL) to hand-built SQLAlchemy Core, adding the partial index predicate, switching from offset to keyset pagination — touched exactly one service, one table it exclusively reads, and a response model the frontend generates its client from. Every consequence of getting it wrong is a synchronous failure that functional tests catch: wrong result set, wrong ordering, a slow query the plan test flags. The boundary made it safe because nothing else in the platform could observe the change.
+The safe one first. Rewriting the faceted search query — moving from ORM-generated Structured Query Language ([SQL](https://en.wikipedia.org/wiki/SQL "Queries and manipulates data in a relational database")) to hand-built SQLAlchemy Core, adding the partial index predicate, switching from offset to keyset pagination — touched exactly one service, one table it exclusively reads, and a response model the frontend generates its client from. Every consequence of getting it wrong is a synchronous failure that functional tests catch: wrong result set, wrong ordering, a slow query the plan test flags. The boundary made it safe because nothing else in the platform could observe the change.
 
 The dangerous one is the projection contract. `indexer-worker` reads a MongoDB revision document and writes `product_listing_facets`. Suppose a refactor renames a facet key or changes how `country_coverage` is derived. The deploy succeeds, the tests pass if they were written against the new shape, and the failure is that listings quietly stop matching a filter they should match. Nobody pages you. A vendor eventually reports that their product does not appear under Germany, weeks later. That is the shape of every asynchronous refactor failure: no error, degraded truth, long detection time.
 
-So the review standard for the two is different. For a synchronous refactor I want tests and a canary. For anything touching an event payload or a projection I want the change to be additive first — write the new key alongside the old, backfill, verify by comparing projected rows against the source documents, then remove the old key in a later merge request. That is the same expand/contract discipline used for Alembic migrations, applied to a data contract instead of a schema, and for the same reason: during the rollout window both versions are live simultaneously whether you planned for it or not.
+So the review standard for the two is different. For a synchronous refactor I want tests and a canary. For anything touching an event payload or a projection I want the change to be additive first — write the new key alongside the old, backfill, verify by comparing projected rows against the source documents, then remove the old key in a later merge request. That is the same expand/contract discipline used for [Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy") migrations, applied to a data contract instead of a schema, and for the same reason: during the rollout window both versions are live simultaneously whether you planned for it or not.
 
 The auth module refactor sat in between and I treated it as the dangerous class, because an authorization refactor's failure mode is also silent — it does not throw, it returns rows it should not.
 
@@ -135,7 +135,7 @@ The auth module refactor sat in between and I treated it as the dangerous class,
 ### Q2. You documented workflows, deployment steps and data models. In your experience, which documentation actually survives contact with a changing system, and which rots?
 
 **Brief answer**
-Documentation that is executable or generated survives; prose that restates what the code already says rots within a release. The durable artefacts here were the OpenAPI document generated from Pydantic models, the Terraform configuration, and the design decisions with their rejected alternatives.
+Documentation that is executable or generated survives; prose that restates what the code already says rots within a release. The durable artefacts here were the [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") document generated from [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") models, the Terraform configuration, and the design decisions with their rejected alternatives.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -144,7 +144,7 @@ Three categories behave completely differently over time.
 
 Generated documentation cannot drift, because it is a build artefact. The OpenAPI specification comes out of the Pydantic request and response models, so it is wrong only if the code is wrong. The same holds for the entity relationship model insofar as it is derived from the SQLAlchemy metadata and the Alembic history. I push as much documentation as possible into this category, because it is the only one with a mechanical guarantee.
 
-Executable documentation is the second tier: the Docker Compose file that brings up PostgreSQL, MongoDB and Redis at pinned versions is the real answer to "how do I run this locally", and it stays correct because CI runs integration tests against it. A written setup guide covering the same ground is wrong the first week someone bumps a version. So the guide should say "run `docker compose up`" and stop, rather than list the services.
+Executable documentation is the second tier: the Docker Compose file that brings up PostgreSQL, MongoDB and [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") at pinned versions is the real answer to "how do I run this locally", and it stays correct because CI runs integration tests against it. A written setup guide covering the same ground is wrong the first week someone bumps a version. So the guide should say "run `docker compose up`" and stop, rather than list the services.
 
 The third tier is the one that genuinely needs prose and cannot be generated: *why*. Why MongoDB and PostgreSQL rather than `JSONB` alone. Why PostgreSQL full-text search rather than a dedicated search cluster, and the explicit trigger that would change the answer. Why Row-Level Security was rejected as the primary tenant control. That material has no other home, it is what a new engineer actually needs, and it rots slowly because decisions change less often than code. The discipline that keeps it honest is recording the rejected alternative and its cost alongside the choice — a decision record with no alternative is indistinguishable from a description, and descriptions are what the code is for.
 
@@ -223,7 +223,7 @@ The one thing I would not do is let the reverse-engineering become the deliverab
 ### Q1. The brief asked for MongoDB schemas for product metadata "without a fixed column set". What does schemaless actually buy here, and how do you stop it degrading into "no contract"?
 
 **Brief answer**
-It buys the ability to add a product category without a migration, because a point-of-sale (POS) system, an inventory engine and a loyalty platform have almost no attributes in common. It stays governed because a per-category `facet_schemas` document declares which attribute keys are typed, which are facetable, and their value domains, and Pydantic validates against it at write time.
+It buys the ability to add a product category without a migration, because a point-of-sale ([POS](https://en.wikipedia.org/wiki/Point_of_sale "Point of Sale — The system and moment at which a retail transaction is completed")) system, an inventory engine and a loyalty platform have almost no attributes in common. It stays governed because a per-category `facet_schemas` document declares which attribute keys are typed, which are facetable, and their value domains, and Pydantic validates against it at write time.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -398,7 +398,7 @@ Integer minor units because floating point cannot represent decimal money exactl
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-On representation: a `float` cannot hold 0.10 exactly, and in a marketplace comparing subscription pricing across vendors the errors show up as a total that is a cent off, which erodes trust in every number on the page. Storing `price_minor bigint` with an explicit ISO-4217 `currency char(3)` makes arithmetic exact and makes the currency impossible to forget — a bare number column invites the assumption that everything is euros, and this is a European marketplace with vendors pricing in several currencies. The rule is that the unit travels with the value. Comparison across currencies then becomes an explicit conversion with a stated rate and timestamp, rather than an accidental addition.
+On representation: a `float` cannot hold 0.10 exactly, and in a marketplace comparing subscription pricing across vendors the errors show up as a total that is a cent off, which erodes trust in every number on the page. Storing `price_minor bigint` with an explicit [ISO-4217](https://www.six-group.com/en/products-services/financial-information/data-standards.html "ISO 4217 — Standardizes three-letter currency codes for unambiguous monetary values") `currency char(3)` makes arithmetic exact and makes the currency impossible to forget — a bare number column invites the assumption that everything is euros, and this is a European marketplace with vendors pricing in several currencies. The rule is that the unit travels with the value. Comparison across currencies then becomes an explicit conversion with a stated rate and timestamp, rather than an accidental addition.
 
 On structure: `product_price_tier` is relational because the comparison workflow does real query work over it — sort by entry price, filter to a ceiling, band by store count. `price_from_minor` is additionally projected into `product_listing_facets` with its own partial index, `idx_plf_price`, because "cheapest first within a category" is a high-frequency access pattern and it needs a leading index rather than a sort over a filtered set. Modelling tiers as a nested array inside the Mongo document would have made all of that an application-side scan.
 
@@ -418,9 +418,9 @@ It removes the projection pipeline, the lag, the reconciliation job and an entir
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The `JSONB`-only design is genuinely defensible and I want to be honest that this was a close call rather than an obvious win. Its advantages are large. A publish becomes one transaction, so there is no dual write, no ordering rule, no orphan reconciliation and no window where the two stores disagree. `product_listing_facets` might not need to exist at all, since the facets could be a `JSONB` column on `product` with a `jsonb_path_ops` Generalized Inverted Index (GIN) over it — which collapses the projection lag to zero and deletes `indexer_lag_seconds` from the alert list. One database to back up, one to tune, one to be expert in. For a small team that last point alone can decide it.
+The `JSONB`-only design is genuinely defensible and I want to be honest that this was a close call rather than an obvious win. Its advantages are large. A publish becomes one transaction, so there is no dual write, no ordering rule, no orphan reconciliation and no window where the two stores disagree. `product_listing_facets` might not need to exist at all, since the facets could be a `JSONB` column on `product` with a `jsonb_path_ops` Generalized Inverted Index ([GIN](https://www.postgresql.org/docs/current/gin.html "PostgreSQL index type suited to values containing multiple keys, such as arrays or text search")) over it — which collapses the projection lag to zero and deletes `indexer_lag_seconds` from the alert list. One database to back up, one to tune, one to be expert in. For a small team that last point alone can decide it.
 
-What tips it the other way here is the vendor-facing authoring surface rather than the read path. Per-category schema validation, immutable document revisions, and staged bulk imports are MongoDB's native shape. In PostgreSQL, revisions become a history table with the document duplicated per revision, and import staging becomes another table with its own cleanup job rather than a collection with a thirty-day time-to-live (TTL) index. None of that is hard; it is just all hand-built.
+What tips it the other way here is the vendor-facing authoring surface rather than the read path. Per-category schema validation, immutable document revisions, and staged bulk imports are MongoDB's native shape. In PostgreSQL, revisions become a history table with the document duplicated per revision, and import staging becomes another table with its own cleanup job rather than a collection with a thirty-day time-to-live ([TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires")) index. None of that is hard; it is just all hand-built.
 
 The cost of `JSONB` that gets underestimated is write amplification. PostgreSQL rewrites the whole row on update, and a 60 kilobyte `JSONB` document with a GIN index on it produces substantial write and index maintenance on every revision — on the same table that serves search. The two-store split trades that for projection lag. So the real trade is: heavier writes on the read-serving table, or a lag with a pipeline to maintain.
 
@@ -484,7 +484,7 @@ Integration compatibility is the attribute that actually decides a sourcing outc
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-In retail sourcing this is often the deciding question. A chain running a particular enterprise resource planning (ERP) suite for stock and finance cannot adopt a point-of-sale system that does not talk to it, no matter how good the product is. So `integrations` is not a nice-to-have facet alongside country coverage — it is close to a hard filter, and its data quality determines whether the comparison is useful or misleading.
+In retail sourcing this is often the deciding question. A chain running a particular enterprise resource planning ([ERP](https://en.wikipedia.org/wiki/Enterprise_resource_planning "Enterprise Resource Planning — Integrated software that manages an organization's core business processes")) suite for stock and finance cannot adopt a point-of-sale system that does not talk to it, no matter how good the product is. So `integrations` is not a nice-to-have facet alongside country coverage — it is close to a hard filter, and its data quality determines whether the comparison is useful or misleading.
 
 The current model is a `text[]` on `product_listing_facets` with a GIN index for containment, populated from the vendor's metadata document. Query-wise that is right. The problem is upstream: if vendors type the value, you get several spellings of the same system, product names that changed between versions, and vendors claiming an integration that is a nightly comma-separated file export rather than a live interface. A retailer filters, gets matches, and discovers during procurement that the integration does not mean what they assumed. That is worse than not offering the filter.
 
@@ -713,7 +713,7 @@ Catching a violation is the interesting part, because the symptom is intermitten
 ### Q3. The client's system of record is InterSystems IRIS, with tables over a hundred million rows. Your experience here is PostgreSQL. How do you approach that, and what transfers?
 
 **Brief answer**
-Most of it transfers, because the hard part is not dialect — it is access-pattern-driven index design, migration safety at volume, and reading a plan. What does not transfer is IRIS's specifics: its globals-based storage underneath the relational projection, its own plan syntax and tooling, and the fact that community knowledge is far thinner, so I would lean harder on measurement and on the people who already run it.
+Most of it transfers, because the hard part is not dialect — it is access-pattern-driven index design, migration safety at volume, and reading a plan. What does not transfer is [IRIS](https://docs.intersystems.com/ "InterSystems IRIS — Multi-model database combining a relational surface with globals-based storage")'s specifics: its globals-based storage underneath the relational projection, its own plan syntax and tooling, and the fact that community knowledge is far thinner, so I would lean harder on measurement and on the people who already run it.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -838,7 +838,7 @@ Normal invalidation is a race and a delivery problem at once. The purge travels 
 
 Including the revision in the key changes the question from "did the delete succeed" to "what key does the reader compute". A reader builds the key from `product.current_revision_id`, which it has just read from the authoritative store. After a publish, that pointer is the new revision, so the reader computes `...:v8` and misses. `...:v7` still exists in Redis, and it is simply unreachable — no code path constructs it. It expires on its own and nobody was served from it.
 
-This is content-addressing applied to a cache key, the same idea as the build-SHA-keyed static bundle and the revision-keyed media paths at the Content Delivery Network (CDN) layer, where the design notes that no invalidation is needed at all because a new revision is a new Uniform Resource Locator. The pattern is worth naming as a general principle: prefer making stale data unaddressable over making it deleted, because the first is a property of your key derivation and the second is a distributed systems problem.
+This is content-addressing applied to a cache key, the same idea as the build-[SHA](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm — Family of cryptographic hash functions used to verify content integrity")-keyed static bundle and the revision-keyed media paths at the Content Delivery Network ([CDN](https://en.wikipedia.org/wiki/Content_delivery_network "Distributes cached content across edge locations to reduce latency")) layer, where the design notes that no invalidation is needed at all because a new revision is a new Uniform Resource Locator. The pattern is worth naming as a general principle: prefer making stale data unaddressable over making it deleted, because the first is a property of your key derivation and the second is a distributed systems problem.
 
 The cost is orphaned keys. Every revision leaves its predecessor's entry occupying memory until its time-to-live expires, so a heavily-revised listing holds several copies. At a fifteen-minute TTL and this revision rate that is negligible, and Redis is configured with an eviction policy so memory pressure evicts the coldest keys — which are exactly the orphans. If revision churn increased tenfold I would revisit it, most likely by shortening the TTL rather than by abandoning the pattern.
 
@@ -928,7 +928,7 @@ Taking the keyspaces in turn.
 
 The catalog caches — listing detail, search pages, facet counts — simply miss. Every request takes the uncached path. The latency budget was built with both columns precisely so this is a known quantity rather than a surprise, and the sixfold database load multiplier is why the PostgreSQL replica is sized with headroom rather than to the average. The thing that would make this dangerous is the stampede: a Redis loss is a total simultaneous cold start, so every hot key is contended at once. Single-flight helps, but only within a pod; across many pods it is a distributed lock that has just lost its lock server. That is the part I would want load-tested rather than reasoned about, because it is the one place where "graceful degradation" could turn into a thundering herd against the database.
 
-`authz:jwks` holds the identity provider's signing keys. On a miss, services refetch from the JSON Web Key Set (JWKS) endpoint — a network call, so authorization stops costing one millisecond and starts costing tens, on every request until the key is cached again locally. This is why the local in-process fallback matters: a JWKS refetch storm against `identity-service` during a Redis outage would be a genuinely bad compounding failure.
+`authz:jwks` holds the identity provider's signing keys. On a miss, services refetch from the [JSON](https://www.json.org/json-en.html "JavaScript Object Notation — Lightweight text format for structured data exchange") Web Key Set ([JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "JSON Web Key Set — Publishes the public keys a party needs to verify a signed token")) endpoint — a network call, so authorization stops costing one millisecond and starts costing tens, on every request until the key is cached again locally. This is why the local in-process fallback matters: a JWKS refetch storm against `identity-service` during a Redis outage would be a genuinely bad compounding failure.
 
 `rl:*` and `idem:*` are the interesting ones because they are correctness-adjacent rather than performance-only. Business rate limits — twenty connection requests per retail group per day, five imports per vendor per day — exist as marketplace-integrity controls, and idempotency keys prevent duplicate threads and duplicate charges. Without Redis, neither can be evaluated. The design fails **closed for writes and open for reads**: a browse request proceeds unlimited, but a connection request or an import submission is rejected with a retryable error rather than allowed unchecked. That is the right direction — the cost of refusing a few connection requests during an outage is far below the cost of a burst of duplicate charges or an unbounded spam window.
 
@@ -1110,7 +1110,7 @@ Prefetch is how many unacknowledged messages the broker will push to one consume
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The mechanism is a throughput optimisation that becomes a memory hazard. Fetching one message at a time means a network round trip per message, so brokers let a consumer take a batch — a prefetch count in Advanced Message Queuing Protocol (AMQP) terms, `worker_prefetch_multiplier` in Celery, the prefetch count on a Service Bus receiver. The consumer holds those messages, unacknowledged, until it processes each one.
+The mechanism is a throughput optimisation that becomes a memory hazard. Fetching one message at a time means a network round trip per message, so brokers let a consumer take a batch — a prefetch count in Advanced Message Queuing Protocol ([AMQP](https://www.amqp.org/ "Standardizes reliable message queueing and routing between applications")) terms, `worker_prefetch_multiplier` in Celery, the prefetch count on a Service Bus receiver. The consumer holds those messages, unacknowledged, until it processes each one.
 
 The arithmetic is what bites. A prefetch of 500 with 100-kilobyte messages is 50 megabytes resident per consumer thread before any work happens. Multiply by concurrency within the process and by the number of pods and it is easy to reach a figure that exceeds the container limit. And the failure is not gradual: the process is killed by the out-of-memory killer, so every one of those unacknowledged messages is redelivered to another consumer, which now also has a full prefetch buffer and also dies. That is the cascade — a memory problem turning into a redelivery storm turning into a cluster-wide crash loop, with the queue depth rising the whole time because nothing is being acknowledged.
 
@@ -1132,7 +1132,7 @@ Almost always the queue growing faster than it drains, with memory consumed on b
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The pattern is consistent enough to describe generically. Something generates attribute updates far faster than downstream can apply them — a bulk import, a supplier feed, a migration. Each update becomes a message. The producer has no idea how deep the queue is, because publishing is asynchronous and fast, so it keeps going. Queue depth grows into the millions. RabbitMQ holds message metadata in memory even for persistent messages, so a deep queue is itself memory pressure on the broker; when it crosses its high-watermark it raises a memory alarm and **blocks publishers** — which means the producing application's threads stall on publish, connection pools fill, health checks fail, and the outage surfaces as an unresponsive Application Programming Interface rather than as a broker problem. Meanwhile consumers holding big prefetch buffers get out-of-memory killed, everything they held is redelivered, and the backlog grows further.
+The pattern is consistent enough to describe generically. Something generates attribute updates far faster than downstream can apply them — a bulk import, a supplier feed, a migration. Each update becomes a message. The producer has no idea how deep the queue is, because publishing is asynchronous and fast, so it keeps going. Queue depth grows into the millions. [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers") holds message metadata in memory even for persistent messages, so a deep queue is itself memory pressure on the broker; when it crosses its high-watermark it raises a memory alarm and **blocks publishers** — which means the producing application's threads stall on publish, connection pools fill, health checks fail, and the outage surfaces as an unresponsive Application Programming Interface rather than as a broker problem. Meanwhile consumers holding big prefetch buffers get out-of-memory killed, everything they held is redelivered, and the backlog grows further.
 
 Four controls, roughly in order of how much they help:
 
@@ -1279,7 +1279,7 @@ What would not change is the outbox, the idempotent projection and the reconcili
 ### Q3. The target environment uses MQTT alongside a broker, and nothing in this system does. What is MQTT actually for, and what of your experience transfers?
 
 **Brief answer**
-Message Queuing Telemetry Transport (MQTT) is a lightweight publish-subscribe protocol built for constrained clients over unreliable networks — devices, not services — with per-connection sessions and three quality-of-service levels. I have not run it in production. What transfers is everything about delivery semantics, idempotency and backpressure; what does not is its connection and authentication model, which is genuinely different.
+Message Queuing Telemetry Transport ([MQTT](https://mqtt.org/ "Lightweight publish-subscribe protocol for constrained devices and unreliable networks")) is a lightweight publish-subscribe protocol built for constrained clients over unreliable networks — devices, not services — with per-connection sessions and three quality-of-service levels. I have not run it in production. What transfers is everything about delivery semantics, idempotency and backpressure; what does not is its connection and authentication model, which is genuinely different.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -1334,7 +1334,7 @@ An `async def` endpoint runs on the event loop in the main thread; a `def` endpo
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-FastAPI is built on the Asynchronous Server Gateway Interface (ASGI), and Uvicorn runs one event loop per worker process. An `async def` handler is a coroutine scheduled on that loop. While it awaits something — a database round trip, a Redis call — the loop runs other requests. That is where the concurrency comes from: one thread interleaving thousands of waits.
+FastAPI is built on the Asynchronous Server Gateway Interface ([ASGI](https://asgi.readthedocs.io/en/latest/ "Standard interface between asynchronous Python web servers and applications")), and Uvicorn runs one event loop per worker process. An `async def` handler is a coroutine scheduled on that loop. While it awaits something — a database round trip, a Redis call — the loop runs other requests. That is where the concurrency comes from: one thread interleaving thousands of waits.
 
 A plain `def` handler cannot be awaited, so FastAPI runs it in an anyio thread pool. That is deliberate and correct for synchronous work, because it keeps blocking code off the loop. The cost is that the pool is bounded — forty threads by default — so concurrency for those endpoints is capped by pool size, and exceeding it queues requests invisibly. Latency rises with nothing in the application looking wrong.
 
@@ -1375,7 +1375,7 @@ The trap I would flag is re-validating data the system already trusts. Construct
 ### Q1. What is Uvicorn, and how do processes, threads and the event loop relate in a deployed FastAPI service?
 
 **Brief answer**
-Uvicorn is the ASGI server that runs the application: one event loop per worker process, plus a bounded thread pool for synchronous handlers. In Kubernetes the outer scaling unit is the pod rather than a process manager, so the usual deployment is a small number of workers per pod and many pods.
+Uvicorn is the ASGI server that runs the application: one event loop per worker process, plus a bounded thread pool for synchronous handlers. In [Kubernetes](https://kubernetes.io/ "Kubernetes — Automates deployment, scaling and management of containerized applications") the outer scaling unit is the pod rather than a process manager, so the usual deployment is a small number of workers per pod and many pods.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -1623,7 +1623,7 @@ The operational prerequisite for any of this is knowing who uses what. Per-subsc
 ### Q1. Explain the OAuth 2.0 authorization code flow with Proof Key for Code Exchange, and why the web clients here use it.
 
 **Brief answer**
-The client redirects the user to the authorization server, gets a short-lived code back, and exchanges it for tokens on a second channel. Proof Key for Code Exchange (PKCE) binds that exchange to a secret the client generated, so an intercepted code is useless to anyone else. Both web clients are public clients with no secret to keep, which is exactly what PKCE is for.
+The client redirects the user to the authorization server, gets a short-lived code back, and exchanges it for tokens on a second channel. Proof Key for Code Exchange ([PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Protects an OAuth authorization code exchange for clients that cannot hold a secret")) binds that exchange to a secret the client generated, so an intercepted code is useless to anyone else. Both web clients are public clients with no secret to keep, which is exactly what PKCE is for.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -1645,12 +1645,12 @@ The refresh token then lives in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie s
 ### Q1. What is in a JSON Web Token here, and what does verifying it locally against a cached key set buy over calling an introspection endpoint?
 
 **Brief answer**
-It carries `sub`, the account type `act`, `org_id`, roles, scopes, a token identifier and expiry, signed with RS256. Local verification costs about a millisecond and no network call; introspection would add 15 to 30 milliseconds to every request and make `identity-service` a synchronous dependency of everything.
+It carries `sub`, the account type `act`, `org_id`, roles, scopes, a token identifier and expiry, signed with [RS256](https://datatracker.ietf.org/doc/html/rfc7518 "RSA Signature with SHA-256 — Asymmetric signing algorithm commonly used to sign JWTs"). Local verification costs about a millisecond and no network call; introspection would add 15 to 30 milliseconds to every request and make `identity-service` a synchronous dependency of everything.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-A JSON Web Token (JWT) is a signed, base64-encoded set of claims. RS256 means asymmetric signing: `identity-service` holds the private key in Key Vault, and every service verifies with the public key published at the JWKS endpoint. That asymmetry matters — a compromised service can verify tokens but cannot mint them, which would not be true with a shared symmetric secret.
+A JSON Web Token ([JWT](https://datatracker.ietf.org/doc/html/rfc7519 "Compact, signed token format for carrying claims between parties")) is a signed, base64-encoded set of claims. RS256 means asymmetric signing: `identity-service` holds the private key in Key Vault, and every service verifies with the public key published at the JWKS endpoint. That asymmetry matters — a compromised service can verify tokens but cannot mint them, which would not be true with a shared symmetric secret.
 
 The claims are chosen so that authorization needs nothing else. `act` says vendor, retailer or platform, and drives the coarse router-level check. `org_id` is the tenant, and it is what the repository layer filters every org-owned query on. `roles` and `scopes` carry the finer permissions. So the three-check authorization model — account type, then role-to-scope, then tenant scope — runs entirely on claims already in hand.
 
@@ -1864,7 +1864,7 @@ Doing it properly means a service mesh, and a mesh's cost — sidecar lifecycle,
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-What is actually in place: TLS 1.3 from clients to the edge and from the edge to the ingress, TLS with certificate verification to every data store over private endpoints with no public addresses, and TLS to Service Bus, Blob and Key Vault with workload identity rather than connection strings. Plaintext HTTP exists only between pods inside one namespace, constrained by a default-deny NetworkPolicy with explicit allows per pair.
+What is actually in place: [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") 1.3 from clients to the edge and from the edge to the ingress, TLS with certificate verification to every data store over private endpoints with no public addresses, and TLS to Service Bus, Blob and Key Vault with workload identity rather than connection strings. Plaintext HTTP exists only between pods inside one namespace, constrained by a default-deny NetworkPolicy with explicit allows per pair.
 
 The threat mutual TLS would address is an attacker with a foothold inside the cluster network, able to observe or inject traffic between pods. That is a real threat in a shared cluster. It is much weaker here: one namespace, nine workloads, all our own code, no customer-supplied containers, no multi-tenant compute. An attacker who can read pod-to-pod traffic has already achieved code execution in the cluster, at which point they can read the service account tokens and call the services directly — so mutual TLS would not be the control that saves you.
 
@@ -1934,9 +1934,9 @@ Ruff catches style and simple correctness patterns in milliseconds. A type check
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Poetry** is upstream of all four and worth naming first: it resolves dependencies to a lock file, so every environment — a laptop, a CI job, a production image — installs the identical set. Without that, the other three tools are auditing different code in different places, and a vulnerability report against a version nobody actually runs is noise.
+**[Poetry](https://python-poetry.org/docs/ "Poetry — Python dependency and packaging tool that manages, builds and publishes projects")** is upstream of all four and worth naming first: it resolves dependencies to a lock file, so every environment — a laptop, a CI job, a production image — installs the identical set. Without that, the other three tools are auditing different code in different places, and a vulnerability report against a version nobody actually runs is noise.
 
-**Ruff** is a linter and formatter covering the space Flake8, isort and Black occupied, fast enough to run on save and in a pre-commit hook. Its value is partly the bug classes it catches — unused variables, mutable default arguments, shadowed builtins, a bare `except` — and mostly that it ends every discussion about formatting. Style debates in code review are pure cost, and delegating them to a tool that reformats deterministically removes them entirely.
+**Ruff** is a linter and formatter covering the space [Flake8](https://flake8.pycqa.org/en/latest/ "Flake8 — Lint tool that checks Python code for style and programming errors"), isort and Black occupied, fast enough to run on save and in a pre-commit hook. Its value is partly the bug classes it catches — unused variables, mutable default arguments, shadowed builtins, a bare `except` — and mostly that it ends every discussion about formatting. Style debates in code review are pure cost, and delegating them to a tool that reformats deterministically removes them entirely.
 
 **A type checker** — Mypy or an equivalent — catches what linters structurally cannot: a function called with the wrong shape from another module, a nullable value used without a check, a refactor that renamed a field in one place and not another. In a Python codebase spanning six services and three workers, this is the tool that makes large refactors safe, because it finds every call site rather than every call site you remembered. The value is proportional to annotation coverage, so it is worth being strict in new code and pragmatic about legacy.
 
@@ -2143,12 +2143,12 @@ What I would not do is drop the integration tests against real stores or relax t
 ### Q3. The target environment runs GitOps with ArgoCD on OpenShift and Prometheus for metrics. This system uses GitLab CI pushing to AKS with Azure Monitor. What transfers, and what would you have to learn?
 
 **Brief answer**
-The Kubernetes model, the deployment strategies, the migration discipline and the observability concepts all transfer directly. What is new is the pull-based reconciliation model — where the cluster converges on Git rather than a pipeline pushing to it — plus OpenShift's stricter defaults and PromQL as a query language.
+The Kubernetes model, the deployment strategies, the migration discipline and the observability concepts all transfer directly. What is new is the pull-based reconciliation model — where the cluster converges on Git rather than a pipeline pushing to it — plus OpenShift's stricter defaults and [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/ "Prometheus Query Language — Queries and aggregates time series metrics collected by Prometheus") as a query language.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-Being clear about the boundary: I have run GitLab CI deploying to a managed Kubernetes service with cloud-native monitoring. I have not operated ArgoCD or OpenShift in production, and Prometheus I know as a model more than as a daily tool.
+Being clear about the boundary: I have run GitLab CI deploying to a managed Kubernetes service with cloud-native monitoring. I have not operated [ArgoCD](https://argo-cd.readthedocs.io/en/stable/ "Argo CD — GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository") or OpenShift in production, and Prometheus I know as a model more than as a daily tool.
 
 **What transfers.** Everything about Kubernetes itself — deployments, probes, resource limits, autoscaling on custom metrics, `preStop` draining for workers, NetworkPolicy. The deployment strategies transfer: canary for the risky high-traffic service, rolling elsewhere, blue-green rejected for specific reasons. The migration discipline transfers entirely and is arguably more important under GitOps, since expand/contract is what makes a declarative rollback safe. And the observability concepts — service level indicators and objectives, error-budget burn alerting, the distinction between an alert that pages and one that raises a ticket — are tool-independent.
 
