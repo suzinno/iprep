@@ -91,20 +91,6 @@ Case 01 is out of scope for the glossary back-fill and is not passed to `--check
 
 **Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Four mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, and removing the `projects` parent-directory guard.
 
-**Spot checks against real cases** (these depend on live data and go stale as work is done — the harness deliberately does not). `extend cases/02` is currently the only BLOCKED example, so it is the one to preserve or replace when case 02 progresses — a block with no exit-1 row stops exercising the middle state:
-
-```
-PF=.claude/skills/interview-prep/scripts/preflight.sh
-$PF from-cv cases/01/projects/cancer-support-platform   # 0 READY
-$PF from-cv cases/02/projects/cancer-support-platform   # 0 READY
-$PF from-cv cases/02/projects/banking-software-marketplace  # 0 READY
-$PF answer  cases/02                                    # 0 READY
-$PF extend  cases/02                                    # 1 BLOCKED, remedies name /interview-prep answer and from-cv
-$PF from-cv cases/01                                    # 2 CANNOT-RUN, a case is not a project
-$PF answer  cases/01/projects/cancer-support-platform    # 2 CANNOT-RUN, a project is not a case
-$PF frobnicate cases/01                                 # 2 CANNOT-RUN
-```
-
 **Patterns.** Always pair a known-pass with a known-fail, and include a deliberately-wrong control — a check suite that only ever passes confirms whatever you already expected. Three states per check, never two: pass, fail, and could-not-run. Build fixtures in a scratch directory, never inside `cases/`.
 
 **One fixture, one behaviour.** A fixture exercising several behaviours at once can only honestly test the first that fires; every later assertion on it is decoration. Four checks here passed for reasons unrelated to what they named — a fixture carrying an already-linked term short-circuited before the fence and inline-code logic was ever reached, so both looked covered and neither was. Give each behaviour its own fixture in which the trigger appears **only** in the region under test, and confirm the check fails under a mutation of the behaviour it names before accepting it. A check that has never failed has not been shown to test anything.
