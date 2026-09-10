@@ -7,11 +7,11 @@ THE SPINE — ten lines to memorise
 1.  Two audiences, one record, opposite access rules.
 2.  Small traffic, heavy rules — that's why it isn't twenty services.
 3.  Modular monolith, four modules. Two services left, each with its own release cadence.
-4.  Postgres holds the truth. Mongo holds content. Elasticsearch is a view. Redis is disposable.
+4.  Postgres holds the truth. Mongo holds content. Elasticsearch is a view. Redis is disposable. Blob holds the bytes.
 5.  Indexes for named queries, tables partitioned, timeline keyset not offset.  -> 35%
 6.  Two identity planes. Gateway checks the audience. SCIM provisions and revokes clinicians.
-7.  Reach lives in the database — row-level security. Forget to scope, get nothing.
-8.  Facts on the exchange, jobs on Celery, check-ins over MQTT.
+7.  Reach lives in the database — row-level security. Forget to scope, get nothing. And every read is audited, so reads run on the primary.
+8.  Facts on the exchange, jobs on Celery, check-ins over MQTT, delivery over Service Bus.
 9.  Outbox not dual write. Unique keys absorb duplicates. Reminder state in Postgres.  -> 22%
 10. Two war stories: the acknowledgement that meant nothing, and the leaking connection.
 
@@ -33,7 +33,7 @@ That division actually shaped most of the design.
 
 
 ================================================================
-[MY ROLE, IN ONE LINE] I was a backend engineer on the core platform. I owned the data and search layer, the event-driven paths, the identity and provisioning APIs, and the CI/CD pipeline. 
+[MY ROLE, IN ONE LINE] I was a backend engineer on the core platform. I owned the data and search layer, the event-driven paths, the identity and provisioning APIs, the model side of the content pipeline, and the CI/CD pipeline. 
 
 
 ================================================================
@@ -42,7 +42,10 @@ THE SHAPE OF THE SYSTEM (~90 s)
 
 The core is a modular monolith in FastAPI. One deployable unit consisting of four modules: patient diary, clinical records, clinical content, and identity.
 
-Each module is its own package with its own database schema. Modules don't import each other directly — they rather go through a published interface. It is what makes the boundaries real. They're just not network boundaries.
+Each module is its own package with its own database schema. Modules don't import each other directly — they go through a published interface instead. That is what makes the boundaries real. They're just not network boundaries.
+
+  [IF ASKED "your CV says three modules"]
+  It does — diary, clinical content, identity. Records is the fourth, and I split it out deliberately. The clinical record is a different write model, with different consistency and audit obligations from authored content. Folding it into clinical content would have put a prescription and a leaflet behind the same code path.
 
 I designed that split, and two things were pulled out into their own services:
 - The first is SCIM provisioning — the service the hospital directory calls to create and disable clinician accounts. It left because its release schedule belongs to the hospital, not to us.
@@ -57,27 +60,28 @@ And the honest trade-off: keeping four modules in one deployable means one perso
 
 
 ================================================================
-THE DATA LAYER (~90 s)
+THE DATA LAYER (~120 s)
 ================================================================
 
-There are 4 stores, and each one has exactly one job:
+There are five stores, and each one has exactly one job:
 - Postgres is the system of record — patients, care relationships, appointments, prescriptions, notes, check-ins, consent, audit.
 - MongoDB holds the education content, because every page is versioned and the shape changes by cancer type, treatment line and language. Modelling that relationally would give a very wide, mostly empty table.
 - Elasticsearch serves search over notes and guidance. It's a projection — we can rebuild the whole index from Postgres and Mongo.
 - Redis holds nothing durable — sessions, caches, rate limits, idempotency keys. If we lose Redis we get slow, NOT wrong.
->> "Postgres holds the truth. Mongo holds the content. Elasticsearch serves as a view. Redis is disposable."
+- Azure Blob Storage holds the document bytes — scans, letters, the audit archive. About twelve terabytes at the five-year mark, which is more than every other store put together.
+>> "Postgres holds the truth. Mongo holds the content. Elasticsearch serves as a view. Redis is disposable. Blob holds the bytes."
 
 I designed the Postgres schemas and the Elasticsearch indexes.
 And here I think, 4 patterns worth mentioning:
 - Schema per module, so a module boundary is also a database boundary.
 - The big tables are partitioned by month — check-ins and audit. Check-ins are around a hundred and ten million rows.
 - Every index exists for one named query in the API. If I can't name the endpoint, the index doesn't get created.
-- The patient timeline is a union across five tables, and it's keyset paginated, never offset. Offset pagination looks fine in staging and falls over in production.
->> "That work allowed to reach around the thirty-five percent cut in query latency."
+- The patient timeline is a union across five tables, and each one orders on a different natural column — one of them is a date, not a timestamp. A union across those can't be ordered deterministically and can't be served from one index shape. So every timeline table carries a normalised ordering column, and the cursor is a triple: that column, the source table, the row id. Ties across sources break the same way every time. That's what makes it keyset paginated rather than offset. Offset pagination looks fine in staging and falls over in production.
+>> "That work cut query latency by about thirty-five percent — the Postgres side on the timeline and record queries, the Elasticsearch side on search."
 
 
 ================================================================
-AUTHENTICATION AND AUTHORIZATION (~90 s)
+AUTHENTICATION AND AUTHORIZATION (~150 s)
 ================================================================
 
 This is the part I'd call the heart of the system.
@@ -95,43 +99,55 @@ Then authorization, which splits in two:
 - BUT *which patients you can reach* isn't a role. It's a fact that changes with time. So that check lives in the database, as Postgres row-level security (RLS).
 Every request sets the actor inside the transaction, and the policies join through the care relationship (which is stored as a time range, with a start and an end).
 
-That's the point of putting it (?) there: it turns the most common application bug into an empty result instead of a data breach. The application checks still exist, they're just the second line.
+That's the point of putting it there: it turns the most common application bug into an empty result instead of a data breach. The application checks still exist, they're just the second line.
 >> "If I forget to scope a query, it returns nothing. It doesn't return someone else's record."
 
 And I built the SCIM side, so when the hospital disables a clinician, we close every open care relationship in the same transaction. Access ends when employment ends, with nobody on our side doing anything.
 
+And one consequence of all that I want to state, because it's the least obvious thing in the design. Every read of patient data writes an audit row — including a read served from cache, because a cache hit is still an access. That makes an audited read a write. So it can't be served from a read replica, and it fails when the primary fails.
+>> "Read availability is bounded by write availability, and we chose that."
+The alternative was queueing the audit rows so reads survive a failover — and living with an audit trail that has a hole in it. For a health record, the hole is the worse outcome. So we paid for the coupling instead: zone-redundant HA and a sixty-second failover, which fits the availability budget. The replicas exist, they just don't carry audited patient reads — index rebuilds, reporting, backup verification.
+
 
 ================================================================
-HOW SERVICES TALK, AND HOW THEY STAY CONSISTENT (~120 s)
+HOW SERVICES TALK, AND HOW THEY STAY CONSISTENT (~180 s)
 ================================================================
 
-4 transports, each with a stated job, so nobody has to guess which one to use.
-- Synchronous REST for anything a user is waiting for. A screen a person is looking at has low value being eventually consistent.
+Five transports, each with a stated job, so nobody has to guess which one to use.
+- Synchronous REST for anything a user is waiting for. A screen someone is looking at has no business being eventually consistent.
 - A RabbitMQ topic exchange for domain facts — check-in recorded, note created, appointment scheduled.
 - Celery for work we own and must retry — reminder sweeps, page generation, indexing.
 - MQTT for check-ins from the phone.
->> "The exchange is for facts we publish. Celery is for work we owe. They're not the same thing."
+- Azure Service Bus at the edge where work leaves for somebody else — reminder delivery out, document ingest in. That's what the Functions hang off.
+>> "The exchange is for facts we publish. Celery is for work we owe. Service Bus is where work leaves the building. They're not the same thing."
 
 MQTT is there for a specific reason. A patient is often in a hospital basement or on a bad connection. With MQTT the phone queues the check-in locally and delivers it when it reconnects. And it's the same broker, so an MQTT check-in lands on the same exchange everything else consumes.
+
+Documents work the same way at the other edge, and I moved that path off ad-hoc folders onto Azure. A scan or a letter never goes through the API — the client gets a short-lived signed URL and uploads straight to Blob Storage, so multi-megabyte files never touch the pods serving a clinician's timeline. The upload lands in a quarantine container, a blob-created event triggers a Function that scans and text-extracts it, and only then is the file promoted and the document row made visible.
+>> "An unscanned file is never addressable by a record row."
 
 Consistency is where I spent most of my design time. Three rules:
 - First — nothing writes to Elasticsearch directly. Every write commits to Postgres with an outbox row in the same transaction, and a relay publishes it. The cost is honest: a new note is searchable in about eight seconds, fifteen at p95. [Reason] With a dual write, a successful commit plus a failed index leaves you permanently wrong with nothing to detect it. With an outbox, the backlog is a metric and it drains by itself.
 - Second — duplicates are absorbed by the schema, not by code. A redelivered check-in hits a unique key on patient and date and becomes an update. At-least-once delivery turns into arithmetic instead of a bug.
-- Third — the state machine lives in the database, not in the queue. Every reminder is a row with a state, and every delivery attempt is its own row. So "was it delivered" is a query, not a guess, and a final failure escalates to the care team instead of ending in a log line.
+- Third — the state machine lives in the database, not in the queue. Every reminder is a row with a state, and every delivery attempt is its own row. A worker claims what's due with FOR UPDATE SKIP LOCKED so workers scale without double-dispatching, writes the attempt row, then hands the delivery to Service Bus, where a Function does the actual send and posts the provider's receipt back. So "was it delivered" is a query, not a guess, and a final failure escalates to the care team instead of ending in a log line.
 
 >> "If the queue is down, reminders are late. They are never lost."
-The third rule allowed to decrease number of missed reminders for over twenty percent. Before, reminders went out inline during a request — so if the request died, the reminder died with it, and nothing recorded that it never arrived.
+The third rule is what cut missed reminders by over twenty percent. Before, reminders went out inline during a request — so if the request died, the reminder died with it, and nothing recorded that it never arrived.
 
 [On the security side of all that] TLS everywhere, no data store has a public endpoint, the one cross-cluster hop carries clinical free text and runs on mutual TLS, and the MQTT listener only lets a device publish to the topic matching its own token.
 
 
 ================================================================
-[OPTIONAL] THE AI PART (~40 s)
+[OPTIONAL] THE AI PART (~60 s)
 ================================================================
 
 I fine-tuned Hugging Face models with transfer learning — one that pulls clinical entities and codes out of visit notes, one that re-ranks guidance passages. LangChain composes the page.
 
-The constraint that shapes the whole pipeline: the model can only use passages a clinician has already approved, and every block carries a citation back to the passage it came from. It selects and rewrites approved material. It doesn't author clinical claims. And a page nobody has approved is never shown to a patient.
+The constraint that shapes the whole pipeline is two approval gates, not one.
+
+The first is on the input: the model can only draw on passages a clinician has already approved, and every block carries a citation back to the passage it came from. It selects and rewrites approved material. It doesn't author clinical claims.
+
+The second is on the output: what the pipeline produces is a page in pending-review. A clinical reviewer approves it before it's ever assigned to a patient — and whoever authored the source can't be the one who approves it, because those are separate roles on purpose. Otherwise the second pair of eyes is nominal and the safety property is just a claim.
 
 That costs us fluency. A freely generating model writes nicer pages. We took that cost deliberately —
 >> "In cancer guidance, an unsourced sentence isn't a quality problem. It's a safety problem."
