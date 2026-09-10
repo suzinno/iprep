@@ -11,6 +11,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | Term | Expansion | Purpose | Source |
 |---|---|---|---|
 | ABAC | Attribute Based Access Control | Grants access based on attributes of the subject, resource and environment rather than fixed roles | https://en.wikipedia.org/wiki/Attribute-based_access_control |
+| ACID | Atomicity, Consistency, Isolation, Durability | Names the four guarantees a database transaction provides | https://en.wikipedia.org/wiki/ACID |
 | AES-256 | Advanced Encryption Standard with a 256-bit key | Symmetric encryption of data at rest and in transit | https://csrc.nist.gov/pubs/fips/197/final |
 | AI | Artificial Intelligence | Software that generates or assists with tasks such as writing code | https://en.wikipedia.org/wiki/Artificial_intelligence |
 | AKS | Azure Kubernetes Service | Managed Kubernetes hosting on Azure | https://learn.microsoft.com/en-us/azure/aks/ |
@@ -25,6 +26,8 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | ArgoCD | Argo CD | GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository | https://argo-cd.readthedocs.io/en/stable/ |
 | B2B | Business to Business | Describes commerce conducted between organizations rather than to individual consumers | https://en.wikipedia.org/wiki/Business-to-business |
 | B2C | Business to Consumer | Describes commerce sold directly to individual consumers | https://en.wikipedia.org/wiki/Retail |
+| BASE | Basically Available, Soft state, Eventually consistent | Names the availability-first alternative to ACID guarantees in distributed stores | https://en.wikipedia.org/wiki/Eventual_consistency |
+| BCNF | Boyce-Codd Normal Form | Normal form requiring every determinant to be a candidate key | https://en.wikipedia.org/wiki/Boyce%E2%80%93Codd_normal_form |
 | BM25 | Best Matching 25 | Ranking function that scores how relevant a document is to a search query | https://en.wikipedia.org/wiki/Okapi_BM25 |
 | BRIN | Block Range Index | Compact PostgreSQL index type suited to large, sequentially correlated tables | https://www.postgresql.org/docs/current/brin.html |
 | CAP | Consistency, Availability and Partition tolerance | Names the theorem that a distributed system can guarantee only two of the three during a network partition | https://en.wikipedia.org/wiki/CAP_theorem |
@@ -32,11 +35,14 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | CI | Continuous Integration | Automatically builds and tests code on every change | https://en.wikipedia.org/wiki/Continuous_integration |
 | CMK | Customer Managed Key | An encryption key the customer controls rather than the cloud provider | https://learn.microsoft.com/en-us/azure/key-vault/keys/about-keys |
 | CONNECT | MQTT CONNECT packet | Opens a client session with the broker and authenticates the client | https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html |
+| CRDT | Conflict-free Replicated Data Type | Data type whose replicas converge without coordination because its merge is order-independent | https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type |
 | CSV | Comma Separated Values | Plain text format for exchanging tabular data | https://datatracker.ietf.org/doc/html/rfc4180 |
+| CTE | Common Table Expression | Named subquery declared with WITH and referenced within one statement | https://en.wikipedia.org/wiki/Hierarchical_and_recursive_queries_in_SQL |
 | CV | Curriculum Vitae | Document summarizing a candidate's work history and qualifications | https://en.wikipedia.org/wiki/Curriculum_vitae |
 | CVE | Common Vulnerabilities and Exposures | Public identifier for a known software security flaw | https://www.cve.org/ |
 | Celery | Celery | Distributed task queue that runs background and scheduled jobs outside the request cycle | https://docs.celeryq.dev/en/stable/ |
 | DAU | Daily Active Users | Count of distinct users who use a product on a given day | https://en.wikipedia.org/wiki/Active_users |
+| DDL | Data Definition Language | The SQL statements that create and alter database objects | https://en.wikipedia.org/wiki/Data_definition_language |
 | DDoS | Distributed Denial of Service | Attack that floods a system with traffic from many sources to make it unavailable | https://en.wikipedia.org/wiki/Denial-of-service_attack |
 | DICOM | Digital Imaging and Communications in Medicine | Standard for storing and transmitting medical images and related data | https://www.dicomstandard.org/ |
 | DPIA | Data Protection Impact Assessment | GDPR process for assessing privacy risk before high-risk data processing | https://gdpr-info.eu/art-35-gdpr/ |
@@ -54,35 +60,46 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | HA | High Availability | System design goal of remaining operational despite component failure | https://en.wikipedia.org/wiki/High_availability |
 | HIPAA | Health Insurance Portability and Accountability Act | US law setting standards for protecting health information | https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160 |
 | HMAC | Hash based Message Authentication Code | Verifies both the integrity and authenticity of a message using a shared secret key | https://datatracker.ietf.org/doc/html/rfc2104 |
+| HNSW | Hierarchical Navigable Small World | Graph index for approximate nearest-neighbour search over vectors | https://arxiv.org/abs/1603.09320 |
+| HOT | Heap Only Tuple | PostgreSQL update path that keeps the new row version on the same page and touches no index | https://www.postgresql.org/docs/current/storage-hot.html |
 | HPA | Horizontal Pod Autoscaler | Automatically adjusts the number of Kubernetes pod replicas to match load | https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ |
 | HSTS | HTTP Strict Transport Security | Instructs browsers to only ever connect to a site over HTTPS | https://datatracker.ietf.org/doc/html/rfc6797 |
 | HTTP | Hypertext Transfer Protocol | Application protocol used to request and transfer web resources | https://datatracker.ietf.org/doc/html/rfc9110 |
 | HTTPS | HTTP Secure | HTTP encrypted with TLS to protect requests and responses in transit | https://datatracker.ietf.org/doc/html/rfc9110 |
+| IOPS | Input/Output Operations Per Second | Measures how many discrete read or write operations a storage device sustains | https://en.wikipedia.org/wiki/IOPS |
 | IRIS | InterSystems IRIS | Multi-model database combining a relational surface with globals-based storage | https://docs.intersystems.com/ |
 | ISO | International Organization for Standardization | Publishes international standards, including information security management | https://en.wikipedia.org/wiki/International_Organization_for_Standardization |
 | ISO-4217 | ISO 4217 | Standardizes three-letter currency codes for unambiguous monetary values | https://www.six-group.com/en/products-services/financial-information/data-standards.html |
 | IdP | Identity Provider | Service that authenticates users and issues identity assertions to relying applications | https://en.wikipedia.org/wiki/Identity_provider |
 | JSON | JavaScript Object Notation | Lightweight text format for structured data exchange | https://www.json.org/json-en.html |
+| JSONB | JSON Binary | PostgreSQL type storing JSON documents in a decomposed binary form that can be indexed | https://www.postgresql.org/docs/current/datatype-json.html |
 | JWKS | JSON Web Key Set | Publishes the public keys a party needs to verify a signed token | https://datatracker.ietf.org/doc/html/rfc7517 |
 | JWT | JSON Web Token | Compact, signed token format for carrying claims between parties | https://datatracker.ietf.org/doc/html/rfc7519 |
 | Kubernetes | Kubernetes | Automates deployment, scaling and management of containerized applications | https://kubernetes.io/ |
 | L7 | Layer 7 | The application layer of the OSI model, where content-aware filtering such as a web application firewall operates | https://en.wikipedia.org/wiki/OSI_model |
+| LSM | Log Structured Merge tree | Storage structure that buffers writes in memory and merges sorted files in the background | https://en.wikipedia.org/wiki/Log-structured_merge-tree |
+| LZ4 | LZ4 | Fast compression algorithm, available in PostgreSQL for compressing large column values | https://lz4.org/ |
 | MAU | Monthly Active Users | Count of distinct users who use a product within a calendar month | https://en.wikipedia.org/wiki/Active_users |
 | MFA | Multi Factor Authentication | Requires more than one form of evidence to verify a user's identity | https://en.wikipedia.org/wiki/Multi-factor_authentication |
 | ML | Machine Learning | Algorithms that learn patterns from data rather than following explicit rules | https://en.wikipedia.org/wiki/Machine_learning |
 | MQTT | Message Queuing Telemetry Transport | Lightweight publish-subscribe protocol for constrained devices and unreliable networks | https://mqtt.org/ |
 | MRN | Medical Record Number | Unique identifier a healthcare provider assigns to a patient's record | https://en.wikipedia.org/wiki/Medical_record |
+| MRR | Mean Reciprocal Rank | Ranking metric scoring how high the first relevant result appears | https://en.wikipedia.org/wiki/Mean_reciprocal_rank |
 | MVCC | Multi Version Concurrency Control | Lets readers and writers proceed concurrently by keeping multiple versions of a row | https://www.postgresql.org/docs/current/mvcc.html |
 | MongoDB | MongoDB | Document database that stores schema-flexible JSON-like documents | https://www.mongodb.com/docs/ |
 | NAT | Network Address Translation | Maps multiple private addresses to a shared public address | https://datatracker.ietf.org/doc/html/rfc3022 |
+| NDCG | Normalized Discounted Cumulative Gain | Ranking metric that rewards relevant results appearing near the top | https://en.wikipedia.org/wiki/Discounted_cumulative_gain |
 | NLP | Natural Language Processing | Computational techniques for analyzing and generating human language | https://en.wikipedia.org/wiki/Natural_language_processing |
+| NTP | Network Time Protocol | Synchronizes machine clocks over a network | https://en.wikipedia.org/wiki/Network_Time_Protocol |
 | NoSQL | Not Only SQL | Describes non-relational databases optimized for flexible schemas or horizontal scale | https://en.wikipedia.org/wiki/NoSQL |
 | OAuth2 | OAuth 2.0 | Authorization framework that lets an application access resources on a user's behalf | https://datatracker.ietf.org/doc/html/rfc6749 |
 | OIDC | OpenID Connect | Identity layer on top of OAuth 2.0 for authenticating users | https://openid.net/developers/how-connect-works/ |
+| OLTP | Online Transaction Processing | Workload of many short read and write transactions serving an application | https://en.wikipedia.org/wiki/Online_transaction_processing |
 | ORM | Object Relational Mapper | Maps application objects to relational database rows and queries | https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping |
 | OWASP | Open Worldwide Application Security Project | Community effort publishing practices and tools for building secure software | https://owasp.org/ |
 | OpenAPI | OpenAPI Specification | Describes an HTTP API's endpoints, schemas and behavior in a machine readable format | https://www.openapis.org/ |
 | OpenID | OpenID | Federated identity standard letting a user authenticate once and reuse that identity across sites | https://openid.net/ |
+| PACELC | Partition, Availability, Consistency, Else Latency, Consistency | Extends CAP by naming the latency against consistency trade that applies when there is no partition | https://en.wikipedia.org/wiki/PACELC_design_principle |
 | PCI-DSS | Payment Card Industry Data Security Standard | Security requirements for organizations that handle payment card data | https://www.pcisecuritystandards.org/ |
 | PDF | Portable Document Format | Fixed-layout document format for reliable printing and viewing | https://en.wikipedia.org/wiki/PDF |
 | PHI | Protected Health Information | Individually identifiable health data that HIPAA regulates | https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160/subpart-A/section-160.103 |
@@ -100,6 +117,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | QPS | Queries Per Second | Throughput measure of how many requests a system serves each second | https://en.wikipedia.org/wiki/Queries_per_second |
 | QoS | Quality of Service | Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes | https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html |
 | RBAC | Role Based Access Control | Grants permissions to users based on assigned roles rather than individually | https://en.wikipedia.org/wiki/Role-based_access_control |
+| RDB | Redis Database file | Redis persistence mode that writes point-in-time snapshots of the dataset | https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/ |
 | REST | Representational State Transfer | Architectural style for stateless, resource-oriented HTTP APIs | https://en.wikipedia.org/wiki/REST |
 | RFC | Request For Comments | Numbered document series that defines internet standards and protocols | https://www.rfc-editor.org/ |
 | RFP | Request For Proposal | Formal solicitation inviting vendors to bid on a project | https://en.wikipedia.org/wiki/Request_for_proposal |
@@ -122,7 +140,10 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | SPOF | Single Point of Failure | A component whose failure alone can bring down the whole system | https://en.wikipedia.org/wiki/Single_point_of_failure |
 | SQL | Structured Query Language | Queries and manipulates data in a relational database | https://en.wikipedia.org/wiki/SQL |
 | SQLAlchemy | SQLAlchemy | Python SQL toolkit and ORM that maps objects to relational tables and builds queries | https://www.sqlalchemy.org/ |
+| SQLSTATE | SQLSTATE | Five-character standard error code a database returns for a failed statement | https://www.postgresql.org/docs/current/errcodes-appendix.html |
+| TF-IDF | Term Frequency-Inverse Document Frequency | Scores how important a term is to one document relative to the whole collection | https://en.wikipedia.org/wiki/Tf%E2%80%93idf |
 | TLS | Transport Layer Security | Encrypts and authenticates data sent over a network connection | https://datatracker.ietf.org/doc/html/rfc8446 |
+| TOAST | The Oversized-Attribute Storage Technique | Stores oversized column values out of line in a side table, compressed where possible | https://www.postgresql.org/docs/current/storage-toast.html |
 | TPS | Transactions Per Second | Throughput measure of how many transactions a system completes each second | https://en.wikipedia.org/wiki/Transaction_processing |
 | TTL | Time To Live | Duration after which a cached or stored value expires | https://en.wikipedia.org/wiki/Time_to_live |
 | Terraform | Terraform | Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files | https://developer.hashicorp.com/terraform/docs |
@@ -130,6 +151,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | URL | Uniform Resource Locator | Addresses the location and access method of a resource on the web | https://datatracker.ietf.org/doc/html/rfc3986 |
 | W3C | World Wide Web Consortium | Develops open web standards such as trace context propagation | https://www.w3.org/ |
 | WAF | Web Application Firewall | Filters and blocks malicious HTTP traffic before it reaches an application | https://owasp.org/www-community/Web_Application_Firewall |
+| WAL | Write Ahead Log | Sequential log written before data pages so committed transactions survive a crash | https://www.postgresql.org/docs/current/wal-intro.html |
 | WORM | Write Once Read Many | Storage mode that prevents a written object from being modified or deleted before a retention period ends | https://en.wikipedia.org/wiki/Write_once_read_many |
 | XML | Extensible Markup Language | Markup format for structured, machine and human readable documents | https://www.w3.org/XML/ |
 | XSS | Cross Site Scripting | Attack that injects malicious script into content viewed by other users | https://owasp.org/www-community/attacks/xss/ |
