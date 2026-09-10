@@ -31,9 +31,9 @@
 
 **What this is.** The topics an engineer who claims the responsibilities in `cases/02/projects/retail-software-marketplace/inputs.txt` must be able to discuss from first principles, not recite. Grounded in the design docs 00-06 in that folder. Self-contained — it assumes no other project's list.
 
-**How to use it.** Answer the bullet aloud before you open anything beneath it — the block is collapsed so the bullet stays a recall test rather than a page to read — then expand it and check what you said against what is there. A block sits under every MUST bullet and under none of the NICE or OPTIONAL ones; the priority table below says why. A topic you can only define is not yet known.
+**How to use it.** Answer the bullet aloud before you open anything beneath it — the block is collapsed so the bullet stays a recall test rather than a page to read — then expand it and check what you said against what is there. A block now sits under every bullet, whatever its priority. A topic you can only define is not yet known.
 
-**What an answer block is.** A target for what your own answer should have reached: three to five sentences in the register the answer wants in the room — what the thing is, the trade-off it buys and what that costs, and where it lands in *this* system, named component by named component. Matching its wording is worth nothing and matching its substance is the whole test. Where a question in [`interview-questions.md`](./interview-questions.md) already carries the depth, the block stops short and ends with a **Deeper:** pointer to it rather than saying the same thing twice.
+**What an answer block is.** A target for what your own answer should have reached, in the register the answer wants in the room — what the thing is, the trade-off it buys and what that costs, and where it lands in *this* system, named component by named component. Its length tracks the bullet's priority, because a block is only as long as the answer is worth in the room: three to five sentences on a MUST, two to four on a NICE, one or two on an OPTIONAL, for the reasons the priority table below gives. Matching its wording is worth nothing and matching its substance is the whole test. Where a question in [`interview-questions.md`](./interview-questions.md) already carries the depth, the block stops short and ends with a **Deeper:** pointer to it rather than saying the same thing twice.
 
 **The one exception.** Topic 24 asks what you personally measured, and nothing written here can answer that honestly for you. Those blocks hold a prompt skeleton instead — the facts to have ready — for you to complete.
 
@@ -96,7 +96,19 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Distributed monolith as the failure mode; the cost of nine deployments at low [QPS](https://en.wikipedia.org/wiki/Queries_per_second "Queries Per Second — Throughput measure of how many requests a system serves each second") and what makes it affordable (one repo, one migration history, one pipeline)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The cost of nine deployments and what makes it affordable are answered above under "Module boundary vs deployment boundary"; what this bullet adds is how you tell the failure mode has actually happened. The symptoms are diagnostic rather than architectural: two services that can never be released independently, a change that needs a coordinated deploy order, a synchronous call chain more than one hop deep, or a table two services both write. This design is checkable against each of those — no synchronous call crosses more than one service boundary, and `product_listing_facets` has exactly one writer — and the honest admission is that the single Alembic history is both the property that makes nine deployments cheap and the one that would let the distributed monolith in, because nothing structural stops a migration only the newest image can survive. **Deeper:** [interview-questions.md](./interview-questions.md#q3-six-services-and-three-worker-pools-for-a-system-peaking-around-35-qps-make-the-case-against-yourself-when-is-the-modular-monolith-the-right-call-and-what-would-make-you-collapse-these) — "Six services and three worker pools for a system peaking around 35 QPS. Make the case against yourself: when is the modular monolith the right call, and what would make you collapse these?"
+
+  </details>
 - **NICE** — Anti-corruption layer; no service reading another's database
+
+  <details><summary><strong>Answer</strong></summary>
+
+  An anti-corruption layer is a translation boundary: when `connection-service` consumes `connection.requested` or calls `retailer-service`, it maps the payload into its own model at the edge rather than letting a peer's field names spread inward, so a rename upstream breaks one adapter instead of a service. The no-shared-database half is the enforcement it rests on and is answered above under "Bounded contexts and aggregates" — a database role per service, and a peer that needs data it does not own calls an API or consumes an event. What the translation costs is a mapping nobody enjoys writing while the two models are still identical; what it buys is that they are allowed to stop being identical, because without it an event payload quietly becomes a shared schema with none of the visibility a shared table would at least have had.
+
+  </details>
 
 ## 2. Python, FastAPI and Pydantic Service Mechanics
 
@@ -124,6 +136,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Concurrency limits and backpressure; unbounded fan-out as a self-DoS
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Backpressure is the property that a system given more work than it can serve refuses some of it rather than accepting all of it and degrading everything — a bounded connection pool, a bounded queue, a bounded fan-out. The self-DoS is what happens without it: an `async def` handler that gathers over an unbounded list opens as many concurrent round trips as the input happened to contain, so a caller passing a large `product_ids` array to `POST /v1/catalog/compare` would exhaust the pod's pool and stall every other request that worker is serving. That is why compare is capped at five products and the catalog list at `limit≤50` — the limit in the contract is the backpressure mechanism, applied where it is cheapest to enforce and easiest for a client to understand. Bounding the fan-out of bulk work is the same instinct one layer down, and is answered under "Chunking a large job into bounded tasks" in the Celery topic.
+
+  </details>
 - **MUST** — FastAPI: dependency injection and its caching, routers as an enforcement point, middleware order, lifespan, exception handlers, BackgroundTasks vs a real queue
 
   <details><summary><strong>Answer</strong></summary>
@@ -147,6 +165,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   </details>
 - **NICE** — The [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") document as a build artefact the admin console and vendor integrations compile against
 
+  <details><summary><strong>Answer</strong></summary>
+
+  This is answered in full above — under Pydantic v2 in this topic for why the document is generated rather than written, and under "Functional/contract tests against the OpenAPI schema" in Testing Practice for what being a build artefact makes checkable. There is nothing left for this bullet to add beyond those two. **Deeper:** [interview-questions.md](./interview-questions.md#q2-the-frontend-team-generates-its-client-from-your-openapi-document-what-counts-as-a-breaking-change-and-how-do-you-ship-a-field-that-must-be-required) — "The frontend team generates its client from your OpenAPI document. What counts as a breaking change, and how do you ship a field that must be required?"
+
+  </details>
+
 ## 3. REST API Design Under Load and Under Retry
 
 **Backs:** catalog browse, connection APIs, and the admin panel calling the same versioned APIs.
@@ -166,6 +190,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Counting is expensive: exact total vs capped estimate, and the product consequence ("1,000+")
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Why an exact count costs what the page costs, and the "1,000+" concession, are owned by "Facet counts" in the search topic; what this bullet adds is that the concession lives in the API contract rather than in the UI. `PagedProducts` returns `total_estimate` and not `total`, so the field name itself tells an integrator the number is approximate and stops anyone building a page-count widget on it — the failure to avoid is a contract that says `total` and quietly means something else. It also pairs with keyset pagination: a cursor API has no page count to display in the first place, so the two decisions defend each other rather than each needing its own argument. **Deeper:** [interview-questions.md](./interview-questions.md#q2-the-api-returns-total_estimate-capped-at-1000-rather-than-an-exact-count-why-and-how-would-you-produce-the-estimate) — "The API returns `total_estimate` capped at 1,000 rather than an exact count. Why, and how would you produce the estimate?"
+
+  </details>
 - **MUST** — Idempotency keys on [POST](https://datatracker.ietf.org/doc/html/rfc9110 "HTTP POST — HTTP method that submits data to a server to create or process a resource"): storage, [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires"), replaying the stored response, and why the database unique constraint is the guarantee and the cache is not
 
   <details><summary><strong>Answer</strong></summary>
@@ -181,6 +211,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Filtering and faceting as an [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") surface; refusing query shapes that cannot be served — a product constraint that buys a performance guarantee
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The performance argument is owned above by "Faceted search as a performance problem" in Indexing and "Filter selectivity" in Search; the API-side addition is how a refusal is expressed. The filter surface is a closed set of named parameters — `category`, `country`, `deployment_model`, `price_max`, `integrations[]` — rather than a generic query language, which is what makes an unservable shape describable at all, and the refusal is a 422 carrying a machine-readable code that names the missing `category` rather than a slow success or a timeout. The rule I would generalise is that an API is allowed to refuse a shape it cannot serve inside its stated latency, and that refusing loudly at the contract is far better than degrading quietly under it. **Deeper:** [interview-questions.md](./interview-questions.md#q2-refusing-an-uncategorised-query-with-more-than-two-facet-predicates-is-a-product-constraint-bought-for-a-performance-guarantee-defend-that-and-tell-me-when-that-trade-is-wrong) — "Refusing an uncategorised query with more than two facet predicates is a product constraint bought for a performance guarantee. Defend that, and tell me when that trade is wrong."
+
+  </details>
 - **MUST** — Rate limiting and quotas: per-subject vs per-IP, token bucket vs sliding window, business limits vs infrastructure limits
 
   <details><summary><strong>Answer</strong></summary>
@@ -189,7 +225,19 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Contract testing against the OpenAPI document; no private admin backdoor API
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The testing half is answered under "Functional/contract tests against the OpenAPI schema" in Testing Practice; what belongs here is the design decision those tests are checking. The admin console is a static single-page application served from `blob-media`, and it calls the same `/v1/admin/*` surface as everything else, so no admin capability exists that the public contract does not already describe, gate and test. The cost is a chattier UI on entity screens that join across services, and it is paid deliberately: a private admin backend is exactly the surface that never gets the contract test, the router-level account-type dependency or the rate limit, because it was "internal". **Deeper:** [interview-questions.md](./interview-questions.md#q3-the-admin-console-is-a-static-single-page-application-calling-the-same-public-api-with-no-dedicated-backend-defend-the-chattiness-and-say-when-you-would-add-an-aggregate-endpoint) — "The admin console is a static single-page application calling the same public API, with no dedicated backend. Defend the chattiness, and say when you would add an aggregate endpoint."
+
+  </details>
 - **NICE** — Request correlation ids and their propagation obligations
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The logging and trace-propagation mechanics belong to Observability, under "Structured logging" and "Distributed tracing" there. This topic's share is the API obligation: APIM forwards `x-request-id` to the pod, a service accepts one if present and mints one if not, echoes it on the response and includes it in the error body — so a vendor integration reporting a failed publish can quote an identifier that finds the request across nine deployments. The rule that makes it worth anything is that propagation is an obligation on every outbound hop rather than a field on an inbound log line: a Celery task or a Service Bus message that drops the correlation id breaks the chain at exactly the point where an asynchronous failure is hardest to reconstruct.
+
+  </details>
 
 ## 4. Authentication: OAuth 2.0, OIDC and JWT
 
@@ -231,6 +279,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Token storage in a browser: HttpOnly/Secure/SameSite cookies vs localStorage, CSRF, and the trade-offs
+
+  <details><summary><strong>Answer</strong></summary>
+
+  `localStorage` is readable by any script on the origin, so one cross-site scripting flaw or one compromised front-end dependency exfiltrates the token; an `HttpOnly` cookie is not reachable from script at all, which downgrades that whole class of attack from stealing the credential to riding the session. That is the trade, because a cookie is sent automatically and therefore reintroduces cross-site request forgery, answered by `SameSite` plus an origin check rather than by putting a token back in a header. Here the refresh token lives in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to the API origin while the fifteen-minute access token is held in memory by the single-page application — so the long-lived credential is the one script cannot read, and the one script can read dies on reload. `Lax` rather than `Strict` because the redirect back from `identity-service` is a top-level navigation that `Strict` would strip the cookie from, which is the detail that turns a correct-looking setting into a broken login.
+
+  </details>
 - **MUST** — Client secret handling: Argon2id hashing, rotation, never in a repo
 
   <details><summary><strong>Answer</strong></summary>
@@ -293,6 +347,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Admin bypass paths and auditing every one of them
+
+  <details><summary><strong>Answer</strong></summary>
+
+  That every bypass is explicit and writes an `audit_event` is answered above, under "Enforcing the tenant filter in exactly one place" and "Scope design". What this bullet adds is the shape a safe bypass has to take: it is an argument on the individual repository call, not a session-wide flag or a role check made somewhere earlier, because a flag set once and read later is indistinguishable from the filter simply not being applied. The audit record is then the compensating control, and it only compensates if someone reads it — an operator opening one retail group is routine, the same operator opening two hundred in an hour is the signal, which means the bypass audit needs a query somebody actually runs rather than a table that merely exists. **Deeper:** [interview-questions.md](./interview-questions.md#q3-platform-admins-bypass-tenant-scoping-entirely-design-that-so-it-is-safe) — "Platform admins bypass tenant scoping entirely. Design that so it is safe."
+
+  </details>
 - **MUST** — Scope design: read vs write, org-scoped vs platform-scoped
 
   <details><summary><strong>Answer</strong></summary>
@@ -327,6 +387,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Money: integer minor units plus an explicit [ISO-4217](https://www.six-group.com/en/products-services/financial-information/data-standards.html "ISO 4217 — Standardizes three-letter currency codes for unambiguous monetary values") currency, never float
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Binary floating point cannot represent most decimal fractions exactly, so a price stored as a float accumulates error as soon as it is summed or compared, and the failure surfaces as a total that is a cent out with no bug to point at. So `product_price_tier.price_minor` is a `bigint` of minor units with an explicit `currency char(3)`, and every monetary column in the schema follows the same rule. The currency has to travel with the amount rather than being implied by the vendor's country or the request locale, because the comparison view sorts and ranges price tiers across vendors and an unlabelled 4900 is not a price. What it costs is conversion at every boundary and the discipline never to introduce a `numeric` column "just for this report". **Deeper:** [interview-questions.md](./interview-questions.md#q2-monetary-values-are-integer-minor-units-with-an-explicit-currency-price-tiers-are-relational-and-free-form-pricing-prose-stays-in-mongo-walk-me-through-each-of-those-three-decisions) — "Monetary values are integer minor units with an explicit currency, price tiers are relational, and free-form pricing prose stays in Mongo. Walk me through each of those three decisions."
+
+  </details>
 - **MUST** — Read models / projection tables: what they copy, who is allowed to write them, and why the hot query then touches one relation and never joins
 
   <details><summary><strong>Answer</strong></summary>
@@ -342,8 +408,26 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Arrays vs join tables; containment queries and their selectivity problems
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A junction table is the normalised answer and gives you referential integrity, per-value statistics and a join the planner can estimate; an array column gives you one relation, no join, and a `GIN` containment index. `product_listing_facets.country_coverage` and `integrations` are arrays precisely because that table is a read model whose whole purpose is that the hot query touches a single relation — a junction table would put back the join the projection exists to remove, and there is nothing to enforce integrity against anyway, since the permitted values come from the category's facet schema rather than from a table. What it costs is the estimation problem owned above by "Bitmap index scans": there are no per-element statistics for `text[]`, so containment selectivity is guessed badly at high cardinality. In the normalised half of the schema I would not make the same trade — `store` is a table rather than an array on `retail_group`, because stores have identity, a lifecycle and their own uniqueness constraint. **Deeper:** [interview-questions.md](./interview-questions.md#q3-retailers-already-run-enterprise-resource-planning-and-inventory-systems-integrations-text-is-a-filterable-facet-what-does-taking-that-seriously-demand-of-the-model) — "Retailers already run enterprise resource planning and inventory systems. `integrations text[]` is a filterable facet. What does taking that seriously demand of the model?"
+
+  </details>
 - **NICE** — Declarative range partitioning by month on unbounded tables; pruning, detach-to-archive as a metadata operation instead of a long DELETE
+
+  <details><summary><strong>Answer</strong></summary>
+
+  `audit_event` and `connection_message` are the only two tables here that grow without bound, and both are declaratively range-partitioned by month on their timestamp. Two properties pay for that immediately: the planner prunes partitions the query's time predicate cannot touch, so a thread's recent messages scan one small B-tree rather than the whole history, and inserts land in the current partition where the index stays cache-resident. The one that matters most operationally is retention — dropping data past the window is `DETACH PARTITION` plus an archive to blob, a metadata operation, where the equivalent `DELETE` is a long transaction generating dead tuples that autovacuum then has to chase across a table still serving reads. What it costs is that a unique constraint now has to include the partition key, and that a query with no time predicate scans every partition instead of one index. **Deeper:** [interview-questions.md](./interview-questions.md#q3-audit_event-and-connection_message-grow-without-bound-explain-the-partitioning-strategy-and-what-changes-about-it-at-ten-times-the-volume) — "`audit_event` and `connection_message` grow without bound. Explain the partitioning strategy, and what changes about it at ten times the volume."
+
+  </details>
 - **NICE** — Append-only tables and revoked UPDATE/DELETE grants
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Append-only is a grant rather than a convention: the application role on `audit_event` holds `INSERT` and `SELECT` and no `UPDATE` or `DELETE`, so a bug, a careless migration or a compromised service cannot rewrite history even where the code would happily try. That is the difference between a table nobody is supposed to modify and one nobody can, and it is checkable — the test is the role connecting and being refused, not a reviewer noticing. The cost lands on retention, because you have given up the mechanism that would normally trim the table, and that is answered by the monthly partitioning above: `DETACH` is a schema operation rather than a use of the `DELETE` grant the role does not have. Why the writes are asynchronous, and why that is a constraint rather than an optimisation, belongs to "Audit trail" in Security Beyond Authentication.
+
+  </details>
 - **MUST** — Transactions and isolation levels; [MVCC](https://www.postgresql.org/docs/current/mvcc.html "Multi Version Concurrency Control — Lets readers and writers proceed concurrently by keeping multiple versions of a row"), locking, deadlocks, SKIP LOCKED
 
   <details><summary><strong>Answer</strong></summary>
@@ -352,6 +436,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Sharding: what it actually costs, and the evolution triggers that justify it (and the cheaper move that usually comes first)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Sharding buys write throughput and working-set capacity, and it costs cross-shard joins, cross-shard transactions, a rebalancing operation and a routing layer every query now passes through — none of it cheap to reverse. `postgres-core` is around 110 GB at year five against a roughly two-write-per-second peak, so the triggers here are stated as numbers rather than instincts: shard only above about 2,000 sustained write transactions per second or a working set near 1 TB. The cheaper move that comes first is worth naming because it usually removes the reason — `audit_event` is about 25 GB and most of the growth, so moving it to blob-backed cold storage buys years of headroom for a fraction of the disruption. Vertical scaling plus a read replica is the honest answer for the whole modelled horizon, and I have not operated a sharded PostgreSQL in production; what I have done is the partitioning and replica work that defers the question.
+
+  </details>
 
 ## 7. Indexing and Query Performance
 
@@ -365,6 +455,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Planner statistics, selectivity, n_distinct, extended statistics, ANALYZE
+
+  <details><summary><strong>Answer</strong></summary>
+
+  That a bad estimate is what wrecks a plan is answered above under "EXPLAIN (ANALYZE, BUFFERS)" and "Bitmap index scans"; the mechanism underneath is a sample of the table held in `pg_statistic` — most-common values, a histogram and `n_distinct` — refreshed by `ANALYZE` and by autovacuum. Two failure modes matter for this schema: `n_distinct` is extrapolated from a sample and goes badly wrong on a large skewed column, and the planner assumes predicates are independent, so `category_slug = 'pos' AND deployment_model = 'saas'` multiplies two selectivities that are in fact correlated and underestimates the result by an order of magnitude. `CREATE STATISTICS` on a correlated column pair addresses the second and a raised statistics target the first. Neither helps the `text[]` and `jsonb` containment estimates the catalog search actually depends on, which is why the design constrains the query shape instead of trying to tune its way out.
+
+  </details>
 - **MUST** — Index types and their jobs: B-tree, composite (column order, leading-column rule), partial, covering/index-only scans, [GIN](https://www.postgresql.org/docs/current/gin.html "Generalized Inverted Index — PostgreSQL index type suited to values containing multiple keys, such as arrays or text search") vs [GiST](https://www.postgresql.org/docs/current/gist.html "Generalized Search Tree — PostgreSQL index type supporting range and exclusion constraints"), jsonb_path_ops, array containment, tsvector full text, [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables")
 
   <details><summary><strong>Answer</strong></summary>
@@ -455,6 +551,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Bulk operations: executemany, insert().on_conflict_do_update() for idempotent upserts, returning(), batching projection writes
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The upsert semantics and the batch size are owned by "Idempotent projection" in Polyglot Persistence and "Chunking a large job into bounded tasks" in Celery; what belongs here is the SQLAlchemy mechanism that expresses them. `insert(...).on_conflict_do_update(index_elements=["product_id"], set_=…, where=…)` is one PostgreSQL statement carrying the whole projection write including the stale-revision guard in its `WHERE`, so redelivery is a no-op decided by the database rather than by a read-modify-write the application would have to serialise. `executemany` sends two hundred rows in one round trip instead of two hundred, and `returning()` gives back the rows the statement actually changed — useful precisely here, because those are the cache keys `indexer-worker` then has to purge. The trap worth flagging is that this is Core, not the ORM: nothing passes through the session's identity map, so anything already loaded is stale afterwards.
+
+  </details>
 - **MUST** — Repository layer as the single place a tenant filter can be enforced
 
   <details><summary><strong>Answer</strong></summary>
@@ -463,6 +565,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Alembic: revision graph, branches and merges, autogenerate's blind spots (server defaults, index changes, enums, data migrations)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Alembic's history is a directed graph rather than a list — each revision names its `down_revision`, so two branches merged in Git leave two heads and `upgrade head` fails until a merge revision joins them, which is the correct failure and the one people work around by editing a down-revision by hand. Autogenerate is a first draft and not an answer: it misses server defaults, cannot generate a `CREATE INDEX CONCURRENTLY` at all because that must run outside a transaction, handles PostgreSQL enum changes badly, and by definition cannot invent a data migration. With one migration history shared across nine deployments the two-heads case is routine here rather than exotic, so the rules I would hold are that every generated revision is read and edited before it lands, and that a backfill is a job the release triggers rather than a loop inside the migration.
+
+  </details>
 - **MUST** — Expand/contract migrations: the previous image must run against the new schema, CREATE INDEX CONCURRENTLY, lock-taking DDL, statement timeouts
 
   <details><summary><strong>Answer</strong></summary>
@@ -511,6 +619,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Immutable revisions as a modelling pattern; append instead of update
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Appending a new revision instead of updating in place makes a listing's history part of the data rather than something reconstructed later: `product_metadata_revisions` holds an immutable snapshot per publish, and `product.current_revision_id` in `postgres-core` is the single mutable pointer saying which one is live. Three things fall out of that — a publish becomes a pointer swap, so it is atomic and reversible; `cat:listing:{id}:v{rev}` becomes a cache key that a lost purge cannot make wrong; and "what did this listing claim when the retailer shortlisted it" is answerable. What it costs is storage that grows per publish and a compaction job to bound it, which is why retention is the latest ten revisions per product with a twelve-month floor. The pattern is right wherever the previous state has evidential value and wrong for high-churn data nobody will ever look back at.
+
+  </details>
 - **MUST** — Replica sets: elections, primary/secondary reads, read preference, read concern and write concern, and what "eventually consistent secondary" costs
 
   <details><summary><strong>Answer</strong></summary>
@@ -519,9 +633,33 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **OPTIONAL** — Aggregation pipeline basics and where the work should not be done
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The aggregation pipeline is MongoDB's server-side stage chain — `$match`, `$group`, `$lookup`, `$project` — for work you would otherwise pull into the application. Here it should stay close to absent: anything a retailer filters, sorts or counts on is projected into `product_listing_facets` and answered by PostgreSQL, so `mongo-catalog`'s job is document reads by `_id`, and a `$lookup` in the read path would be re-implementing the projection in the store least able to index for it.
+
+  </details>
 - **OPTIONAL** — Multi-document transactions: available but expensive, and why the design avoids needing them
+
+  <details><summary><strong>Answer</strong></summary>
+
+  MongoDB does support multi-document transactions on a replica set, at the cost of holding a snapshot, a default sixty-second limit and real throughput loss on contended documents. This design never needs one because a listing publish writes exactly one Mongo document and then commits in PostgreSQL — the ordering rule owned by "The dual-write problem" removes the requirement, and a transaction here would only make the half that still cannot be atomic look safer than it is. **Deeper:** [interview-questions.md](./interview-questions.md#q2-on-a-listing-publish-the-mongodb-write-happens-before-the-postgresql-commit-why-that-order-specifically-and-what-cleans-up-when-it-goes-wrong) — "On a listing publish, the MongoDB write happens before the PostgreSQL commit. Why that order specifically, and what cleans up when it goes wrong?"
+
+  </details>
 - **NICE** — Sharding: shard-key choice as a hard-to-reverse decision — and the case for not sharding
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The shard key decides everything downstream: it fixes which queries route to one shard and which must scatter-gather, and a poor choice gives you a hot shard that cannot be fixed without a full resharding. `mongo-catalog` is around 15 GB at year five and its dominant access is a point read by `_id`, which is the pattern that gains least from sharding, so the case here is simply not to — a three-member replica set holds it comfortably for the whole modelled horizon. If it were ever forced, `category_slug` is the tempting key and the wrong one, because category sizes are wildly uneven and the point read would then scatter; hashed `_id` routes that read correctly and gives up serving a category browse from one shard, which costs nothing because that query is answered in PostgreSQL anyway. The general cost this design deliberately avoids paying is that a wrong shard key is discovered under exactly the load that made you shard.
+
+  </details>
 - **OPTIONAL** — Managed variants (Cosmos DB for MongoDB) diverging at runtime, not at deploy
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Cosmos DB for MongoDB vCore speaks the wire protocol without being the same engine, so an unsupported aggregation stage or text-index type fails when a query runs rather than when the deployment succeeds — the worst place to find out. It is a flagged verify-before-build item here: if `mongo-catalog` is deployed on vCore rather than a self-managed replica set, the index and query shapes used by `catalog-import-worker` and `indexer-worker` have to be checked against the pinned tier's feature matrix before the design leans on them.
+
+  </details>
 
 ## 10. Polyglot Persistence and Cross-Store Consistency
 
@@ -556,6 +694,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Reconciliation jobs as the backstop for a lost event, and why a design that needs one should say so
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The orphan sweep is named above under "The dual-write problem"; its other half is the backstop proper — the same nightly job re-projects any `product` whose `projected_at` trails its `updated_at` by more than five minutes, which closes the gap if an event is lost between the relay and `indexer-worker`. The reason a design that needs one should say so is that the job is an admission: at-least-once delivery plus idempotent consumers is not quite airtight, and the residual exposure is bounded by the reconciliation interval rather than by anything faster. Saying it converts an unknown into a number someone can argue with, and it makes the honest test available — a reconciliation job that routinely finds work is a defect report about the primary path, not a job doing its job.
+
+  </details>
 - **MUST** — Eventual consistency made visible: projection lag as an SLI with an alert, because "the indexer died" is otherwise a silent failure
 
   <details><summary><strong>Answer</strong></summary>
@@ -571,6 +715,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **OPTIONAL** — CQRS as the general name for this shape; when it is over-engineering
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Command Query Responsibility Segregation is the general name for what `product_listing_facets` already is: writes go to one model, reads to another shaped for the query, joined asynchronously. Naming it adds nothing here and risks importing the parts this design deliberately does not have — no command bus, no event-sourced write model, no second service to operate — which is where it becomes over-engineering, when the projection is adopted as a framework rather than as the answer to one query shape that actually hurt.
+
+  </details>
 - **MUST** — The honest alternative (everything in Postgres with JSONB) and what it trades
 
   <details><summary><strong>Answer</strong></summary>
@@ -619,8 +769,26 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — TTL choice per data shape: 60 s for a search page because enumerating every affected filter combination is intractable
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Why the search layer gets a TTL rather than a purge is answered above under "Invalidation strategies"; what this bullet adds is how the number itself is chosen. A TTL is a staleness budget you are buying, so it is set from what the reader can tolerate rather than from what the cache can bear: sixty seconds on a search page because a listing appearing a minute late costs a sourcing workflow nothing, fifteen minutes on `cat:listing:` where the revision suffix already makes a stale value unreachable and the TTL is only reaping orphans, five minutes on facet counts because they move far more slowly than the pages they decorate, and sixty seconds in-process on the near-static category tree. The one to watch is that a longer TTL raises the hit ratio and therefore looks like an improvement on every dashboard, which is why the tolerable staleness has to be the argument and the hit ratio only the consequence. **Deeper:** [interview-questions.md](./interview-questions.md#q2-three-redis-layers-three-different-invalidation-rules--event-driven-purge-for-listing-detail-ttl-only-for-search-pages-event-purge-for-facet-counts-why-does-the-search-layer-get-a-different-rule) — "Three Redis layers, three different invalidation rules — event-driven purge for listing detail, TTL only for search pages, event purge for facet counts. Why does the search layer get a different rule?"
+
+  </details>
 - **NICE** — Eviction policies, memory sizing, hot keys, big keys
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The eviction policy has to be set deliberately, because the default is not what a cache wants: `allkeys-lru` is right for `redis-cache`, where everything is rebuildable from PostgreSQL and MongoDB, and would be actively wrong for `redis-broker`, which is one of the reasons those are separate instances rather than two databases on one server. Sizing comes from the working set — about 6 GB here for hot listings, search pages, facet counts and counters — with headroom, because a cache sitting at its `maxmemory` evicts on every write and the hit ratio then falls at exactly the moment traffic rises. A hot key is what one very popular listing produces and it is a concurrency problem rather than a memory one, answered here by single-flight rather than by more memory; a big key is the opposite failure, a single value large enough that fetching it stalls a single-threaded server for every other client. The signal that tells you either is happening is `redis_cache_hit_ratio` broken down by keyspace, which is why that SLI is defined per keyspace rather than as one number for the instance — a collapsed search-page ratio hidden behind a healthy overall figure is the case it exists to catch. **Deeper:** [interview-questions.md](./interview-questions.md#q3-at-ten-times-the-traffic-is-redis-still-the-right-layer-what-would-you-add-and-what-would-you-stop-caching) — "At ten times the traffic, is Redis still the right layer? What would you add, and what would you stop caching?"
+
+  </details>
 - **OPTIONAL** — Redis data structures and atomicity; pipelines; Lua; SETNX locks and the honest limits of distributed locking
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Redis is single-threaded, so every command is atomic and a Lua script or a `MULTI` block is atomic as a unit — which is what makes the token bucket, the idempotency key and the per-vendor import semaphore correct across pods, while pipelining only amortises round trips and changes no semantics. The honest limit is `SET NX EX` as a lock: it is a lease that can expire while its holder is still working, so it is fine for the single-flight cache recompute here, where a lost lock costs one duplicate query, and it is not a mutual-exclusion primitive for anything two holders would corrupt. **Deeper:** [interview-questions.md](./interview-questions.md#q2-walk-me-through-single-flight-and-probabilistic-early-expiry-what-does-each-cover-that-the-other-does-not) — "Walk me through single-flight and probabilistic early expiry. What does each cover that the other does not?"
+
+  </details>
 - **MUST** — Redis for rate-limit counters, idempotency keys and semaphores — and the fail-open/fail-closed decision when it is unavailable
 
   <details><summary><strong>Answer</strong></summary>
@@ -676,6 +844,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Fairness: a per-tenant concurrency cap (a Redis semaphore) so one vendor cannot occupy the pool
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The cap itself is answered above under "Chunking a large job into bounded tasks"; what it adds as a subject is that queue separation and the semaphore solve two different fairness problems. Separate queues stop imports starving indexing and notifications — fairness across kinds of work — while the per-vendor semaphore stops one vendor's twenty thousand rows occupying all four import slots, which is fairness across tenants inside one kind and is something no amount of queue separation gives you. What neither fixes is ordering: a small vendor's job queued behind a large one still waits, because Celery has no per-tenant round-robin, and the honest options are a queue per tier or accepting the latency rather than pretending the cap solved it.
+
+  </details>
 - **MUST** — Chunking a large job into bounded tasks; batching downstream writes so one import does not produce 20,000 invalidations
 
   <details><summary><strong>Answer</strong></summary>
@@ -691,6 +865,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Graceful shutdown: preStop, draining, task size vs termination grace period
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The pod-lifecycle mechanics belong to Kubernetes and are answered under "Graceful termination" there; the Celery half of this is an arithmetic problem. A drain is only graceful if the longest in-flight task finishes inside `terminationGracePeriodSeconds`, which is 120 seconds here — and that is why imports are chunked at five hundred rows rather than run whole, so chunk size and shutdown are one decision rather than two. When the arithmetic fails anyway, `acks_late` is what stops it being data loss: the task was never acknowledged, so it is redelivered rather than lost, at the cost of possibly running twice, which is only acceptable because every task here is idempotent. The case to avoid is the task that neither fits the window nor is idempotent, because then the only choice left is between losing it and doing it twice.
+
+  </details>
 - **MUST** — Durability: what a broker failover can lose, and how to test it (kill the worker) rather than assume
 
   <details><summary><strong>Answer</strong></summary>
@@ -725,6 +905,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Event schema design and versioning; consumer-driven contracts
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Every event here carries the same envelope — `event_id`, `type`, `occurred_at`, `aggregate_id`, an optional `source_revision_id` and a payload — and that split is the design: the envelope is what every consumer depends on, the payload is what one consumer reads. Versioning then follows the same rule as the API: an added optional field is safe, a removed or retyped one is a new event type running alongside the old until every subscription has moved, and the emitter must never know who is listening. The rule I hold hardest is that an event carries a fact and an identifier rather than a whole entity — `catalog.listing.published` says which listing and which revision, and `indexer-worker` reads the current document itself, so a redelivered or delayed event cannot carry a stale copy of the truth. Consumer-driven contracts are the honest way to test any of that, because otherwise an emitter finds out what it broke from a dead-letter queue.
+
+  </details>
 - **MUST** — Two messaging systems on purpose: an in-process work queue vs an event bus that crosses a boundary — one rule, no overlap
 
   <details><summary><strong>Answer</strong></summary>
@@ -748,6 +934,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   </details>
 - **NICE** — Splitting policy from delivery: deciding whether to notify in code that has database context, delivering in a function that does not
 
+  <details><summary><strong>Answer</strong></summary>
+
+  The rule is answered above under "Two messaging systems on purpose"; what this bullet adds is what blurring it looks like in each direction. Push policy into `fn-notify-dispatch` and the Function needs a database connection, the tenant filter and the notification-preference model — so it acquires everything the split existed to keep out, in the component with the least observability and the shortest execution budget. Pull delivery into `notification-worker` and an email-provider outage becomes retries held in a Celery worker on `redis-broker`, whose durability story is the weakest link in this design, rather than in `sb-notification-dispatch`, which has a dead-letter queue and an alert already watching it. **Deeper:** [interview-questions.md](./interview-questions.md#q2-notification-policy-lives-in-notification-worker-and-delivery-lives-in-fn-notify-dispatch-why-split-those-and-what-breaks-if-the-boundary-blurs) — "Notification policy lives in `notification-worker` and delivery lives in `fn-notify-dispatch`. Why split those, and what breaks if the boundary blurs?"
+
+  </details>
+
 ## 14. Search and Faceted Filtering in PostgreSQL
 
 **Backs:** catalog search and listing filters used when chains compare coverage.
@@ -760,6 +952,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Language handling: a single dictionary versus a multilingual catalog, and trigram similarity (pg_trgm) for fuzzy name matching
+
+  <details><summary><strong>Answer</strong></summary>
+
+  That a single dictionary breaks on a multilingual European catalog is noted above under "When Postgres search stops being enough"; the mechanism is that `to_tsvector` takes a text-search configuration, so the fix is a language per listing, a `search_vector` built with that listing's configuration, and a query stemmed the same way — which forces the search either to know the user's language or to run against several vectors. Trigram similarity solves a different problem and is worth keeping separate: `pg_trgm` matches on character overlap rather than lexemes, so it catches a misspelled or partially typed vendor name where stemming cannot, and it supports a leading wildcard a B-tree will not. Neither is in this design — the catalog is modelled as monolingual, and the flagged next step is a prototype against real vendor copy, which is also the most likely trigger for the dedicated search engine the design defers. I would rather say that plainly than imply a multilingual index I have not built. **Deeper:** [interview-questions.md](./interview-questions.md#q3-this-design-deliberately-rejected-elasticsearch-for-postgresql-full-text-search-defend-that-and-name-exactly-what-would-reverse-it) — "This design deliberately rejected Elasticsearch for PostgreSQL full-text search. Defend that, and name exactly what would reverse it."
+
+  </details>
 - **MUST** — Facet counts: how they are computed and why they cost as much as the page
 
   <details><summary><strong>Answer</strong></summary>
@@ -822,8 +1020,26 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Graceful termination: preStop, terminationGracePeriodSeconds, draining workers rather than killing them
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The pod lifecycle is worth having exactly right: on delete, Kubernetes removes the pod from Service endpoints and runs `preStop` concurrently, then sends `SIGTERM`, then `SIGKILL` at `terminationGracePeriodSeconds`. Endpoint removal is eventually consistent across kube-proxy and the ingress, which is why a web pod's `preStop` is a short sleep — it keeps serving during the seconds when traffic is still being routed to it, and skipping that is the usual cause of 502s in an otherwise healthy rolling update. For the three worker deployments the same hook does something different: it stops queue consumption so nothing new is taken, and the container then finishes only what it already holds. Whether what it holds actually fits the window is the sizing question, and that belongs to "Graceful shutdown" in the Celery topic.
+
+  </details>
 - **NICE** — Autoscaling: [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ "Horizontal Pod Autoscaler — Automatically adjusts the number of Kubernetes pod replicas to match load") on CPU and on a custom queue-depth metric, cluster autoscaler
+
+  <details><summary><strong>Answer</strong></summary>
+
+  CPU at a 65% target is the right signal for the six services, whose load is request-driven and roughly proportional to it. It is the wrong signal for a Celery worker, which can sit idle-waiting on MongoDB with a five-hundred-deep backlog and never trigger — so the three worker pools scale on `celery_queue_depth` through a custom metric adapter, which is the queue-separation decision paying off, because a per-queue depth only means anything if each queue has its own deployment. The cluster autoscaler is a second and slower loop underneath, three to eight nodes: the HPA asks for pods and, if none fit, a node has to be provisioned first, so real scale-up latency is node time rather than scheduling time — which is why capacity is provisioned at roughly three times the modelled peak instead of relying on autoscaling to absorb a burst. The failure worth naming is scaling on a signal the bottleneck does not move: more `catalog-service` pods against a saturated replica adds connections, not throughput.
+
+  </details>
 - **NICE** — NetworkPolicy default-deny, ingress and egress; service mesh and mTLS as a documented upgrade with a named trigger rather than a default
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The mesh trade-off and its trigger are owned by "Encryption in transit and at rest" in Security Beyond Authentication; the Kubernetes half is what default-deny actually is. A NetworkPolicy is an allowlist of pod-selector pairs enforced by the container network plugin, and it is default-deny only in the sense that selecting a pod at all denies everything not explicitly allowed — so a namespace with no policy is fully open, and the classic mistake is a policy that names ingress and leaves egress unselected, which then permits everything outbound. Egress is the half that matters most here: only the payment provider, the email provider and Azure service endpoints are reachable from the cluster, which turns a compromised dependency into a blocked connection rather than an exfiltration. What it does not give you is authentication — it constrains which pod may reach which port and says nothing about who is calling, which is exactly the gap mTLS would close and the reason its absence is stated rather than silent. **Deeper:** [interview-questions.md](./interview-questions.md#q3-there-is-no-mutual-transport-layer-security-between-services-defend-that-and-name-the-exact-trigger-that-would-change-it) — "There is no mutual Transport Layer Security between services. Defend that, and name the exact trigger that would change it."
+
+  </details>
 - **MUST** — Workload identity instead of mounted credentials
 
   <details><summary><strong>Answer</strong></summary>
@@ -879,7 +1095,19 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Environment promotion, staging that is the same topology at smaller size, and what makes a staging smoke test meaningful
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Why staging is the same topology at smaller instance sizes is owned by "Environments" in the Terraform topic; the pipeline's contribution is that promotion moves an artefact rather than rebuilding one — the digest that passed staging is the digest deployed to production, so "it worked in staging" is a statement about the same bytes rather than about the same commit. That narrows what the smoke test has to prove, and being explicit about it matters: that the thing which shipped is running, reachable through the real edge, talking to its real data stores and on the migration it expects — not that the feature is correct, which the earlier stages already gated. The honest limit is that staging carries neither production's data volume nor its traffic, so it cannot tell you anything about a query plan or a cache hit ratio; it tells you about wiring, and treating a green smoke as a performance signal is precisely how an unverified latency figure gets quoted.
+
+  </details>
 - **NICE** — Supply chain: digest-pinned images, hash-pinned dependencies, [CVE](https://www.cve.org/ "Common Vulnerabilities and Exposures — Public identifier for a known software security flaw") scanning, SBOM, weekly base-image rebuilds
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Digest pinning, hash-pinned dependencies and the weekly rebuild are answered under "Docker fundamentals" in the Kubernetes topic; what is left here is the gate and the one piece this design does not have. The scan stage sits after build and before migrate, so it gates the artefact rather than the source — a dependency audit and an image CVE scan of the exact digest that would ship — and the decision that has to be made explicitly is which severity fails the build, because a gate that goes red on every medium finding is bypassed within a month. A software bill of materials is not in this design and I would not claim otherwise: it is the inventory that turns "are we exposed" from a rescan into a query, which is the difference between hours and minutes on the day a widely used library is disclosed. Generating one at build and storing it beside the digest is the cheap version, and its absence here is a gap rather than a rejection. **Deeper:** [interview-questions.md](./interview-questions.md#q1-ruff-a-type-checker-sonarqube-and-trivy-all-gate-this-kind-of-pipeline-what-does-each-catch-that-the-others-do-not) — "Ruff, a type checker, SonarQube and Trivy all gate this kind of pipeline. What does each catch that the others do not?"
+
+  </details>
 - **MUST** — Secrets in CI: OIDC federation to the cloud instead of stored credentials
 
   <details><summary><strong>Answer</strong></summary>
@@ -935,6 +1163,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Managing alert rules and IAM role assignments as code so a widened permission is a reviewable diff
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Both halves are answered above — the alert-rule case under "Drift" in this topic, the role-assignment case under "Workload identity" in Kubernetes and "Secrets" in Security Beyond Authentication. What is genuinely this bullet's own is why the two belong in one sentence: both are controls whose failure is invisible, so declaring them converts a silent widening into a diff somebody has to approve, which is the only review that catches a permission nobody would have thought to look for. The thing to watch is that it holds only while the portal is not a write path — one role assignment made by hand and the next apply either reverts it mid-incident or, worse, leaves it, because nothing was declared for it to conflict with.
+
+  </details>
 - **MUST** — Applying only from CI, plan-review gates, and the blast radius of the deploy identity (splitting plan-only from apply, separating network/data-plane state)
 
   <details><summary><strong>Answer</strong></summary>
@@ -951,11 +1185,23 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   </details>
 - **NICE** — What IaC does not give you: it is not a test that the topology works
 
+  <details><summary><strong>Answer</strong></summary>
+
+  A successful `apply` proves the provider accepted the declarations, not that the system works: a NetworkPolicy can apply cleanly and deny a path the application needs, a private endpoint can exist with no DNS zone linked to it, an alert rule can be created against a metric nothing emits — and every one of those is green in Terraform. The gap is that Terraform asserts existence and configuration and never behaviour, so what closes it is the post-deploy smoke test and, for the controls specifically, a check that exercises them: a connection that should be refused being refused, an alert made to fire in staging by stopping the worker. The alert rule is the trap that catches people, because it is both declared as code and never observed until the day it was supposed to fire.
+
+  </details>
+
 ## 18. Observability and Alerting
 
 **Backs:** monitored services with Azure Monitor, tracking API errors and job failures on catalog and connection flows.
 
 - **NICE** — RED and USE methods for choosing what to measure
+
+  <details><summary><strong>Answer</strong></summary>
+
+  RED — rate, errors, duration — is the request-shaped view, and it is what the service SLIs here are: `catalog_search_latency_seconds`, `catalog_read_availability`, `write_path_availability`. USE — utilisation, saturation, errors — is the resource-shaped view, and it is where `postgres_replica_lag_seconds`, `celery_queue_depth` and connection-pool occupancy live. They are complementary rather than alternatives: RED tells you a user is suffering, USE tells you which resource to look at, and a dashboard with only one of them either cannot see a cause or cannot see an effect. What neither method prompts you to add is the failure this system fears most — an asynchronous step that stops without erroring — which is why `indexer_lag_seconds` and `outbox_unpublished_age_seconds` exist as a third category, freshness, that has to be reasoned about rather than derived from a checklist.
+
+  </details>
 - **MUST** — Metric types: counters, gauges, histograms; percentiles and what a p95 from a histogram really means; label cardinality
 
   <details><summary><strong>Answer</strong></summary>
@@ -985,6 +1231,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Application logs are diagnostics; the audit table is the record — keeping them separate
+
+  <details><summary><strong>Answer</strong></summary>
+
+  That the two are different things is answered above under "Structured logging"; the reason neither can substitute for the other is a list of properties that differ. Logs are sampled, retained for weeks, silently reshaped by a formatter change and lossy by design under pressure; `audit_event` is complete, append-only by grant, partitioned to twenty-four months and archived to immutable blob storage. A log pipeline also decides what to keep on the collector's terms, which is exactly the wrong property for a record you may have to produce to a supervisory authority or to a vendor disputing what an operator did. What tempts people to conflate them is that both are written per action, and the discipline is that the audit write is a domain event off the outbox rather than a log line somebody promoted.
+
+  </details>
 - **MUST** — Distributed tracing: spans, context propagation, [W3C](https://www.w3.org/ "World Wide Web Consortium — Develops open web standards such as trace context propagation") traceparent, propagation through queue message properties, sampling strategy, and verifying end-to-end trace continuity rather than assuming the instrumentation does it
 
   <details><summary><strong>Answer</strong></summary>
@@ -993,7 +1245,19 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — OpenTelemetry as the instrumentation layer and Azure Monitor/App Insights as the backend
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The point of the split is that instrumentation and backend are separable: the application depends on the OpenTelemetry [SDK](https://en.wikipedia.org/wiki/Software_development_kit "Software Development Kit — Packaged set of tools and libraries for building against a platform"), and metrics, logs and traces leave through one exporter with one set of resource attributes, so Azure Monitor is a configuration rather than a coupling. That matters concretely here — no Azure-specific telemetry call appears in the code, so pointing the same instrumentation at Prometheus and an ELK stack is an exporter change plus rebuilding dashboards and alert rules, and the rebuilding is where the actual work is. What OpenTelemetry does not give you for free is portability at the semantic level: attribute names and histogram bucket boundaries still have to match what the destination queries, and the auto-instrumentation versions are a flagged risk in this design rather than a solved problem. **Deeper:** [interview-questions.md](./interview-questions.md#q3-telemetry-here-goes-to-azure-monitor-and-application-insights-the-target-environment-runs-the-elk-stack-with-kibana-and-elastic-apm-what-transfers-and-what-would-you-have-to-build-differently) — "Telemetry here goes to Azure Monitor and Application Insights. The target environment runs the ELK stack with Kibana and Elastic APM. What transfers, and what would you have to build differently?"
+
+  </details>
 - **NICE** — Alert hygiene: alerts as code, an alert silenced by hand during an incident and never restored is how monitoring rots
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Alerts as code is answered under "Drift" in the Terraform topic, and the rest of alert hygiene is this bullet's own subject. The rot is rarely one hand-silenced rule: it is a page that fires weekly and is always dismissed, a threshold quietly loosened until it can no longer fire, and an alert with no named owner or runbook — each of which trains the on-call to read the channel as noise, after which the one real page is missed for the same reason. The countermeasures are boring and effective: every rule names an owner and a runbook, page versus ticket is decided by whether a human can act now, and an alert that has never fired is reviewed rather than trusted, because it is an untested assertion about a failure nobody has reproduced. **Deeper:** [interview-questions.md](./interview-questions.md#q3-of-the-alerts-in-this-design-which-would-you-page-a-human-for-at-three-in-the-morning-and-which-would-you-not) — "Of the alerts in this design, which would you page a human for at three in the morning, and which would you not?"
+
+  </details>
 
 ## 19. Testing Practice
 
@@ -1049,6 +1313,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Idempotency and retry tests; failure injection (kill the worker, drop the cache, stall the broker)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The kill test for import durability is owned by "Durability" in the Celery topic; what belongs here is that this is a test layer rather than a one-off exercise. The behaviours this design depends on are all invisible to ordinary tests: a redelivered event being a no-op, a stale-revision event being discarded, business rate limiting failing closed for writes and open for reads when `redis-cache` is gone, the reconciliation job re-projecting a row whose event was lost. Each is a test that injects the failure against the real dependency in Compose — kill the worker mid-chunk, stop Redis, pause the relay — and asserts the specific recovery rather than the absence of an error. What it costs is the slowest and flakiest stage in the suite, which is an argument for running it on merge rather than on every push, not for not having it.
+
+  </details>
 - **MUST** — What a test that has never failed proves: nothing — mutate the code and confirm the test catches it
 
   <details><summary><strong>Answer</strong></summary>
@@ -1057,6 +1327,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Coverage as a signal, not a target
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Answered above, at the end of "What a test that has never failed proves": a line can be executed by a test that asserts nothing, so coverage measures reach and not assertion. The one thing to add is what it is genuinely good for — the delta rather than the level, because a merge request that drops coverage on a file it touched is a question worth asking, while an absolute target is a number people learn to satisfy. **Deeper:** [interview-questions.md](./interview-questions.md#q1-what-does-a-test-coverage-number-actually-tell-you-and-what-does-it-not) — "What does a test coverage number actually tell you, and what does it not?"
+
+  </details>
 
 ## 20. Security Beyond Authentication
 
@@ -1091,6 +1367,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Scraping and enumeration defence: per-subject limits, capped result counts, absence of a bulk export
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The individual mechanisms are answered elsewhere — per-subject business limits under "Rate limiting and quotas" in the API topic, capped counts under "Facet counts" in Search — and what makes them a defence rather than three unrelated settings is that they were chosen together against one adversary: an authenticated account copying the catalog for a rival marketplace. The three that carry it are a per-vendor cap on listing detail fetches, so systematic collection is slow enough to notice; `total_estimate` capped at 1,000, so the result set's size is not itself an inventory; and the absence of any bulk export endpoint, which is a deliberate hole in the API rather than a feature nobody got round to. The honest limit is that none of this stops a patient scraper — a rival with a legitimate account and a month can have the catalog — so the real control is detection and account termination, and the design's contribution is making the traffic shape visible rather than pretending at prevention.
+
+  </details>
 - **MUST** — Encryption in transit ([TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") versions, [HSTS](https://datatracker.ietf.org/doc/html/rfc6797 "HTTP Strict Transport Security — Instructs browsers to only ever connect to a site over HTTPS"), certificate verification, private endpoints) and at rest (TDE, [CMK](https://learn.microsoft.com/en-us/azure/key-vault/keys/about-keys "Customer Managed Key — An encryption key the customer controls rather than the cloud provider"), envelope encryption, key rotation)
 
   <details><summary><strong>Answer</strong></summary>
@@ -1106,6 +1388,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Audit trail: append-only grants, partitioning, immutable archive, written asynchronously and why that is a constraint rather than an optimisation
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The grant and partitioning mechanics belong to the data-modelling topic, under "Append-only tables and revoked UPDATE/DELETE grants"; what belongs to security is why the write is asynchronous. It is not a performance choice: a synchronous audit write on a read would make replica-served catalog reads impossible, because a replica cannot write — so the asynchrony is imposed by the read architecture, and calling it an optimisation would misrepresent what could actually be changed. The cost is stated rather than hidden, that an audit row can trail its event by seconds and in a total outbox loss could be missed. What makes that acceptable is that `outbox_event` commits in the same transaction as the state change, so the record of what happened is durable before the audit row exists at all.
+
+  </details>
 - **MUST** — [GDPR](https://gdpr-info.eu/ "General Data Protection Regulation — EU regulation governing the processing of personal data") for [B2B](https://en.wikipedia.org/wiki/Business-to-business "Business to Business — Describes commerce conducted between organizations rather than to individual consumers")/occupational data: lawful basis, minimisation, residency, sub-processors, [DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them"), and erasure conflicting with a counterparty's business record
 
   <details><summary><strong>Answer</strong></summary>
@@ -1114,6 +1402,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — Keeping PCI scope at [SAQ-A](https://www.pcisecuritystandards.org/document_library/ "Self-Assessment Questionnaire A — Lightest PCI-DSS compliance tier for merchants who fully outsource card data handling") by never touching cardholder data, and what changes the moment the platform intermediates a payment
+
+  <details><summary><strong>Answer</strong></summary>
+
+  SAQ-A is the lightest compliance tier and it is available only because no cardholder data enters the platform's network, storage or logs: vendor subscription payments go through the payment provider's hosted fields, and what the schema keeps is `billing_account.psp_customer_ref` and `billing_charge.psp_invoice_ref`, which are opaque external references. That is why payment between retailer and vendor is an explicit non-goal rather than a feature nobody built — the moment the platform intermediates a transaction it is in the flow of funds, and the scope changes category rather than degree, bringing financial-services questions with it that are not an architect's to answer. My position is that this boundary is an architectural asset and has to be defended in product conversations rather than only in the security document, because it is the kind of line that gets crossed by a feature request nobody recognised as one.
+
+  </details>
 
 ## 21. Linux and Production Operations
 
@@ -1148,7 +1442,19 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **OPTIONAL** — Log rotation and retention
+
+  <details><summary><strong>Answer</strong></summary>
+
+  On a host this is `logrotate`: a size or time trigger, compression, a retention count, and either a signal to the writer or `copytruncate` so the process does not keep writing to a deleted inode. It barely applies here, because containers log JSON to stdout and Azure Monitor owns collection and retention — and the container-era version of the failure it guards against is already named under "Processes and services" above.
+
+  </details>
 - **OPTIONAL** — Package management and patch cadence for container base images
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The cadence is answered under "Docker fundamentals" in the Kubernetes topic — base images pinned by digest and rebuilt weekly, so that pinning does not quietly come to mean unpatched. What is specific to the package manager is that the rebuild is what actually applies the distribution's security updates, so a `Dockerfile` that pins operating-system package versions as well as the base digest is perfectly reproducible and permanently vulnerable, which is the wrong end of that trade.
+
+  </details>
 - **MUST** — Shell fundamentals for safe operational scripting: exit status vs output, pipefail, quoting, and why a pipeline reports only its last stage
 
   <details><summary><strong>Answer</strong></summary>
@@ -1183,6 +1489,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **OPTIONAL** — Strangler-fig and branch-by-abstraction for larger moves
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Strangler-fig routes traffic progressively from an old implementation to a new one behind a stable façade until nothing reaches the old one; branch-by-abstraction does the same inside a codebase, introducing an interface both implementations satisfy so the migration happens on the main branch instead of a long-lived one. Neither appears in this design, which is greenfield — the nearest thing it does is expand/contract, the same additive-first, remove-last shape applied to a schema — and if a module here did need replacing, branch-by-abstraction is what I would reach for, because it keeps the pipeline gating the change the whole way through.
+
+  </details>
 - **MUST** — Backwards compatibility of an API and a database schema during a refactor
 
   <details><summary><strong>Answer</strong></summary>
@@ -1191,6 +1503,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **OPTIONAL** — Review as knowledge transfer; disagreeing on substance, not on style a linter should own
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The style half is answered above under "What a review is for". What is left is that a review is often the only place a decision's reasoning reaches anyone else, so the comment worth writing on a nine-deployment codebase is the one that says why a boundary exists, and the question worth asking is the one that makes an author state an assumption they had not noticed making.
+
+  </details>
 
 ## 23. Documentation and Operational Writing
 
@@ -1204,6 +1522,12 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **NICE** — A document states what is true now, not how it got that way
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A document should record the corrected fact and not the correction — no "previously we thought", no dated note narrating an edit — because version control already holds that history and a reader wants the current truth rather than its provenance. The exception worth carving out is a live-belief warning: where a reader may still absorb a stale belief from a source that is currently live, saying so plainly is actionable rather than archaeological. Architecture decision records are the deliberate other case and are not an exception to the rule, for the reason given under "Architecture decision records" below: each still states what was true at its own moment. The test I actually use is whether a sentence would make sense to somebody who had never read the previous version; if it only makes sense as a correction, it belongs in a commit message.
+
+  </details>
 - **MUST** — Architecture decision records: the decision, the alternatives, the trade-off accepted — the part that is worth reading a year later
 
   <details><summary><strong>Answer</strong></summary>
@@ -1219,7 +1543,19 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   </details>
 - **OPTIONAL** — Data-model documentation that stays true (generated from the schema where possible)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Anything that can be generated should be — an entity-relationship diagram and a column list derived from the live schema or the SQLAlchemy metadata cannot drift, where a hand-written table starts drifting on the first migration nobody remembered to mirror. What generation cannot supply is the part actually worth reading, such as why `product_listing_facets` copies three columns from `product` or why `facet_schema_ref` is the only cross-store pointer, so the hand-written half should be exactly that and nothing a tool could have produced. **Deeper:** [interview-questions.md](./interview-questions.md#q2-you-documented-workflows-deployment-steps-and-data-models-in-your-experience-which-documentation-actually-survives-contact-with-a-changing-system-and-which-rots) — "You documented workflows, deployment steps and data models. In your experience, which documentation actually survives contact with a changing system, and which rots?"
+
+  </details>
 - **NICE** — Diagrams at one level of abstraction each; naming components consistently across every document
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A diagram becomes unreadable when it mixes levels — a container beside a class, a queue beside a function call — so each one here answers a single question: the architecture diagram in `02-high-level-design.md` shows deployments and the stores they touch, the sequence diagrams show one flow's ordering, the entity-relationship diagram shows the schema, and none tries to do another's job. Naming is what lets them compose: `02` is the single source of truth for component names, and `catalog-service`, `product_listing_facets` and `sb-catalog-events` are spelled identically in every file, which is what makes one search across the set find everything rather than most things. What consistency costs is that renaming a component becomes a sweep rather than an edit — a fair price, because the alternative is a reader who cannot tell whether two names are two things.
+
+  </details>
 
 ## 24. Defending the Design's Numbers
 
