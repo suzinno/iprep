@@ -6,14 +6,14 @@
 ## Questions by project
 
 - **cancer-support-platform** — Q1, Q3, Q4.2, Q4.5, Q4.6, Q5, Q6, Q7, Q8.1, Q8.2, Q8.3, Q9, Q10, Q11, Q12, Q13
-- **banking-software-marketplace** — Q1, Q3, Q4.2, Q4.3, Q4.4, Q4.5, Q4.6, Q6, Q8.1, Q8.2, Q8.3, Q9, Q10, Q11, Q12, Q13
+- **retail-software-marketplace** — Q1, Q3, Q4.2, Q4.3, Q4.4, Q4.5, Q4.6, Q6, Q8.1, Q8.2, Q8.3, Q9, Q10, Q11, Q12, Q13
 - **general** — Q2, Q4.1
 
 ---
 
 ### Q1. Describe your experience with FastAPI and Asyncio in your recent project.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation") is the runtime for every service in both systems — a modular monolith plus two extracted services on the health platform, six services plus three [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") worker deployments on the marketplace. The interesting part is not the async syntax; it is deciding which work belongs on the event loop at all, and which belongs off the request path entirely.
@@ -60,7 +60,7 @@ Both systems in this case are FastAPI, not Django or Flask, so I would rather be
 
 ### Q3. Describe your experience with SQLAlchemy Core and building custom queries.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 I use the ORM for domain writes and drop to Core exactly where the generated plan matters — the catalog search on the marketplace and the patient timeline on the health platform. Both are queries where I need to see the SQL I am sending, because the index it must use is a design decision, not an implementation detail.
@@ -117,7 +117,7 @@ And the honest part: the claim that the array and `jsonb_path_ops` indexes combi
 
 #### Q4.2. Explain the N+1 problem in microservices or backend applications. Where it can appear, and how it can be solved?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 It is the same shape wherever it appears: one call fetches a list, then a per-item call fetches each item's detail. In a distributed system the per-item call is a network hop or a message rather than a query, so the cost is worse and the profiler does not show it in one place.
@@ -138,7 +138,7 @@ It is the same shape wherever it appears: one call fetches a list, then a per-it
 
 #### Q4.3. Explain how the N+1 problem can appear at the frontend or backend design level when the UI requests information through separate endpoints.
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 It appears as a chatty screen: the client calls a list endpoint, then loops over the results calling a detail endpoint per row. The backend logs look healthy — every request is fast — and the page is still slow, because the cost is in the count of requests, not in any one of them.
@@ -163,7 +163,7 @@ The general failure mode is that the API is designed as a projection of the data
 
 #### Q4.4. What could be a good solution for reducing that problem if REST is not being used?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 GraphQL is the obvious answer — the client declares the shape it wants and gets one round trip — but it moves the N+1 into the resolver, so it only helps if you also add batching. gRPC helps with hop cost, not with hop count. A backend-for-frontend is often the smaller, more honest fix.
@@ -183,7 +183,7 @@ GraphQL is the obvious answer — the client declares the shape it wants and get
 
 #### Q4.5. Could the N+1 problem be handled on the database side, for example by creating a view that joins tables so data is always accessible?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Yes, and it is often the right instinct — but a plain view is a stored query, not stored data, so it changes what you type and not what the database does. What actually helps is a materialised view or a maintained projection table, and then you have bought a refresh problem in exchange for the join.
@@ -203,7 +203,7 @@ On the health platform the same problem is solved without a view at all: the tim
 
 #### Q4.6. How much does using a database view cost, and did you try solving something like that with a view? What did you conclude in the end?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 A plain view costs nothing at runtime and buys nothing at runtime. A materialised view costs storage plus a refresh you have to schedule and monitor. I concluded on both systems that an event-maintained projection table beats both, and that a union query with the right indexes beats all three where the sources are heterogeneous.
@@ -259,7 +259,7 @@ Check-ins are published as JavaScript Object Notation ([JSON](https://www.json.o
 
 ### Q6. Describe the general data flow in the project, from MQTT brokers or queues through decoding and storage.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Both systems follow the same principle from different ends: a fact is written to its owning store in one transaction, and everything downstream is driven from that write rather than from a second call. On the health platform the ingress is MQTT; on the marketplace it is a user action. In both, the fan-out is an outbox.
@@ -323,7 +323,7 @@ By making durability a property of the acknowledgement rather than of the consum
 
 ### Q8.1. Describe your experience with Azure and on-premises infrastructure in your recent projects.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Both systems run on Azure and both are provisioned entirely with [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files"). The health platform is the closest to an on-premises operating model I have worked on — Azure Red Hat OpenShift with a self-managed MongoDB replica set, Elasticsearch and RabbitMQ running in the cluster — but I would not call either a datacentre deployment.
@@ -345,7 +345,7 @@ Running your own broker, search cluster and document store in a cluster is where
 
 ### Q8.2. Describe your experience with Azure Service Bus, and AKS.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Service Bus is the integration edge in both systems — the boundary where work leaves for Functions and third-party delivery — and it is deliberately not the internal work queue. AKS runs the marketplace's nine deployments with autoscaling on both processor use and queue depth, and hosts the health platform's inference node pool.
@@ -374,7 +374,7 @@ On the health platform, `aks-ml` is a deliberately minimal cluster: a graphics-p
 
 ### Q8.3. Describe your experience with Azure services such as Azure Functions, Blob Storage, and API Management.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Functions for bursty, event-shaped work at the edges — document ingestion, media processing, notification delivery. Blob Storage as the only place bytes live, with direct signed uploads so large files never touch the API pods. API Management as the gateway that rejects a wrong-audience token before it reaches application code.
@@ -401,7 +401,7 @@ One genuine trap worth naming: the gateway caches the signing key set on its own
 
 ### Q9. What was your experience handling traffic spikes in Kubernetes?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Scale on the signal that reflects the work, not just on processor use; get the burst off the request path onto a queue where it can wait; and make sure the thing behind the pods can survive the number of pods you are about to start. Autoscaling into a saturated database is how a spike becomes an outage.
@@ -427,7 +427,7 @@ Scale on the signal that reflects the work, not just on processor use; get the b
 
 ### Q10. How did you use Terraform to support the architecture and deployment infrastructure?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Terraform owns every Azure resource in both systems, with state in a locked blob container and applies only from CI. Environments are the same module set with different variable files, and anything created by hand is drift — reported as a failure, not reconciled quietly.
@@ -455,7 +455,7 @@ Terraform owns every Azure resource in both systems, with state in a locked blob
 
 ### Q11. What is your experience with GitLab CI, ArgoCD, and Terraform for CI/CD and provisioning?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 GitLab CI builds and gates on both systems. On the health platform it does not deploy — its final act is a commit to a manifest repository that Argo [CD](https://en.wikipedia.org/wiki/Continuous_deployment "Continuous Deployment — Automatically releases every build that passes the pipeline's gates to production without a manual step") reconciles onto the clusters, so no pipeline job ever holds cluster credentials. Terraform provisions everything underneath, applied only from CI.
@@ -481,7 +481,7 @@ Migrations run as an Argo CD PreSync hook (`alembic upgrade head`), and deployme
 
 ### Q12. What is your experience with Docker and Podman for containerization?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Docker and Docker Compose on both systems — for image builds, for the local stack running the real brokers and search engine, and for the CI integration tests that run against that same stack. Podman I know rather than have run in production, so I would say so.
@@ -508,7 +508,7 @@ For image building specifically, Buildah and Kaniko are the daemonless options I
 
 ### Q13. What tools did you use for observability and monitoring, such as Prometheus, Kibana, Elastic APM?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 On the health platform: Prometheus for metrics, Elastic Application Performance Monitoring ([APM](https://en.wikipedia.org/wiki/Application_performance_management "Gives visibility into request latency, errors and traces in production")) for traces, Kibana as the single pane, with Azure Monitor's telemetry shipped into the same Elasticsearch deployment so there is one place to look. On the marketplace: OpenTelemetry exported to Azure Monitor and Application Insights.

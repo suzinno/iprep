@@ -6,7 +6,7 @@
 ## Questions by project
 
 - **cancer-support-platform** — Q14, Q16, Q18, Q20, Q22–Q30, Q33–Q46, Q48, Q50–Q68, Q70–Q76, Q78–Q88
-- **banking-software-marketplace** — Q14, Q16–Q18, Q20, Q23–Q33, Q38, Q39, Q41, Q46–Q54, Q56, Q58–Q68, Q70–Q76, Q78–Q83, Q86, Q88–Q90
+- **retail-software-marketplace** — Q14, Q16–Q18, Q20, Q23–Q33, Q38, Q39, Q41, Q46–Q54, Q56, Q58–Q68, Q70–Q76, Q78–Q83, Q86, Q88–Q90
 - **general** — Q15, Q19, Q21, Q69, Q77
 
 ## Contents
@@ -34,7 +34,7 @@
 
 ### Q14. How do you size workers, threads and connection pools for a deployed service, and which of those constraints actually binds?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Work backwards from the database's connection limit, because that is the constraint that binds in practice. Workers per pod times connections per worker times replicas has to stay under it, and everything else — thread pool size, autoscaler bounds — is chosen inside that budget.
@@ -95,7 +95,7 @@ All the way down or not at all — async session, async driver, async repositori
 
 ### Q16. The same data arrives over HTTP, from a broker, and from a bulk import. Where does validation belong?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 At every boundary where data enters the process, including the broker — a message is untrusted input regardless of transport. What differs is the cost model: per-request validation is free at request scale and expensive at import scale, so the bulk path validates once at the edge and works with plain structures internally.
@@ -123,7 +123,7 @@ At every boundary where data enters the process, including the broker — a mess
 
 ### Q17. Six services and three worker pools share a lot of code. How do you avoid building a distributed monolith?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 Share the boring things and duplicate the domain. A shared library for logging, tracing, authentication middleware and typed configuration is fine; a shared domain model or a shared database access layer couples releases and is how independent services stop being independent.
@@ -155,7 +155,7 @@ Share the boring things and duplicate the domain. A shared library for logging, 
 
 ### Q18. How do you decide between a background task in the web process, a task queue, and a scheduled sweep?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By whether losing the work is acceptable. An in-process background task dies with the process and has no retry, so it is only ever right for something genuinely disposable. Anything the system owes gets a queue; anything time-based gets a scheduled sweep over durable state.
@@ -205,7 +205,7 @@ That combination almost always means requests are queuing on something with a fi
 
 ### Q20. An endpoint has to write to two stores. How do you handle partial failure?
 
-**Project:** banking-software-marketplace, cancer-support-platform
+**Project:** retail-software-marketplace, cancer-support-platform
 
 **Brief answer**
 Never with two writes in one request hoping both succeed. One store owns the fact and is written transactionally; everything else is driven from that write through an outbox, so a failure leaves an unpublished row that drains on recovery rather than a fact that half happened.
@@ -293,7 +293,7 @@ That it is resumable from its own recorded progress, idempotent per batch, throt
 
 ### Q23. What makes a migration dangerous, and how do you review someone else's?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Two things: a lock held long enough to stall traffic, and a change the previously deployed image cannot run against. I review for those before I read anything else, because a migration is the one change in a release that is genuinely hard to undo.
@@ -327,7 +327,7 @@ Two things: a lock held long enough to stall traffic, and a change the previousl
 
 ### Q24. A query is fast for most callers and pathological for one. How do you approach that?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 That pattern is almost always about selectivity rather than indexing — one caller's parameters produce a wildly different row estimate, so the planner picks a plan that is right for the common case and disastrous for theirs. So I compare plans across parameter sets rather than looking at one.
@@ -359,7 +359,7 @@ That pattern is almost always about selectivity rather than indexing — one cal
 
 ### Q25. When do you drop out of the ORM entirely, and what do you give up?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 When the generated plan is the thing being engineered rather than an implementation detail — which in practice is the two or three queries carrying the traffic. What you give up is identity mapping, change tracking and the object graph, so those queries return rows rather than entities, deliberately.
@@ -388,7 +388,7 @@ When the generated plan is the thing being engineered rather than an implementat
 
 ### Q26. Explain how you manage a SQLAlchemy session's lifetime in a web application, and what goes wrong when you get it wrong.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 One session per request, opened and closed by a dependency, with the transaction boundary at the unit of work rather than per statement. The failures are a session shared across concurrent requests, a session held open across a slow external call, and objects used after the session has closed.
@@ -416,7 +416,7 @@ One session per request, opened and closed by a dependency, with the transaction
 
 ### Q27. A migration failed halfway on production. What now?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 First establish what actually applied, because the framework's version table and the real schema can disagree. Then stop the deploy, decide roll-forward or roll-back on whether the previous image runs against the current schema, and only then touch anything.
@@ -450,7 +450,7 @@ First establish what actually applied, because the framework's version table and
 
 ### Q28. Beyond N+1, what other query patterns quietly get worse as a table grows?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Offset pagination, exact counts, unbounded `IN` lists, sorts that cannot be served by an index, and anything with a leading wildcard. They all behave perfectly in development and degrade in proportion to data the developer never had.
@@ -477,7 +477,7 @@ Offset pagination, exact counts, unbounded `IN` lists, sorts that cannot be serv
 
 ### Q29. How do you stop an N+1 regression from coming back six months later?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Assert the query count in a test. Reading code for N+1 works until someone adds a property that touches a relationship, and then it silently does not. A test that fails when a request issues more queries than it should is the only mechanism that survives staff turnover.
@@ -504,7 +504,7 @@ Assert the query count in a test. Reading code for N+1 works until someone adds 
 
 ### Q30. When is it right to let two stores disagree, and how do you keep that from being a bug?
 
-**Project:** banking-software-marketplace, cancer-support-platform
+**Project:** retail-software-marketplace, cancer-support-platform
 
 **Brief answer**
 Whenever a derived store exists at all, which is most systems. The discipline is that the divergence is bounded, stated as a number, measured in production, and reconciled — a staleness budget is a design decision, and unmeasured staleness is a defect wearing its clothes.
@@ -532,7 +532,7 @@ Whenever a derived store exists at all, which is most systems. The discipline is
 
 ### Q31. A stakeholder asks for a jump-to-page control on a large filtered list. What do you tell them?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 That it is buildable and it is usually the wrong thing to want, because arbitrary paging costs more the deeper you go and gives incorrect results under concurrent writes. Then I ask what they are actually trying to do, because the answer is nearly always better filtering.
@@ -559,7 +559,7 @@ That it is buildable and it is usually the wrong thing to want, because arbitrar
 
 ### Q32. A bulk endpoint takes a list of identifiers. What failure modes do people miss?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 An unbounded list, partial failure with an all-or-nothing response, losing the ordering the caller sent, and silently dropping identifiers the caller may not access — which turns an authorization boundary into an enumeration oracle if it is done inconsistently.
@@ -588,7 +588,7 @@ An unbounded list, partial failure with an all-or-nothing response, losing the o
 
 ### Q33. How do you decide what goes in a message payload and what does not — and why does that decide whether a broker survives a bulk update?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 A message carries the identity of what changed, the revision, and the routing information — not the changed object. Broker memory is the product of message size and backlog depth, so payload size is one of only two factors you control, and it is the one that is free to fix.
@@ -734,7 +734,7 @@ Read the release notes for the version pair specifically, rehearse the whole thi
 
 ### Q38. What do you configure on Celery before putting it on a critical path?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Late acknowledgement, a small prefetch, bounded retries with a dead-letter destination, idempotent tasks with the guarantee in the database rather than in a cache, per-queue routing with dedicated workers, and hard and soft time limits. Then I test the crash case rather than assuming the settings do what they say.
@@ -766,7 +766,7 @@ Late acknowledgement, a small prefetch, bounded retries with a dead-letter desti
 
 ### Q39. When would you not use a broker at all?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 When the work is time-based rather than event-based, when the volume does not justify a second piece of infrastructure, or when the caller genuinely needs the answer now. A broker between two services that must agree synchronously adds latency and a failure mode without buying anything.
@@ -820,7 +820,7 @@ Clinical content search on the health platform — visit notes, guidance and vis
 
 ### Q41. What is the difference between filtering and ranking, and why does confusing them cause most bad search?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 A filter decides whether a document may appear; ranking decides where. They are different questions with different correctness requirements, and treating a filter as a strong ranking signal is how a search returns something it should never have returned at all.
@@ -968,7 +968,7 @@ Through an alias, always. Build the new index alongside the old, reindex into it
 
 ### Q46. Describe your experience with Redis. What did you use it for beyond caching?
 
-**Project:** banking-software-marketplace, cancer-support-platform
+**Project:** retail-software-marketplace, cancer-support-platform
 
 **Brief answer**
 Cache-aside for the hot catalog reads, a task broker for one system's workers, idempotency keys, a per-vendor concurrency semaphore, and rate limiting. The important decision was running two separate instances — cache and broker — rather than one with separate logical databases.
@@ -994,7 +994,7 @@ Cache-aside for the hot catalog reads, a task broker for one system's workers, i
 
 ### Q47. How do you decide a cache is doing more harm than good?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 When the hit ratio is low enough that it is mostly adding a round trip and an invalidation risk to a query that was fine, when the staleness it introduces is producing support tickets, or when it has become the thing that must not fail. Any of those is a reason to remove it rather than tune it.
@@ -1021,7 +1021,7 @@ When the hit ratio is low enough that it is mostly adding a round trip and an in
 
 ### Q48. What makes cache invalidation go wrong, and what do you do about it?
 
-**Project:** banking-software-marketplace, cancer-support-platform
+**Project:** retail-software-marketplace, cancer-support-platform
 
 **Brief answer**
 Almost always a key that nobody deleted — because the delete was in a code path that failed, or because the set of affected keys is not enumerable. The structural fix is to make invalidation unnecessary: put the version in the key, so a new version is a new key and the old one simply ages out.
@@ -1053,7 +1053,7 @@ Almost always a key that nobody deleted — because the delete was in a code pat
 
 ### Q49. Redis is memory-bound. What happens when it fills, and how do you configure for that?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 It depends entirely on the eviction policy, which is why a cache and a broker cannot share an instance. A cache should evict least-recently-used keys — that is correct. A broker or anything durable must refuse writes rather than evict, because eviction there is silent data loss.
@@ -1084,7 +1084,7 @@ They are opposite settings, so one instance cannot serve both roles correctly. T
 
 ### Q50. Where would you not use Redis?
 
-**Project:** banking-software-marketplace, cancer-support-platform
+**Project:** retail-software-marketplace, cancer-support-platform
 
 **Brief answer**
 As the source of truth for anything, as the sole holder of a durability guarantee, for a distributed lock protecting something whose double-execution actually matters, and for large objects. Each of those is a case where its speed is being used to paper over a guarantee it does not provide.
@@ -1114,7 +1114,7 @@ As the source of truth for anything, as the sole holder of a durability guarante
 
 ### Q51. A new requirement needs the caller's identity to carry more than it does today. How do you avoid solving that by adding claims?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By asking whether the thing being added changes independently of the token's lifetime. Anything that can change while a token is live does not belong in it — because a claim is a snapshot, and a stale snapshot of a permission is an authorization defect that no expiry short enough will fix.
@@ -1142,7 +1142,7 @@ By asking whether the thing being added changes independently of the token's lif
 
 ### Q52. How would you bound the damage from a leaked signing key?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By being able to rotate without an outage, which means the key set is fetched by identifier and cached with a known refresh interval, more than one key is trusted at a time, and the overlap window is longer than every cache in the path. Without that, rotation is itself an outage and so it never happens.
@@ -1171,7 +1171,7 @@ By being able to rotate without an outage, which means the key set is fetched by
 
 ### Q53. How do you agree an API contract before either side has built anything?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By writing the typed models first and publishing the generated document as a draft, so the discussion is about a concrete artifact rather than about intentions. The frontend can generate a client and work against a stub while the implementation is still being written.
@@ -1199,7 +1199,7 @@ By writing the typed models first and publishing the generated document as a dra
 
 ### Q54. How do you handle secrets and credentials in an application and its pipeline?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By having as few as possible. Workload identity federation means a service authenticates to cloud resources as itself with no stored credential, which removes the whole class of problem for most of them. What genuinely must be a secret lives in a managed store, is injected at runtime, and is never in an image or a repository.
@@ -1254,7 +1254,7 @@ With three kinds of evidence rather than an assertion: the control's definition 
 
 ### Q56. Where should an authorization decision live — the gateway, the application, or the database? How do you choose?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 As deep as the mechanism can be made trustworthy. The gateway is a filter and never the authority; the application is where most decisions land; the database is the strongest place and only where the deployment topology actually supports it. These two systems chose differently for that reason.
@@ -1312,7 +1312,7 @@ It is [Kubernetes](https://kubernetes.io/ "Kubernetes — Automates deployment, 
 
 ### Q58. How do you choose between a managed cloud service and running the component yourself in the cluster?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Managed by default, self-hosted when a specific requirement forces it — a feature the managed version lacks, a data-residency or tenancy constraint, or a cost profile that does not work. And the decision is written down with the condition that would reverse it, because it is expensive to revisit casually.
@@ -1342,7 +1342,7 @@ Managed by default, self-hosted when a specific requirement forces it — a feat
 
 ### Q59. Explain requests and limits, and what goes wrong when they are set badly.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Requests decide scheduling and guarantee; limits cap consumption. The two failure modes are opposite and both common: processor limits set too low cause throttling that looks like slow code, and memory limits set too low cause the process to be killed abruptly with no stack trace.
@@ -1370,7 +1370,7 @@ Requests decide scheduling and guarantee; limits cap consumption. The two failur
 
 ### Q60. A pod is being killed and restarted repeatedly. Walk me through the diagnosis.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Read the termination reason first, because it separates the whole problem space in one step: killed for memory, failed a probe, exited non-zero, or evicted. Each has a different cause and a different fix, and guessing between them wastes the most time.
@@ -1397,7 +1397,7 @@ Read the termination reason first, because it separates the whole problem space 
 
 ### Q61. How do you make a worker shut down safely mid-task?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Stop consuming first, finish the in-flight task, then exit — bounded by the termination grace period, with task chunk sizes small enough to finish comfortably inside it. And behind all of that, at-least-once delivery so an ungraceful kill causes redelivery rather than loss.
@@ -1429,7 +1429,7 @@ Stop consuming first, finish the in-flight task, then exit — bounded by the te
 
 ### Q62. How do you structure Terraform so more than one person can work on it?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By splitting state along blast-radius lines rather than by resource type, using one module set with a variables file per environment, and locking state so two applies cannot collide. The structure question is really a question about what one careless apply can destroy.
@@ -1458,7 +1458,7 @@ By splitting state along blast-radius lines rather than by resource type, using 
 
 ### Q63. What do you do about a resource someone created by hand in the portal?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 It shows up in the plan and it fails the pipeline. Then it gets imported into state and codified, or removed. What I would not do is quietly reconcile it, because the moment the code stops describing reality, infrastructure as code becomes decorative.
@@ -1487,7 +1487,7 @@ It shows up in the plan and it fails the pipeline. Then it gets imported into st
 
 ### Q64. How do you know a pipeline gate can actually fail?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By having seen it go red for a real reason. That is the only acceptable evidence, and the way to get it deliberately is a known-pass and known-fail pair: introduce a change the gate should catch, confirm the build fails, restore. Two inputs, a few minutes.
@@ -1520,7 +1520,7 @@ By having seen it go red for a real reason. That is the only acceptable evidence
 
 ### Q65. How do you answer "what exactly was running in production at two o'clock last Tuesday"?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 From version control, if the desired state is a commit and images are referenced by digest. Then the answer is a revision at a timestamp, not an archaeology exercise across deploy logs — and that property is most of why the regulated system uses a pull-based delivery model.
@@ -1550,7 +1550,7 @@ From version control, if the desired state is a commit and images are referenced
 
 ### Q66. How do you roll back — application code, database schema, and infrastructure?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Application code by redeploying the previous digest or reverting the manifest commit. Schema, deliberately, not at all — expand-and-contract means the old code runs against the new schema, so there is nothing to undo. Infrastructure by reverting the configuration and applying, with the caveat that some resources do not roll back cleanly.
@@ -1576,7 +1576,7 @@ That is a deliberate substitution of one hard problem for a discipline. A down-m
 
 ### Q67. How do you keep a pipeline honest when everyone is under pressure to merge?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By making the gates hard to weaken quietly — configuration in code and reviewed, no ad-hoc skip mechanism, and a check on the checks — and by making the pipeline fast enough that people are not motivated to route around it. Most gate erosion is a response to friction rather than to disagreement.
@@ -1608,7 +1608,7 @@ By making the gates hard to weaken quietly — configuration in code and reviewe
 
 ### Q68. If you had to halve pipeline time, which quality tool would you drop first, and which would you never drop?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 I would drop nothing first — I would parallelise, cache and split by relevance, because almost all of the twenty to thirty minutes is one stage and the tools are seconds. If genuinely forced to remove a gate, the formatter and the duplication metrics go before anything that can catch a defect.
@@ -1677,7 +1677,7 @@ Incrementally, module by module, with the strictness gate applying only to what 
 
 ### Q70. A static analysis gate fails your merge on something you think is a false positive. What do you do?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Assume it is right first and look properly, because a decent fraction of the time it is seeing something I am not. If it genuinely is wrong, suppress it at the narrowest scope with a written reason, and if the same rule keeps misfiring, change the rule for everyone rather than suppressing repeatedly.
@@ -1703,7 +1703,7 @@ Assume it is right first and look properly, because a decent fraction of the tim
 
 ### Q71. A vulnerability scanner reports a critical finding in a base image with no fix available. What do you do?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Establish whether it is reachable in our usage before doing anything else, because most base-image findings are in components the application never invokes. Then either remove the component, change the base image, or accept it with an expiry and a written reason — never suppress it silently.
@@ -1733,7 +1733,7 @@ Establish whether it is reachable in our usage before doing anything else, becau
 
 ### Q72. How do you keep a service's dependencies current without a monthly surprise?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 A committed lockfile so every environment resolves identically, automated update proposals on a regular cadence in small batches, and a test suite good enough that a green build on an update is actually evidence. The surprise comes from batching six months of updates into one change.
@@ -1768,7 +1768,7 @@ A committed lockfile so every environment resolves identically, automated update
 
 ### Q73. Describe your experience with Pytest. What do your fixtures look like on a project with real data stores?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Session-scoped fixtures bring the containers up once and run migrations; a function-scoped fixture wraps each test in a transaction that is rolled back afterwards. That combination gives real database behaviour with per-test isolation and no teardown cost.
@@ -1796,7 +1796,7 @@ Session-scoped fixtures bring the containers up once and run migrations; a funct
 
 ### Q74. How do you test asynchronous code and message consumers?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Against a real broker, not a mock, because the behaviours worth testing are redelivery, acknowledgement and ordering — none of which a mock reproduces. And the important tests are the unpleasant ones: kill the consumer mid-task, deliver the same message twice, deliver two messages out of order.
@@ -1824,7 +1824,7 @@ Against a real broker, not a mock, because the behaviours worth testing are rede
 
 ### Q75. What is your approach to test data, and why not use production data?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Synthetic, generated by factories, with realistic volume where volume is the thing under test. Production data is not an option on a clinical system for legal reasons, and it is a bad idea generally — it makes tests non-reproducible and it silently spreads sensitive material into every environment.
@@ -1851,7 +1851,7 @@ Synthetic, generated by factories, with realistic volume where volume is the thi
 
 ### Q76. The suite passes on merge requests and fails on the default branch. What is going on?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Usually one of four things: the branch ran a different subset, two independently-green branches merged into a conflict no test saw, the default branch runs against something merge requests do not, or a test is order-dependent and the fuller run changes the order.
@@ -1908,7 +1908,7 @@ A link that lives in the code and moves with it — tests carrying the identifie
 
 ### Q78. How do you decide what not to test?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By asking what the test would catch that something else does not, and what it costs to maintain. I do not test the framework, the language, or code whose failure is loud and immediate — and I am deliberate about it rather than just leaving gaps.
@@ -1941,7 +1941,7 @@ By asking what the test would catch that something else does not, and what it co
 
 ### Q79. What is in your Dockerfile that a default one is not?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 A multi-stage build so the runtime carries no build toolchain, a non-root user with no assumption about its identifier, dependencies installed from a lockfile in a separately cached layer, and a base image pinned by digest rather than by tag.
@@ -1969,7 +1969,7 @@ A multi-stage build so the runtime carries no build toolchain, a non-root user w
 
 ### Q80. What does your Compose stack contain, and how close is it to production?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 The real components at the same pinned versions as production — database, document store, search, cache and broker — because the integration stage in the pipeline runs against that same stack. It is not a convenience; it is what makes the tests mean something.
@@ -1995,7 +1995,7 @@ I would rather state those gaps than let the local stack imply coverage it does 
 
 ### Q81. A container works locally and fails in the cluster. Where do you look?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 In order: configuration and secrets, identity and permissions, the filesystem and user identifier, network policy, and resource limits. Almost every instance is one of those five, and they are distinguishable in a couple of minutes each.
@@ -2021,7 +2021,7 @@ In order: configuration and secrets, identity and permissions, the filesystem an
 
 ### Q82. How do you pin things — base images, packages, and the tool versions in CI?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 Everything pinned to an immutable identifier: base images by digest, packages by a committed lockfile, tools by exact version, and pipeline images by digest too. The rule is that a build with unchanged inputs produces the same result, and any moving reference breaks that.
@@ -2047,7 +2047,7 @@ Everything pinned to an immutable identifier: base images by digest, packages by
 
 ### Q83. How do you debug inside a running container in production, and what would you not do?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By exhausting telemetry first, then attaching a debug container to inspect rather than to change. What I would not do is edit anything inside a running container, install tools into it, or restart it before capturing what I need — a restart destroys the evidence.
@@ -2137,7 +2137,7 @@ The causal path of one request across every hop. Metrics tell you something is s
 
 ### Q86. You are paged: latency is up and the error rate is flat. Walk me through it.
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 A flat error rate with rising latency means the system is still working and something is queueing. So the question is what everything is waiting for — a shared dependency, a saturated pool, or a cache that has stopped absorbing load — rather than what is broken.
@@ -2198,7 +2198,7 @@ That is why audit is a database table here, with its own retention, its own acce
 
 ### Q88. Your team is getting too many alerts. How do you fix that without going blind?
 
-**Project:** cancer-support-platform, banking-software-marketplace
+**Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
 By auditing every alert against one test — did a human need to act, and did they — then deleting or demoting the ones that fail it. Alert fatigue is not solved by tuning thresholds; it is solved by having far fewer things that page, each of which is trusted.
@@ -2238,7 +2238,7 @@ By auditing every alert against one test — did a human need to act, and did th
 
 ### Q89. How much of your marketplace work would transfer to a retail or enterprise resource planning catalogue, and what would not?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 The data modelling transfers well — a per-category attribute set, a schemaless metadata store with a validated write path, and a maintained projection for search. What does not transfer is the operational scale of continuous attribute churn, and the entire transactional side of retail, which I have not built.
@@ -2268,7 +2268,7 @@ The data modelling transfers well — a per-category attribute set, a schemaless
 
 ### Q90. Retail is seasonal. What does a peak window change about how you plan and operate a release?
 
-**Project:** banking-software-marketplace
+**Project:** retail-software-marketplace
 
 **Brief answer**
 It turns a peak into a change freeze with a deliberate boundary, moves risky work well before it, and makes capacity a decision taken in advance rather than by an autoscaler during the event. Most of what changes is planning discipline rather than architecture.
