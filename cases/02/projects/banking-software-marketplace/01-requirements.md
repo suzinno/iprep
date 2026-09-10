@@ -4,18 +4,11 @@
 
 ## Table of Contents
 
-- [Scope Decision: "Banking" vs. Retail](#scope-decision-banking-vs-retail)
 - [Target Audience](#target-audience)
 - [Functional Requirements](#functional-requirements)
 - [Non-Functional Requirements](#non-functional-requirements)
 - [Scale Estimation](#scale-estimation)
 - [Explicit Non-Goals](#explicit-non-goals)
-
-## Scope Decision: "Banking" vs. Retail
-
-The brief describes the platform once as "a marketplace for banking software solutions" and then, in every other sentence and in every responsibility, as a marketplace for retail operations software — [POS](https://en.wikipedia.org/wiki/Point_of_sale "Point of Sale — The system and moment at which a retail transaction is completed"), inventory, and loyalty tools sold to brick-and-mortar and chain retail. This design follows the body of the brief: the product is a **retail software marketplace**, and financial-services software (payment terminals, reconciliation, retail banking integrations) is one vendor **category** within it rather than the platform's subject.
-
-The cost of that choice is bounded and worth stating. If the platform were genuinely a banking-software marketplace serving regulated financial institutions, three things would change: buyer onboarding would need regulated-entity verification, vendor listings would carry supervisory attestations as first-class facts rather than free-form metadata, and the compliance posture in `06-security.md` would inherit financial-supervision obligations. None of those appear in the responsibilities, and the entities that do appear — vendors, retail chains, stores, software products — are the retail reading. The design is therefore built for retail sourcing, and the categories model absorbs financial-services vendors without structural change.
 
 ## Target Audience
 

@@ -1,35 +1,55 @@
-SELF-INTRODUCTION — ~3 minutes
+# Self-Introduction (~3 minutes)
 
-[GREETING]
+## Greeting
+
 Hello, my name is [Your name]. Thank you for taking the time to meet me today.
+
 I'm a software engineer with eight years of commercial experience, working mainly with Python on the backend.
+
 As for education, I have a university degree in Computer Science. I graduated from the higher education institution (which is Belarusian State University of Informatics and Radio-electronics).
+
 Later I moved to Poland, so currently I'm located in Warsaw.
 
-[DOMAINS]
+## Domains
+
 On the business side, most of my work has been in e-commerce and retail, and more recently in the healthcare domain.
+
 Technically, that has mostly meant enterprise platforms — systems with a lot of data behind them, a lot of integrations, and users who notice straight away when something is slow or wrong.
 
-[STACK]
+## Stack
+
 As for my stack: Python is my main language, Django with DRF and FastAPI are the frameworks I have most experience with. I've built modular monoliths, and also I've extracted services out of them, so I've seen both sides of that decision.
+
 In Python runtimes for data access I utilize SQLAlchemy, with Alembic for migrations and Pydantic for validation and API contracts. The main databases I've worked with are PostgreSQL and MongoDB. I've also worked hands-on with Elasticsearch.
+
 For asynchronous work between services I've used RabbitMQ over AMQP, and MQTT where devices were involved. Earlier on I also worked with Kafka and cloud queues.
+
 Talking about infrastructure, I've been working with Azure and AWS.
+
 Everything I build is containerised with Docker, and I've deployed to OpenShift and Kubernetes where we needed advanced horizontal scalability, using ArgoCD for GitOps delivery and GitLab CI for the pipelines.
+
 To see what production is actually doing, I rely on Elastic APM, Prometheus and Kibana.
 
-[QUALITY]
+## Quality
+
 On quality, I work with Pytest for unit and integration tests, ruff and pyright for static checks, and SonarQube gates.
+
 I'm used to the pipeline being the thing that decides whether code ships. To keep that loop short, I also run hooks locally to catch problems before I push.
 
-[TEAMS]
+## Teams
+
 As for the teams — I've worked both in small teams of under ten people, and in large international setups across time zones.
+
 I've started projects from scratch, building the MVP first and then taking it end to end over later iterations, and I've also joined systems that were already live, continuing the development process in already organised environments.
+
 I'm comfortable with both Scrum and Kanban or even Scrumban — I also have experience with that kind of hybrid. In my daily routine I keep my estimates and statuses up to date, and I say early when something is blocked.
 
-[HOW I WORK]
+## How I Work
+
 A couple of words on how I usually work: I lean towards careful rather than fast. I always appreciate getting well-shaped requirements, but it usually isn't like that in real life, so when a task description is thin, I'd rather have a couple of back-and-forth rounds asking questions to get more details and a better idea of desired output than build the wrong thing. From my perspective, it's better to spend the time on design up front than to guess and rebuild later.
+
 I do use AI tools like Claude Code — mostly for exploring, reviewing code and drafting. But I review everything I ship line by line, and I don't put my name on code I couldn't walk through in a review.
 
-[CLOSE]
+## Close
+
 That's my short introduction. I'm happy to take any questions — or, if it would be useful, I can tell you more about my most recent project and my responsibilities while working on it.

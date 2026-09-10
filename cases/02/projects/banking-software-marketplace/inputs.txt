@@ -1,7 +1,7 @@
 Title: RETAIL SOFTWARE AGGREGATION PLATFORM
 
 Description:
-This platform acts as a marketplace for banking software solutions - marketplace where software vendors list POS, inventory, loyalty, and related tools for brick-and-mortar and chain retail.
+This platform is a B2B marketplace for retail operations software - software vendors list POS, inventory, loyalty, and payment, reconciliation and retail banking integration tools for brick-and-mortar and chain retail.
 Store groups compare features, pricing, and coverage, then open a conversation with the vendor without a separate sourcing round. Vendor teams publish and update listings from an admin workspace; category managers on the retailer side shortlist products and track who is already in talks.
 The platform shortens sourcing: a retailer with a gap in checkout, stock, or loyalty software reaches a vendor conversation without a separate RFP round.
 
