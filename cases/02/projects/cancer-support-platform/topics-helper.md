@@ -30,9 +30,9 @@
 
 **What this is.** The topics an engineer who claims the responsibilities in `cases/02/projects/cancer-support-platform/inputs.txt` must be able to discuss from first principles, not recite. Grounded in the design docs 00-06 in that folder. Self-contained — it assumes no other project's list.
 
-**How to use it.** Answer the bullet out loud first, then expand the **Answer** beneath it to check yourself — the block is collapsed so the bullet stays a recall test rather than a reading exercise. Every MUST bullet carries one; NICE and OPTIONAL bullets do not, because a gap there is survivable and worth admitting plainly. A topic you can only define is not yet known.
+**How to use it.** Answer the bullet out loud first, then expand the **Answer** beneath it to check yourself — the block is collapsed so the bullet stays a recall test rather than a reading exercise. Every bullet carries one now, whatever its priority. A topic you can only define is not yet known.
 
-**What an answer block is.** Three to five sentences shaped the way the same answer should sound in the room: what it is, the trade-off it buys and what it costs, and where it lands in *this* system. It is a target, not a script — the point is to hear whether your own answer reached the same substance. Where a question in [`interview-questions.md`](./interview-questions.md) already owns the depth, the block ends with a **Deeper:** pointer to it instead of restating it here.
+**What an answer block is.** The substance the same answer should have in the room: what it is, the trade-off it buys and what it costs, and where it lands in *this* system. Its length tracks the bullet's priority, because a block is only as long as the answer is worth having in the room. It is a target, not a script — the point is to hear whether your own answer reached the same substance. Where a question in [`interview-questions.md`](./interview-questions.md) already owns the depth, the block ends with a **Deeper:** pointer to it instead of restating it here.
 
 **The exception.** Topic 23 asks what you personally measured, and no answer here can be honest on your behalf. Those blocks hold a prompt skeleton — the facts to have ready — for you to fill in.
 
@@ -61,6 +61,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Coupling and cohesion; afferent/efferent dependency direction
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Cohesion is how much of what changes together lives together, coupling is how much one module must know about another, and the afferent/efferent split only names the direction — who depends on me against who I depend on. Here it predicts the extraction order rather than grading the design: `identity` carries high afferent coupling because every other module's authorization resolves through it and almost no efferent coupling of its own, which is why it is the module to extract last, while `scim-provisioning-svc` faced outward at the directory and was therefore the cheapest thing to move.
+
+  </details>
+
 - **MUST** — Bounded context and aggregate — where a transaction may and may not span
 
   <details><summary><strong>Answer</strong></summary>
@@ -78,6 +85,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Distributed monolith as the failure mode: services that must deploy together
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A distributed monolith is what you get when the network hop arrives without the independence it was supposed to buy: two deployables that can only be released together, so you have already paid for partial failure and a versioned contract and still cannot ship either one alone. The test I would apply here is whether `scim-provisioning-svc` can release on the hospital directory's cadence with `care-core` untouched, because that cadence was the entire justification for extracting it. The honest complication is the one the data-modelling file names: both services write `pg-clinical`, with `scim-provisioning-svc` confined to the `identity` schema, so the extraction is deployment-level rather than data-level — schema ownership is the only thing keeping it out of this failure mode, and a second cross-schema writer would remove it.
+
+  </details>
+
 - **MUST** — Cost of extraction: network calls, partial failure, no shared transaction, versioned contracts, on-call surface
 
   <details><summary><strong>Answer</strong></summary>
@@ -87,6 +101,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — The strangler-fig pattern for extracting an existing module incrementally
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Strangler-fig puts a facade in front of an existing implementation and moves call sites behind it one at a time until nothing reaches the original, which is what keeps an extraction reversible at every step instead of riding on a single cut-over. The shape fits this codebase unusually well, because the published in-process interface between modules is already that facade: extracting SCIM provisioning meant replacing one in-process call with an HTTP call behind the same interface, and no other module had to know. What I would not claim is that it ran as a named migration — nothing in the design documents or the brief describes a strangler-fig programme, only the result that SCIM provisioning and clinical NLP now sit outside `care-core` — so the pattern is the general form of what happened rather than a process I could walk you through step by step.
+
+  </details>
+
 - **MUST** — Why a fourth module (records) was split from clinical content: different consistency and audit obligations behind the same code path is the defect
 
   <details><summary><strong>Answer</strong></summary>
@@ -125,7 +146,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Structured concurrency: gather vs TaskGroup, exception propagation
+
+  <details><summary><strong>Answer</strong></summary>
+
+  `asyncio.gather` leaves you holding the failure: with `return_exceptions=False` the first exception propagates while its siblings carry on unsupervised, and with it set true the exceptions come back as ordinary return values that nothing forces you to inspect. `TaskGroup` is the structured version — the block cannot exit until every child has finished, a failing child cancels its siblings, and what you catch is an `ExceptionGroup` rather than whichever exception happened to win the race. That matters on the call into `clinical-nlp-svc`, where the 2 s deadline has to cancel the work rather than merely stop waiting for it, because a task that outlives the request holding a database connection is the leak structured concurrency exists to make impossible.
+
+  </details>
+
 - **NICE** — Backpressure and concurrency limits; why unbounded fan-out melts a pod
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Every buffer in a system has a depth, and backpressure is the name for that depth being finite and its limit slowing the producer rather than quietly consuming a pod's memory. Unbounded fan-out is the version that kills one worker: a single coroutine awaiting a hundred outbound calls holds a hundred sockets and a hundred response buffers on one event loop, so the pod dies serving a request that looked like every other one. The limits here sit where work enters — a bounded asyncpg pool, `limit` capped on every cursor endpoint, consumer prefetch, and the 1000-document bulk flush so a reindex cannot outrun the Elasticsearch bulk queue — and the morning check-in burst is absorbed the same way by construction, landing on a quorum queue and draining at worker pace instead of arriving at a pod. **Deeper:** [interview-questions.md](./interview-questions.md#q3-size-the-service-for-200-requests-per-second-sustained-with-400-burst-on-a-synchronous-stack-what-fails-first) — "Size the service for 200 requests per second sustained with 400 burst on a synchronous stack. What fails first?"
+
+  </details>
+
 - **MUST** — FastAPI specifics: dependency injection and its caching, routers, lifespan, middleware order, exception handlers, BackgroundTasks vs a real queue
 
   <details><summary><strong>Answer</strong></summary>
@@ -196,7 +231,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Error contracts: [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem details, machine-readable error codes
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Which status code to return is answered above under status code semantics; the body is what this bullet adds. RFC 9457 fixes one shape for it — `type`, `title`, `status`, `detail`, `instance` — so a client parses one envelope across every route instead of a different error object per endpoint, which is the convention this API declares for all of `/api/v1`. The field carrying the weight is `type`, a stable identifier the client branches on, because `detail` is prose that will be reworded or translated and a client matching on its text has coupled itself to your copywriting. The clinical addition is that an error must not answer a question the caller was not entitled to ask: a refusal on a patient they hold no relationship with and a miss on a patient who does not exist have to be indistinguishable, or the error body has quietly become a way to enumerate the patient list one identifier at a time.
+
+  </details>
+
 - **NICE** — Contract-first vs code-first; contract tests against the OpenAPI document
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The contract-test half is answered above — under Pydantic v2 in topic 2 for why the published document is emitted rather than written, and under test layering in topic 19 for what testing it actually catches. The direction is what this bullet adds: this is code-first, the models are the source and FastAPI emits the document, which buys a published contract that cannot drift from the implementation and gives up the ability to agree a contract before either side has built against it. It also means the document changes as a side effect of editing a model, which is why the contract test is load-bearing rather than a nicety — under code-first it is the only thing that notices a breaking change nobody intended to make.
+
+  </details>
+
 - **MUST** — Rate limiting semantics: per-subject vs per-IP, token bucket vs sliding window, and why a hospital behind one [NAT](https://datatracker.ietf.org/doc/html/rfc3022 "Network Address Translation — Maps multiple private addresses to a shared public address") must not rate-limit itself
 
   <details><summary><strong>Answer</strong></summary>
@@ -206,6 +255,12 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Request correlation: request id, [W3C](https://www.w3.org/ "World Wide Web Consortium — Develops open web standards such as trace context propagation") traceparent, propagation obligations
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Propagation itself is answered above under distributed tracing in topic 20, including the transports with no header slot. What this bullet adds is that a request id and a trace id are not one thing wearing two names: the trace id joins spans for an engineer, while a correlation id is what a clinician can quote to a support desk, which is why it comes back in a response header and is written onto the audit row rather than living only inside the telemetry plane. The obligation is the half people skip — a service that receives `traceparent` must forward it on every outbound call and every message it publishes, and the one that quietly does not becomes the place the trace ends, which reads exactly like the work never happening. **Deeper:** [interview-questions.md](./interview-questions.md#q2-there-are-two-telemetry-planes-how-are-they-joined-and-what-specifically-breaks-without-the-join) — "There are two telemetry planes. How are they joined, and what specifically breaks without the join?"
+
+  </details>
 
 ## 4. Authentication: OAuth 2.0, OIDC, JWT, Entra ID
 
@@ -252,6 +307,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Where to store tokens in a browser: HttpOnly/Secure/SameSite cookies, CSRF
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Anything in `localStorage` is reachable by every script the page has loaded, so one injection — or one compromised front-end dependency — walks off with the token, whereas a cookie marked `HttpOnly` cannot be read from script at all. What that buys is narrower than it sounds: the browser then attaches the cookie to any request bound for the origin, so the class of attack it forecloses is theft and the class it opens is cross-site request forgery, answered by `SameSite` together with a synchroniser token on mutations. For this portal I would put the refresh token in a path-scoped `HttpOnly` cookie and hold the 15-minute access token in process memory only, so a page reload costs a silent refresh instead of leaving a bearer credential at rest on a device somebody shares. The design does not state the portal's storage choice, so I would treat that as a decision still to be recorded rather than one already made.
+
+  </details>
+
 - **MUST** — Validating twice (gateway and service) — why the edge is a filter, never the authority
 
   <details><summary><strong>Answer</strong></summary>
@@ -261,6 +323,12 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — [MFA](https://en.wikipedia.org/wiki/Multi-factor_authentication "Multi Factor Authentication — Requires more than one form of evidence to verify a user's identity"), conditional access, and identity proofing at enrolment
+
+  <details><summary><strong>Answer</strong></summary>
+
+  These are the three places identity is settled before any token exists: proofing at enrolment establishes that a self-registering patient is who they claim to be, multi-factor authentication establishes that whoever is signing in is the person who enrolled, and conditional access is the policy engine deciding when to demand more. They land asymmetrically across the two planes here — the patient tenant requires proofing and a second factor at enrolment and on sensitive operations, while clinician assurance is the hospital's own conditional access and the platform's only job is not to weaken it.
+
+  </details>
 
 ## 5. SCIM 2.0 and Directory-Driven Lifecycle
 
@@ -283,6 +351,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Filtering, pagination and sorting the spec requires
+
+  <details><summary><strong>Answer</strong></summary>
+
+  SCIM specifies its own filter grammar, one-based `startIndex` and `count` pagination and `sortBy`/`sortOrder`, and a provider may implement a subset — but only the subset it declares. In practice that means building what the directory actually sends, usually an equality filter on `userName` or `externalId` and nothing more exotic, and keeping the discovery endpoint honest about it rather than advertising a sort nobody wrote.
+
+  </details>
+
 - **MUST** — Deprovisioning: active:false vs DELETE; what must happen transactionally on the platform side (closing every open care relationship)
 
   <details><summary><strong>Answer</strong></summary>
@@ -308,7 +383,20 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Just-in-time provisioning vs SCIM; SAML/OIDC claims mapping as alternatives
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Just-in-time provisioning creates the account from token claims on first sign-in and claims mapping refreshes attributes on each one, which is cheaper than SCIM and fails at precisely the requirement here: neither mechanism ever fires for someone who has left, because a leaver's behaviour is an absence rather than an event. That is why lifecycle is SCIM and only the session is OIDC — access that ends with employment needs the directory to say so out loud. **Deeper:** [interview-questions.md](./interview-questions.md#q2-a-clinician-leaves-the-trust-trace-what-happens-end-to-end) — "A clinician leaves the trust. Trace what happens, end to end."
+
+  </details>
+
 - **OPTIONAL** — Testing against a real Entra ID tenant vs a mock; the compliance test suites
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A mock tests your own parser against payloads you imagined, which is why the fixture suite holds captured directory payloads instead; a real tenant, or a published SCIM compliance suite, is the only thing that tests the claims in your discovery endpoint against a client that will act on them. It is the same argument the pipeline already makes for running against real brokers rather than fakes. **Deeper:** [interview-questions.md](./interview-questions.md#q2-integration-tests-run-against-real-postgresql-mongodb-elasticsearch-redis-and-rabbitmq-containers-rather-than-mocks-that-is-a-large-part-of-a-twenty-minute-pipeline-defend-it) — "Integration tests run against real PostgreSQL, MongoDB, Elasticsearch, Redis, and RabbitMQ containers rather than mocks. That is a large part of a twenty-minute pipeline. Defend it."
+
+  </details>
 
 ## 6. Authorization: RBAC, ABAC, and PostgreSQL Row-Level Security
 
@@ -355,6 +443,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Keeping the predicate visible to the planner so partition pruning survives
+
+  <details><summary><strong>Answer</strong></summary>
+
+  This is answered above twice — under row-level security in this topic for why the predicate is written to stay visible, and under declarative partitioning in topic 7 for what pruning buys — so what is left for this bullet is how you would know it is still true. The failure is silent and one-directional: a policy that hides `patient_id` behind an opaque subquery still returns exactly the right rows, so every correctness test passes while a pruned index scan has quietly become a sweep of every monthly partition. Which is why it is guarded by an `EXPLAIN` assertion on plan shape rather than by a test of the result, and that generalises — when a mistake costs performance instead of correctness, the assertion has to be about the plan. **Deeper:** [interview-questions.md](./interview-questions.md#q3-row-level-security-monthly-partitioning-and-connection-pooling-all-interact-on-the-same-query-describe-the-failure-that-arises-from-each-pair) — "Row-level security, monthly partitioning, and connection pooling all interact on the same query. Describe the failure that arises from each pair."
+
+  </details>
+
 - **MUST** — Defence in depth: application check first line, database second, and why the ordering matters (a forgotten scope returns zero rows, not another patient)
 
   <details><summary><strong>Answer</strong></summary>
@@ -372,7 +467,20 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Break-glass: reason string, time-boxed grant, notification, review
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Break-glass is emergency clinical access, and the design's move is to grant it through the same mechanism as ordinary access rather than around it: it writes a time-boxed `care_relationship` row carrying a reason, so the policies need no exception path, the grant expires on its own, and the event already arrives in the shape the audit trail and the detection rules understand. Around that sit the three things keeping it from becoming a role — a reason string the clinician has to type, notification of the patient's named team, and a high-priority audit event reviewed within 24 hours. What makes it defensible is that it is meant to be used: a break-glass path nobody can reach under pressure gets replaced by a shared login, which is strictly worse than a reviewed exception. **Deeper:** [interview-questions.md](./interview-questions.md#q2-design-break-glass-access-a-clinician-must-see-a-patient-they-have-no-care-relationship-with-right-now) — "Design break-glass access: a clinician must see a patient they have no care relationship with, right now."
+
+  </details>
+
 - **NICE** — Separation of duties (author cannot approve their own content)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Separation of duties means whoever performs an action cannot be the one who sanctions it, and here it is two distinct roles — `content_author` may write and submit, `content_approver` may approve and holds no patient-record access at all. The reason it is a role split rather than a workflow convention is that the generated-content pipeline's safety claim rests entirely on approval being a second pair of eyes: with one person able to do both, the review state would still advance and the claim would be nominal. The cost is worth naming because it is where the control comes under pressure — an approver has to be available, so a thin rota becomes a delivery bottleneck, and that is the moment somebody proposes a self-approval exception for urgent pages.
+
+  </details>
 
 ## 7. PostgreSQL Data Modelling for a Clinical Record
 
@@ -411,6 +519,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Temporal and append-only tables; audit tables with UPDATE/DELETE revoked
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Both halves are answered above: the temporal pattern under temporal authorization in topic 6, and append-only enforcement with `UPDATE` and `DELETE` revoked under audit trail design in topic 22. What this bullet adds is the choice between the two shapes, because they answer different questions. A temporal table holds one row per version of a fact and answers what was true at a moment, which is what `care_relationship` needs; an append-only log holds one row per thing that happened and answers what was done, which is what `audit_event` needs. Choosing wrongly leaves a system able to show a current state it cannot justify, or a stream of events from which nobody can reconstruct a state.
+
+  </details>
+
 - **MUST** — Normalising an ordering column (timeline_at) across heterogeneous sources so one index shape and one deterministic cursor serve a union
 
   <details><summary><strong>Answer</strong></summary>
@@ -420,7 +535,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Soft delete: why it is refused here, and consent-based restriction instead
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Soft delete is the row-level pattern — a `deleted_at` column plus a predicate every query has to remember — and its cost is that forgetting the predicate once is a disclosure, while unique constraints and foreign keys all have to be rewritten to care about a column the database itself does not understand. It is refused on clinical rows for a more basic reason than that: a tombstoned prescription is neither erasure nor honest retention, so it satisfies nobody while appearing to satisfy both. What the design does instead is restrict processing through `consent`, versioned and withdrawable, so the record survives its statutory period and what changes is what may lawfully be done with it. Worth keeping separate from the Azure Blob soft-delete feature named in the reliability file, which is an operational undelete window on object storage and a different thing entirely.
+
+  </details>
+
 - **NICE** — Searchable encryption: deterministic vs non-deterministic encryption, [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") blind index, key separation, and what a blind index leaks
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Deterministic encryption produces the same ciphertext for the same plaintext, so it can be matched but it leaks equality and frequency across the whole column; non-deterministic encryption leaks neither and cannot be searched at all. The resolution here is neither of those: the encrypted `external_mrn` sits beside a keyed blind index — an HMAC-[SHA256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm 256-bit — Produces a fixed-size digest used to verify content integrity") over the normalised MRN — so hospital sync matches the index and only the single matched row is ever decrypted. Key separation is what makes indexing it safe, because the blind-index key is a different Key Vault key from the one protecting the column, so possession of the index opens no path to the plaintext. What it still leaks is equality, by construction — two rows sharing a blind index share an MRN — plus confirmation of a guessed value to anyone holding the index key, which is why the normalisation is specified and the key is separated rather than the leak being denied. **Deeper:** [interview-questions.md](./interview-questions.md#q2-external_mrn-is-encrypted-at-rest-but-hospital-sync-still-has-to-look-a-patient-up-by-it-how-does-that-work-and-what-does-the-mechanism-leak) — "`external_mrn` is encrypted at rest but hospital sync still has to look a patient up by it. How does that work, and what does the mechanism leak?"
+
+  </details>
+
 - **MUST** — Declarative partitioning: range by month, pruning, attach/detach as a metadata operation, constraints and index inheritance, partition-wise joins
 
   <details><summary><strong>Answer</strong></summary>
@@ -430,7 +559,20 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables") vs B-tree when physical order matches insert order
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A block range index stores only the minimum and maximum of the indexed column per range of blocks, which makes it tiny and nearly free to maintain, and it only works where physical order correlates with the column's order — exactly true of `wellbeing_checkin` and `audit_event`, both written append-only on time. For a range scan over those two it gives the same narrowing as a B-tree for a fraction of the size and the write cost; for a point lookup it gives almost nothing, since the best it can say is which block ranges might contain the row. **Deeper:** [interview-questions.md](./interview-questions.md#q1-what-is-a-block-range-index-brin-and-when-is-it-the-right-choice-over-a-b-tree) — "What is a Block Range Index (BRIN), and when is it the right choice over a B-tree?"
+
+  </details>
+
 - **NICE** — Schema-per-module in one database; migration ownership across two writers
+
+  <details><summary><strong>Answer</strong></summary>
+
+  One database with a schema per module gives the module boundary a physical form and keeps cross-module reads honest, which is answered above under what makes a module a module. What is specific to this bullet is migration ownership, because one database means one Alembic history and there are two deployables writing into it: `scim-provisioning-svc` owns the `identity` schema and `care-core` owns the rest. That ownership is the only thing stopping two release cadences from editing each other's tables, and it is enforced by convention rather than by the database — which is the weakest link in the arrangement, so a proposal to add a second cross-schema writer is a proposal to re-argue it rather than to extend it quietly.
+
+  </details>
 
 ## 8. Query Performance and Execution Plans
 
@@ -445,6 +587,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Planner statistics, n_distinct, extended statistics, ANALYZE cadence
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Statistics are where the planner's row estimates come from, and the one worth naming here is their absence: `jsonb` carries no per-key statistics, so a predicate on a selective key inside `symptom_scores` is estimated from a default and every join choice above it rests on that guess. Autovacuum's analyze pass keeps the rest current, and the two cases needing help are a freshly loaded partition, which wants an explicit `ANALYZE` before it is queried in anger, and correlated columns, where extended statistics tell the planner something it cannot otherwise infer.
+
+  </details>
+
 - **MUST** — Index selection: composite index column order, leading-column rule, index-only scans and the visibility map, partial indexes for hot subsets
 
   <details><summary><strong>Answer</strong></summary>
@@ -494,6 +643,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Bloat, autovacuum, HOT updates, index maintenance
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Bloat is the steady state rather than an occasional chore, because the multiversion behaviour answered above under locking and concurrency leaves a dead version behind every update, and autovacuum is the only thing bounding it. A heap-only tuple update is the cheap path — when no indexed column changes and the page has room, the new version needs no index entries at all — which is why an unnecessary index is a write tax twice over, and why updating one key of a `jsonb` document, rewriting the whole value, is the expensive shape on this schema. The write-tax half is answered above under access-pattern-first indexing; what is specific here is that the two largest tables are append-only and monthly-partitioned, so they barely bloat and archival is a `DETACH` rather than a mass delete, which leaves autovacuum's real work on the small hot tables — `reminder` and `outbox_event`, where rows are updated into a terminal state and then never read again. **Deeper:** [interview-questions.md](./interview-questions.md#q3-the-design-uses-jsonb-for-a-variable-attribute-set-at-ten-times-the-volume-with-high-churn-attribute-updates-would-you-still-make-that-call) — "The design uses `jsonb` for a variable attribute set. At ten times the volume, with high-churn attribute updates, would you still make that call?"
+
+  </details>
+
 - **MUST** — Connection pooling: server connection limits, pgbouncer pool modes and what each mode forbids (prepared statements, session GUCs, advisory locks)
 
   <details><summary><strong>Answer</strong></summary>
@@ -556,7 +712,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Bulk operations, insert().on_conflict_do_update(), returning()
+
+  <details><summary><strong>Answer</strong></summary>
+
+  `insert().on_conflict_do_update()` is how the upsert this design leans on is actually written — the check-in projection keyed on `(patient_id, recorded_for)` — and `returning()` brings back the generated id or the resulting row in the same round trip rather than a second query to discover what just happened. On the bulk paths, feeding the index queue or running a backfill, handing one `execute` a list of parameter dictionaries sends one statement instead of one per row, which is often the difference between a batch job that finishes inside its window and one that does not. The cost worth knowing is that these go through Core rather than the unit of work, so no mapper event fires, nothing lands in the identity map, and any in-memory objects are stale afterwards — unremarkable in a worker, and a real source of confusion inside a request.
+
+  </details>
+
 - **NICE** — Alembic: revision graph, branches and merges, autogenerate's blind spots (server defaults, index changes, enums, data migrations)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Revisions form a graph and not a sequence, each naming the revision it descends from, so two lines of work developed independently leave two heads and `upgrade head` refuses to choose between them — with two deployables sharing one database that is a live hazard rather than a textbook one, and the cheap guard is a pipeline step that fails while more than one head exists. Autogenerate diffs model metadata against the database and therefore sees only what the metadata describes: it misses server defaults, enum value changes, and constraint or index renames, which it offers as a drop and a create, and it cannot see anything that is not a table or a column. That last category is the one that matters most on this schema, because the row-level security policies, the revoked `UPDATE` and `DELETE` on the audit table and the trigger enforcing them are the security controls — autogenerate will never write them, so they are hand-written revisions reviewed as code.
+
+  </details>
+
 - **MUST** — Expand/contract migrations: why the previous image must run against the new schema, CREATE INDEX CONCURRENTLY, lock-taking DDL and statement timeouts
 
   <details><summary><strong>Answer</strong></summary>
@@ -566,6 +736,12 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Running migrations as a pre-sync hook rather than from an application pod
+
+  <details><summary><strong>Answer</strong></summary>
+
+  This is answered above under expand/contract in this topic and migration ordering in topic 19. The one thing the hook itself settles is concurrency: migrating from an application pod's startup has every replica racing the same migration, while the hook runs once, before any new pod exists. **Deeper:** [interview-questions.md](./interview-questions.md#q2-alembic-migrations-run-as-an-argocd-presync-hook-what-ordering-does-that-guarantee-and-where-is-it-dangerous) — "Alembic migrations run as an ArgoCD PreSync hook. What ordering does that guarantee, and where is it dangerous?"
+
+  </details>
 
 ## 10. Elasticsearch Index and Query Design
 
@@ -596,6 +772,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Relevance: [BM25](https://en.wikipedia.org/wiki/Okapi_BM25 "Best Matching 25 — Ranking function that scores how relevant a document is to a search query") basics, boosting, why "relevance improved" needs an evaluation set, not an anecdote
+
+  <details><summary><strong>Answer</strong></summary>
+
+  BM25 scores a document from term frequency with saturation — a fifth occurrence of a term adds far less than the second — inverse document frequency, so a rare term counts for more than a common one, and a length normalisation so a long note does not win simply by containing everything. Boosting is the blunt instrument laid over that: weighting a match in `title` above one in the page body, or recency above age, and every boost is a product judgement wearing a number. The evaluation half is answered above under evaluation that means something, and the reason it belongs on this bullet is that a boost is the change most likely to improve the one example you tried and regress the set you did not. **Deeper:** [interview-questions.md](./interview-questions.md#q2-the-cv-claims-a-28-relevance-improvement-where-does-it-come-from-and-how-would-you-evaluate-it-honestly) — "The CV claims a 28% relevance improvement. Where does it come from, and how would you evaluate it honestly?"
+
+  </details>
+
 - **MUST** — Shards, replicas, sizing, and why a small index makes a full rebuild routine
 
   <details><summary><strong>Answer</strong></summary>
@@ -605,6 +788,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Aliases and zero-downtime reindex; reindex as the rollback for a model change
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A mapping cannot be changed in place, so the procedure is always the same: create a new index with the new mapping, reindex into it from source, then repoint the read alias in one atomic step — which is exactly why callers read `clinical-search` and never an index name. That the rollback for a model change is a reindex is answered above under model versioning; what the alias adds is that the rollback is also instantaneous and reversible, because the previous index is still sitting there until somebody chooses to delete it. All of which rests on the property that nothing originates in this store, so a rebuild is permanently available as the answer.
+
+  </details>
+
 - **MUST** — Bulk indexing: batch size, flush interval, refresh_interval vs the 1 s default, segment merge pressure, near-real-time semantics
 
   <details><summary><strong>Answer</strong></summary>
@@ -614,6 +804,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Search authorization: mandatory scope filters carried in every document, and the rule that search must never become the path around the record layer
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Every document in all three indices carries `patient_id` and `care_team_ids`, and `care-core` rather than the client builds every query with a filter clause on them, derived from the token and from `care_relationship`. The reason that is an index-level obligation rather than an application habit is the asymmetry with the record layer: a missed scope in PostgreSQL returns nothing, whereas Elasticsearch has no such backstop, so a query built without the filter returns another patient's notes and returns them successfully. That is the entire content of the rule that search must never become the path around the record layer. **Deeper:** [interview-questions.md](./interview-questions.md#q2-every-document-carries-patient_id-and-care_team_ids-and-every-query-is-wrapped-in-a-filter-on-them-why-is-that-an-index-level-property-rather-than-an-application-convention) — "Every document carries `patient_id` and `care_team_ids`, and every query is wrapped in a filter on them. Why is that an index-level property rather than an application convention?"
+
+  </details>
+
 - **MUST** — The freshness budget composed of relay + flush + refresh, not one knob
 
   <details><summary><strong>Answer</strong></summary>
@@ -701,6 +898,12 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
 - **NICE** — Ordering guarantees and when you actually need them
 
+  <details><summary><strong>Answer</strong></summary>
+
+  A broker offers ordering only within one queue consumed by one consumer, so the moment a second consumer is added for throughput it is gone — which makes the useful question not how to obtain ordering but where this design actually needs it. The honest answer is almost nowhere, and each of the three places it nearly matters is settled on the consumer's side instead: directory operations are serialised per object by a lock, index writes carry a monotonic revision so a stale one is refused, and timeline order is a query over a normalised ordering column rather than a property of arrival. That is deliberate, because ordering bought from the broker costs the most throughput and is the easiest guarantee to lose by accident two releases later.
+
+  </details>
+
 ## 12. Celery and Scheduled Work
 
 **Backs:** taking check-ins and reminders off the request path.
@@ -754,6 +957,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Graceful shutdown, warm shutdown, preStop draining, long-task sizing
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A Celery worker's warm shutdown stops consuming and finishes what it already holds, so what decides whether shutdown is graceful is not the signal handling but task duration measured against the grace period — a task longer than that window is killed mid-flight and, with late acknowledgement, comes back for redelivery on another worker. Task sizing is therefore the real control: the reminder sweep is a short claim-and-enqueue by design, and bulk work such as a reindex is chunked into bounded tasks rather than written as one long one, which is what makes a rolling restart uneventful. Prefetch is the other half, because reserved-but-unstarted tasks are all redelivered at shutdown, so a generous multiplier turns every deploy into a burst of repeated work that only idempotency saves you from. The pod-lifecycle side of the same question is answered under graceful termination in topic 18.
+
+  </details>
+
 - **MUST** — Celery vs a raw AMQP consumer: work we schedule and retry for ourselves vs facts we publish for others — the boundary rule, stated once
 
   <details><summary><strong>Answer</strong></summary>
@@ -784,6 +994,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Change data capture as the alternative and its operational cost
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Change data capture reads the write-ahead log instead of an application-written row, so nothing has to remember to publish — at the price of a replication slot that retains log segments until its consumer catches up, meaning a stalled consumer eventually fills the primary's disk, and of an event shape that is your table structure rather than a domain fact. Neither it nor any other log-based variant appears in this design, which uses the outbox; it is the move I would consider once the number of publishers makes remembering the outbox row the unreliable part.
+
+  </details>
+
 - **MUST** — At-least-once delivery and idempotent consumers: dedupe on event id, monotonic revision guards against out-of-order redelivery
 
   <details><summary><strong>Answer</strong></summary>
@@ -793,6 +1010,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Command vs event; choreography vs orchestration; saga and compensation
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Command against event is the boundary rule the Celery topic above states once, and it is the same distinction: a command names its handler and expects it to happen, an event states a fact and claims nothing about who reacts. What this bullet adds is the shape that follows from it. Check-in projection and index updates are choreographed — the topic exchange publishes and consumers decide for themselves — while page generation is orchestrated, because one task on the content queue sequences the model call, the review wait and the assignment write and is the only thing that knows the whole flow. No saga exists here, and that is worth saying plainly rather than leaving as an omission: a saga compensates a business transaction spread across services that cannot share a commit, and this design kept the four modules inside one transaction boundary precisely so there is nothing to compensate.
+
+  </details>
+
 - **MUST** — Eventual consistency made observable: lag as a metric with an [SLO](https://sre.google/sre-book/service-level-objectives/ "Service Level Objective — Target value for a service level indicator that a service commits to meet"), backlog age alerts, and a reconciliation job as the backstop for a lost event
 
   <details><summary><strong>Answer</strong></summary>
@@ -802,7 +1026,20 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Read-your-writes routing for the party who just wrote
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Read-your-writes is usually a replica-routing problem, and here it is settled by not routing: patient-facing reads go to the primary because every audited read is itself a write, so a clinician's note is visible to every party on the next read with no session stickiness to maintain. The corner that remains is the derived store, where the same note is not findable by search for up to fifteen seconds — so a screen shown immediately after a save has to read the record rather than the index, and a post-save view built on search would show the clinician their own note missing. The general rule worth carrying out of that is that read-your-writes is a property of the path a reader takes rather than of the system, so the question is always which store the next screen reads. **Deeper:** [interview-questions.md](./interview-questions.md#q2-there-are-two-read-replicas-but-patient-facing-reads-are-served-by-the-primary-explain-that-and-how-you-would-verify-it-stays-true) — "There are two read replicas, but patient-facing reads are served by the primary. Explain that, and how you would verify it stays true."
+
+  </details>
+
 - **NICE** — Schema evolution of events; consumer-driven contracts
+
+  <details><summary><strong>Answer</strong></summary>
+
+  An event is a published contract with consumers you are deliberately not supposed to know about, so the evolution rule is additive only: new optional fields, never a removed or retyped one, and a genuinely incompatible change becomes a new event type published alongside the old until the old has no consumers left. Consumers hold up their end by ignoring what they do not recognise rather than validating strictly, and a consumer-driven contract inverts the check — each consumer contributes the subset it actually reads as a test the publisher runs, so the publisher finds out at build time that a field it believed unused is not. The design does not describe such a suite, and on a `payload jsonb` column with no schema registry behind it that is where I would spend the first effort, because nothing else in the pipeline would catch the removal.
+
+  </details>
 
 ## 14. Caching with Redis
 
@@ -825,7 +1062,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Stampede protection: single-flight locks, probabilistic early expiry, stale-while-revalidate
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The three are different answers to one moment: single-flight lets one caller recompute while the rest wait on a lock, probabilistic early expiry has each reader refresh slightly before the nominal expiry so the refills scatter, and stale-while-revalidate serves the expired value and refreshes behind it. None of them appears in this design, and the honest way to answer is to say what it does instead — the timeline cache is cache-aside behind the event-driven purge and TTL backstop answered above under invalidation, and the content-page cache is write-through on a version-suffixed key, so an immutable page never expires into a refill at all. What exposure remains is bounded by the key being patient-scoped: the herd at expiry is one patient's concurrent readers rather than the whole fleet, and if that ever mattered single-flight is the cheapest of the three to add, because a lost lock here costs one duplicate query.
+
+  </details>
+
 - **NICE** — Hit ratio arithmetic: what the origin load becomes when the cache is empty
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The arithmetic is that origin load is request volume multiplied by the miss rate, which is why the miss rate is the number worth quoting: moving from 95% to 90% does not cost five per cent, it doubles what arrives at PostgreSQL. No hit-ratio figure appears anywhere in this design, and that absence is the right thing to notice — it means the cache has never been sized as capacity, which is consistent with the position the design does take, that losing the cache entirely raises latency to cold-path figures and loses nothing. Before treating it as capacity I would want that measurement, because a 60 second TTL on a per-patient key gives a hit ratio set by how often one patient is read twice inside a minute, and at this traffic shape that is not obviously high.
+
+  </details>
+
 - **MUST** — Key design and namespacing; patient-scoped keys, and the rule that nothing identifiable is cached at a layer blind to the requester (why the gateway response cache is off by policy)
 
   <details><summary><strong>Answer</strong></summary>
@@ -843,6 +1094,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Redis data structures and atomicity; Lua scripts; SETNX locks and the honest limits of distributed locking
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Commands run one at a time on a single thread and a Lua script is submitted as one of them, which is what lets a read-modify-write such as the rate-limit bucket stay correct across pods with no lock involved at all. The honest limit is the lock case: the provisioning serialisation key is a lease with a 30 second expiry, so it can lapse while its holder is still working — which is exactly why that path also carries a monotonic version guard rather than treating the lock as mutual exclusion.
+
+  </details>
+
 - **MUST** — Redis as a cache, never a store; what a flush is allowed to cost
 
   <details><summary><strong>Answer</strong></summary>
@@ -913,6 +1171,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Serving: GPU vs CPU inference, batching, latency budgets, model warm-up, quantisation, ONNX/TorchScript
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Serving is where an accurate model becomes an affordable one: GPU for the transformer passes and CPU for anything small, dynamic batching to amortise per-call overhead, a warm-up pass at startup so the first real request does not pay for kernel compilation, and quantisation or an exported graph in ONNX or TorchScript to drop the training framework out of the serving image. None of those formats is named in this design, which specifies self-hosted Hugging Face models on the GPU pool and a 2 second deadline on the extraction call — so I would treat serialisation and quantisation as the first places to look if that deadline or the GPU bill became the binding constraint, rather than as something already decided.
+
+  </details>
+
 - **MUST** — Governance of training data: patient text in a corpus, de-identification, memorisation and extraction risk, lawful basis before the first tuning run
 
   <details><summary><strong>Answer</strong></summary>
@@ -959,6 +1224,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Prompt versioning and prompt/response logging with sensitive-data rules
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Prompt version is already stamped on the artifact, recorded alongside the model version on every generated page, which is what lets a quality change be traced to a prompt edit instead of argued about. The logging half is where the care is needed, because a prompt and its response are simultaneously the most useful debugging artifact in this pipeline and the most dangerous: the prompt carries retrieved clinical passages and the patient's diagnosis and treatment context, which is precisely the content the redaction filter exists to keep out of the log stream. The design does not describe a prompt and response store, and my position is that one is needed but does not belong in logs — it belongs beside the artifact it produced in `mongo-content`, under the same access control and the same retention, so that debugging does not quietly create a second copy of clinical text with operator-wide readership. **Deeper:** [interview-questions.md](./interview-questions.md#q2-no-clinical-free-text-is-ever-logged-enforced-by-a-redaction-filter-and-a-pipeline-check-how-does-that-work-and-where-could-it-leak-anyway) — "No clinical free text is ever logged, enforced by a redaction filter and a pipeline check. How does that work, and where could it leak anyway?"
+
+  </details>
+
 - **MUST** — Evaluation of a generation pipeline: golden sets, human review, regression tests on prompt or model change
 
   <details><summary><strong>Answer</strong></summary>
@@ -968,6 +1240,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Human-in-the-loop review states (draft → pending_review → approved → retired) and pinning an exact version to what a patient was shown
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The states run `draft` to `pending_review` to `approved` to `retired`, and only `approved` is ever assignable, so the model writes into a state that is visibly not yet usable rather than producing something a bug could ship to a patient. What carries more weight than the states themselves is the pinning: the assignment row records an exact page and version, so a later revision — or a retirement — never changes the text a patient was already shown, which matters because that text is the record of what advice they were given. `retired` exists for the same reason deletion does not: guidance that should no longer be assigned still has to be readable for the patients who already hold it. The argument for review being a real control rather than a step is answered under separation of duties in topic 6.
+
+  </details>
+
 - **MUST** — Cost, latency, and why generation belongs off the request path
 
   <details><summary><strong>Answer</strong></summary>
@@ -977,6 +1256,12 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — LangChain specifically: what it gives you (composition, retrievers, output parsing) and where hand-written glue is clearer
+
+  <details><summary><strong>Answer</strong></summary>
+
+  What it genuinely supplies is the boring middle: retriever and reranker abstractions, a composition graph, output parsing into a typed structure, and the callback surface that tracing and version stamping hang off, so the pipeline reads as declared stages instead of bespoke glue. Where hand-written code is clearer is wherever the behaviour is a safety property — the restriction to approved passages and the per-block citation assembly — because those want to be explicit and reviewable rather than configured, and no framework upgrade should be able to change them quietly. **Deeper:** [interview-questions.md](./interview-questions.md#q1-what-does-langchain-actually-contribute-to-this-pipeline-that-you-would-otherwise-write-yourself) — "What does LangChain actually contribute to this pipeline that you would otherwise write yourself?"
+
+  </details>
 
 ## 17. Azure Platform Services in This Design
 
@@ -1023,6 +1308,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Entra ID and Entra External ID as two tenants/two planes
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Two tenants rather than two roles: clinician identities live in the hospital's Entra ID tenant and patient identities in an Entra External ID tenant, and that is what makes the audience separation enforceable rather than conventional, because separate issuers mint separate audiences and no token exists that could be valid on both planes. It also puts each population's rules where they belong — self-registration with proofing on the patient side, never-self-service provisioning on the clinician side where the hospital's conditional access already applies. A single tenant distinguishing the two by a role claim would have collapsed the whole control back into application code, which is the dependency the design is built to avoid.
+
+  </details>
+
 - **MUST** — Workload identity federation: no static credentials in images or manifests
 
   <details><summary><strong>Answer</strong></summary>
@@ -1032,7 +1324,20 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Key Vault: secrets vs keys vs certificates, [CMK](https://learn.microsoft.com/en-us/azure/key-vault/keys/about-keys "Customer Managed Key — An encryption key the customer controls rather than the cloud provider"), soft-delete and purge protection, rotation, projection as files rather than environment variables
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The three object types are not interchangeable: a secret is an opaque value you read out, a key never leaves the vault and you call operations on it instead, and a certificate is a managed key-and-metadata pair with a renewal lifecycle. That distinction is what a customer-managed key actually means here — `pg-clinical` and `blob-documents` both encrypt with a key the vault holds, so revoking access in the vault makes the data unreadable without anything being re-encrypted. Soft delete and purge protection are therefore the controls that matter most on that key, because purging it is a permanent loss of the database and of every backup that inherited it, and they exist to put that outside the reach even of someone holding vault administration. Projection as files and the absence of static credentials are answered above under workload identity federation.
+
+  </details>
+
 - **OPTIONAL** — Choosing between an Azure-native and a self-hosted equivalent, and the cost of running two brokers rather than one
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The rule this design follows is to take the managed service wherever the thing being managed is not a differentiator, and to self-host only where a specific capability is the reason for the choice — which is why RabbitMQ stays, since Service Bus cannot terminate MQTT and collapsing to one broker would mean building the bridge RabbitMQ already is. The price is two brokers to operate, stated as a cost with the condition that would reverse it named rather than left implicit. **Deeper:** [interview-questions.md](./interview-questions.md#q3-you-operate-two-brokers-rmq-core-and-azure-service-bus-justify-that-cost-and-name-the-condition-under-which-you-would-collapse-to-one) — "You operate two brokers, `rmq-core` and Azure Service Bus. Justify that cost, and name the condition under which you would collapse to one."
+
+  </details>
 
 ## 18. Kubernetes, OpenShift and GitOps Delivery
 
@@ -1071,8 +1376,29 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Graceful termination: preStop, terminationGracePeriodSeconds, draining workers vs killing them
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Termination is a race the pod loses by default: the termination signal arrives at the same moment endpoint removal starts propagating to every proxy and ingress, so a process that exits promptly drops requests that were routed to it microseconds earlier. The fix is a `preStop` hook that does nothing but wait long enough for that removal to propagate before shutdown begins, with `terminationGracePeriodSeconds` set above that wait plus the longest in-flight unit of work. Which of those two numbers dominates is what separates the workloads here — `care-core` serves short requests and is cut over by a Route switch anyway, while a worker pod's grace period is decided by how long its tasks run, argued under graceful shutdown in topic 12 because that is a task-sizing question rather than a pod-lifecycle one.
+
+  </details>
+
 - **NICE** — Autoscaling: [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ "Horizontal Pod Autoscaler — Automatically adjusts the number of Kubernetes pod replicas to match load") on CPU and on custom/queue-depth metrics, cluster autoscaler
+
+  <details><summary><strong>Answer</strong></summary>
+
+  CPU is the wrong signal for most of what matters in this estate: a consumer waiting on PostgreSQL or Elasticsearch shows low CPU while its backlog grows, so scaling the worker pool on CPU scales it exactly when it does not need scaling. Queue depth, or better the backlog-age metrics already collected, is the signal that tracks the promise being made, and it has to be per queue because the index and reminder queues have entirely different shapes. The cluster autoscaler sits underneath adding nodes, and the GPU pool is where that becomes slow and expensive enough that letting work queue is the better answer than scaling out. The design states horizontal scaling on stateless services and collects those metrics but does not specify an autoscaler configuration, so I would treat the choice of signal as a decision still to be recorded. **Deeper:** [interview-questions.md](./interview-questions.md#q3-celeryindex-needs-to-handle-ten-times-the-write-volume-without-breaking-the-p95-freshness-budget-of-fifteen-seconds-what-do-you-change-and-what-breaks-first) — "`celery.index` needs to handle ten times the write volume without breaking the p95 freshness budget of fifteen seconds. What do you change, and what breaks first?"
+
+  </details>
+
 - **NICE** — NetworkPolicy default-deny and what it cannot see (cross-cluster hops)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A default-deny NetworkPolicy inverts the cluster's default so pod-to-pod traffic is refused unless a policy names the caller, which at this service count is the cheaper substitute for the service mesh the design explicitly declined. What it cannot see is the limit worth stating out loud: a NetworkPolicy is evaluated by the cluster's own network plugin, so the hop from `care-core` to `clinical-nlp-svc` crosses the peering into the second cluster and is simply outside its jurisdiction — and that is the one hop carrying clinical free text. It is governed instead by controls that live in Azure rather than in Kubernetes, which is the subject of the network-controls bullet in topic 22.
+
+  </details>
+
 - **MUST** — OpenShift specifics: SCCs, Routes, image streams, and how they differ from vanilla Kubernetes
 
   <details><summary><strong>Answer</strong></summary>
@@ -1090,7 +1416,20 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Digest-pinned images so a mutable tag cannot be swapped under a cluster
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A tag is a mutable pointer, so two pods started a day apart from the same tag can be running different code, and a registry compromise or a careless re-push changes what a cluster runs without changing anything in Git. A digest is the content hash, so deploying a digest means the manifest in the GitOps repository names exactly one image and reverting a revision brings back exactly what ran. The cost is that patching becomes visible work — a rebuilt base image is a new digest and therefore a commit — which is the right trade, because the alternative hides the fact that nothing has been rebuilt in months. The rest of the build-time supply chain is answered under build and supply chain in topic 19.
+
+  </details>
+
 - **NICE** — Multi-cluster topology cost, and the rule that nothing on the request path lives on the second cluster
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Two clusters is named in the design as its most expensive choice, and the cost is not the nodes: it is two upgrade cycles, two policy surfaces, peering and network security groups to maintain, certificates that OpenShift's built-in service-serving certificates cannot issue across the boundary, and a network partition added to the list of failure modes. What makes it survivable is the rule that pays for it — nothing a user waits for lives on the second cluster, so a cross-cluster partition pauses page generation and touches no request path, and because that cluster holds no state, collapsing it back is a deployment change rather than a migration. That is the condition worth re-checking, because the moment something synchronous is placed there the topology stops being reversible. **Deeper:** [interview-questions.md](./interview-questions.md#q3-clinical-nlp-svc-runs-on-a-separate-gpu-cluster-which-the-design-calls-its-most-expensive-choice-when-would-you-collapse-it-and-what-changes-if-inference-moves-to-a-managed-endpoint) — "`clinical-nlp-svc` runs on a separate GPU cluster, which the design calls its most expensive choice. When would you collapse it, and what changes if inference moves to a managed endpoint?"
+
+  </details>
 
 ## 19. CI/CD and Quality Gates
 
@@ -1145,6 +1484,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Build and supply chain: digest pinning, image scanning, dependency audit, SBOM, reproducibility
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The supply-chain gates in this pipeline are an image scan at build, a dependency audit and the quality gate, with the lockfile supplying reproducibility — answered above under Poetry — and digest pinning answered under topic 18. The gap worth naming honestly is that no software bill of materials appears anywhere in this design. What one would add is the ability to answer the question that actually arrives during an incident, which images contain this library at what version, without rebuilding each one to find out, and the build is the only moment when that inventory is cheap to produce. So I would offer it as something to add rather than claim it exists, and hold it to the same standard as the gates: an inventory nobody queries during an incident is a file, not a control.
+
+  </details>
+
 - **MUST** — Migration ordering relative to deploy, and rollback that needs no down-migration
 
   <details><summary><strong>Answer</strong></summary>
@@ -1183,6 +1529,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — RED and USE method for choosing what to measure
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Rate, errors and duration is the method for anything request-shaped; utilisation, saturation and errors is the method for the resources underneath it, and the split earns its keep because they answer different questions — the first says the promise is broken, the second says which resource broke it. The metric table here is mostly the former, applied to routes and to consumers alike so a queue consumer is measured like a service rather than like a process. Neither method names the failure that actually dominates an event-driven system, which is work that never started, so the age-based alerts sit alongside them — answered above under detecting silent failures. **Deeper:** [interview-questions.md](./interview-questions.md#q3-of-the-alerts-in-this-design-which-would-you-page-a-human-for-at-three-in-the-morning-and-which-are-dashboards) — "Of the alerts in this design, which would you page a human for at three in the morning, and which are dashboards?"
+
+  </details>
+
 - **MUST** — Distributed tracing: spans, context propagation, W3C traceparent, sampling strategies (head vs tail, always-on for errors), and propagation across queue boundaries — including transports with no header slot (MQTT 3.1.1)
 
   <details><summary><strong>Answer</strong></summary>
@@ -1192,6 +1545,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — Elastic APM agent auto-instrumentation and its blind spots
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Auto-instrumentation covers the libraries the agent knows — the web framework, the data-access layer, Celery, the broker client and outbound HTTP here — which buys most of a trace for almost no work. Its blind spots are everything outside that list: the MQTT ingress with no header slot to carry context, the Azure-native half of the estate reporting through Azure Monitor instead, and the in-process module boundaries inside `care-core`, which are exactly where time disappears without any span saying so. **Deeper:** [interview-questions.md](./interview-questions.md#q3-the-dashboards-say-p95-is-well-within-target-but-clinicians-say-the-timeline-is-slow-reconcile-that) — "The dashboards say p95 is well within target, but clinicians say the timeline is slow. Reconcile that."
+
+  </details>
+
 - **MUST** — Structured logging: [JSON](https://www.json.org/json-en.html "JavaScript Object Notation — Lightweight text format for structured data exchange"), correlation fields, log levels, and a redaction filter that drops sensitive fields at the formatter
 
   <details><summary><strong>Answer</strong></summary>
@@ -1230,7 +1590,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 **Backs:** availability targets, reminder timeliness, deploy and incident runbooks.
 
 - **NICE** — Availability arithmetic; where a 99.9% budget actually goes
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The arithmetic is answered above in two places — the error budget under SLI and SLO in topic 20, and where a 60 second failover lands in it under HA and failover in this topic. What the two are worth spelling out together is that the budget is consumed by ordinary operations rather than by disasters: a handful of zone failovers and nothing else accounts for most of 43 minutes a month, leaving very little for anything planned. That is the real argument for blue-green and expand/contract being reliability mechanisms rather than conveniences, because a deploy costing half a minute of unavailability, taken weekly, is a larger claim on the budget than the failure the architecture was designed around.
+
+  </details>
+
 - **NICE** — Single points of failure and honest acceptance of one
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Accepting a single point of failure is defensible when you can name the alternative and show it is worse, which is the argument the gateway bullet in topic 17 already makes for accepting one. What is worth adding here is that the gateway is not the only singleton in the design — the scheduler must not run twice either — and it is accepted on entirely different grounds: its blast radius is bounded by the property argued under queue-backed work below, so stopping it delays reminders rather than losing them. Those are the two honest shapes of acceptance, one where the alternative is worse and one where the consequence is bounded. A singleton with neither argument available has not been accepted, only left unexamined.
+
+  </details>
+
 - **MUST** — [HA](https://en.wikipedia.org/wiki/High_availability "High Availability — System design goal of remaining operational despite component failure") and failover: zone redundancy, failover time as a budget line, connection storms after failover and pooling as the mitigation
 
   <details><summary><strong>Answer</strong></summary>
@@ -1248,7 +1622,21 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Rebuildable derived stores as a recovery strategy (index rebuild from source)
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The strategy is that a store you can rebuild needs a procedure rather than a guarantee: the search index, the cache and the extraction artifacts all hold projections, so their recovery plan is a rebuild from the two owning stores rather than a restore, and the snapshot is kept as a convenience rather than as the plan. The important half is that this is a constraint to maintain and not a description of what happens to be true — the day one field exists only in the search index, the rebuild stops being possible and the recovery strategy is gone with it, silently and with nothing failing. Which is why the rebuild is rehearsed quarterly with a document-count reconciliation afterwards, because that is the only thing that would notice.
+
+  </details>
+
 - **NICE** — Graceful degradation: a labelled fallback path beats an error page
+
+  <details><summary><strong>Answer</strong></summary>
+
+  A fallback only helps if the user can tell it is one: search degrading to a chronological browse out of PostgreSQL is useful because it is labelled, where the same response presented as a complete result set would have a clinician conclude that a note does not exist. So the design decides per path which degradation is honest — search and content generation degrade, the record layer refuses with a retryable error, because a possibly-stale prescription is the one outcome worse than an error. The failure mode to watch is a fallback whose own dependency is the thing that failed: this one reads the primary, so it is no help during a primary failover, and pretending otherwise is how a degradation plan becomes a second outage. **Deeper:** [interview-questions.md](./interview-questions.md#q3-a-clinician-searches-while-pg-clinical-is-mid-failover-the-scope-filter-is-derived-from-postgresql-what-happens-and-what-should-happen) — "A clinician searches while `pg-clinical` is mid-failover. The scope filter is derived from PostgreSQL. What happens, and what should happen?"
+
+  </details>
+
 - **MUST** — Retries done properly: idempotency, exponential backoff with jitter, budget caps, circuit breakers, timeouts everywhere
 
   <details><summary><strong>Answer</strong></summary>
@@ -1303,6 +1691,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Field-level encryption trade-offs and the honest position that data used by every query cannot be meaningfully field-encrypted
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Field-level encryption buys one thing — a column a database read alone does not reveal — and it costs exact matching, ranges, indexing, sorting and the planner's ability to estimate anything about that column. The trade is payable for a direct identifier nothing queries on, which is why the medical record number, contact details and next-of-kin are encrypted with `pgcrypto`, and the one case that must stay searchable is handled by a blind index rather than by weakening the encryption. It is not payable for diagnosis and treatment data, and the design says so plainly rather than dressing it up: that data is the working substance of every query, index and scope filter, so encrypting it would either break search or be undone by a decryption path the application has to hold on every request anyway. The honest control for it is row-level security, audit and least privilege, which sounds weaker and is true.
+
+  </details>
+
 - **MUST** — [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection"): versions, cipher choice, certificate verification modes (verify-full), mTLS, certificate issuance and rotation without a service mesh (cert-manager)
 
   <details><summary><strong>Answer</strong></summary>
@@ -1312,6 +1707,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Network controls: private endpoints, VNet peering, NSGs, default-deny NetworkPolicy and egress control
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The Azure half is one rule applied without exception: no data store carries a public endpoint, every one is reached over a private endpoint from the application network, and the only inbound paths from the internet are the edge gateway and the MQTT listener, both of which authenticate before anything is processed. Peering and network security groups are what govern the cross-cluster hop that in-cluster policy cannot see — that half is answered under NetworkPolicy in topic 18. Egress control is the one usually left out and the one that counts against an authenticated attacker, because a pod able to open arbitrary outbound connections can exfiltrate whatever it is entitled to read, which here is a patient record — so an allowlist of the destinations a service genuinely needs is a containment control rather than hygiene.
+
+  </details>
+
 - **MUST** — Secrets management and the elimination of static credentials
 
   <details><summary><strong>Answer</strong></summary>
@@ -1329,6 +1731,13 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **NICE** — Detection rules over the audit stream that name a specific misuse
+
+  <details><summary><strong>Answer</strong></summary>
+
+  Each rule names a misuse rather than an anomaly — a clinician reading outside their care team, access volume far above that clinician's own baseline, break-glass use, bulk document downloads, a deprovisioning that did not close its care relationships, and any direct query against the record database from a principal that is not the application. Naming the misuse is what makes a rule actionable, because a generic anomaly score produces a number nobody can act on, while each of those carries an obvious next question, a defined reviewer and, for break-glass and out-of-team access, a 24-hour review. Two of them are not about an attacker at all: the deprovisioning rule and the direct-query rule detect a control having failed, which is something only the audit stream is placed to see, because the application itself is behaving perfectly normally throughout.
+
+  </details>
+
 - **MUST** — [GDPR](https://gdpr-info.eu/ "General Data Protection Regulation — EU regulation governing the processing of personal data"): lawful basis, Article 9 special-category data, consent versioning and withdrawal, minimisation, purpose limitation, [DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them"), residency, [DPIA](https://gdpr-info.eu/art-35-gdpr/ "Data Protection Impact Assessment — GDPR process for assessing privacy risk before high-risk data processing")
 
   <details><summary><strong>Answer</strong></summary>
@@ -1346,6 +1755,12 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
   </details>
 
 - **OPTIONAL** — [HIPAA](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160 "Health Insurance Portability and Accountability Act — US law setting standards for protecting health information") mapping of the same technical safeguards; [ISO](https://en.wikipedia.org/wiki/International_Organization_for_Standardization "International Organization for Standardization — Publishes international standards, including information security management") 27001/27701 framing
+
+  <details><summary><strong>Answer</strong></summary>
+
+  The framework this system targets is GDPR and [UK](https://en.wikipedia.org/wiki/United_Kingdom "United Kingdom — Names the jurisdiction whose data protection regime applies alongside the EU's") GDPR with health data treated as Article 9 special-category, alongside ISO 27001 and 27701 controls; HIPAA is a mapping exercise onto the same technical safeguards rather than something the design is built against. Most of that mapping is mechanical because the controls already exist — access control, audit, encryption, transmission security — and what does not map is the reasoning rather than the engineering, since a permitted-use model and a consent-plus-Article-9-condition model are genuinely different arguments about the same processing.
+
+  </details>
 
 ## 23. Defending the Numbers
 
