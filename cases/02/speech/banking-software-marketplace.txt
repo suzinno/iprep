@@ -1,0 +1,213 @@
+RETAIL SOFTWARE MARKETPLACE — VENDOR / RETAILER SOURCING PLATFORM
+
+================================================================
+THE SPINE — ten lines to memorise
+================================================================
+
+1.  Three-sided marketplace. Competing vendors and competing retail chains on one platform.
+2.  Small traffic, hard isolation. Thirty-five requests a second at peak — nothing here is a throughput problem.
+3.  Six services, one repository, one pipeline. Split for blast radius and tenant data, not for load.
+4.  Postgres is the spine. Mongo is the body. A projection table is the seam between them.
+5.  One denormalised table, partial indexes, keyset pagination — the hot query joins nothing.  -> 107 ms
+6.  Cache-aside, revision-keyed, expendable. Single-flight and early expiry, never a bare TTL.  -> 85% hit
+7.  Three checks: account type, role, tenant scope. Tenant scope lives in one layer, not per endpoint.
+8.  I rejected row-level security deliberately — a pooled connection is where it silently stops working.
+9.  Outbox, not dual write. Celery for work we own, Service Bus across a boundary.
+10. Two war stories: the publish that looked lost, and the cache that made the spike worse.
+
+================================================================
+WHAT THE PRODUCT IS (~60 s)
+================================================================
+
+Let me start with what the product does, then go through the architecture, and I'll flag my piece in each part as I go.
+
+It's a B2B marketplace for retail operations software. Software vendors publish their products — point-of-sale, inventory, loyalty, payment and reconciliation tools. Category managers at retail chains compare features, pricing and country coverage, shortlist what fits, and open a conversation with the vendor directly.
+[The problem product resolves] Before this, a chain with a gap in checkout or stock software ran a full sourcing round — an RFP, a spreadsheet of vendors, weeks of email — to reach a conversation it could have had on day one. The platform replaces the round, not the negotiation.
+
+>> "It's three-sided: vendors, retail chains, and us in the middle. Which means competitors are on the same platform."
+A vendor must never see a competitor's drafts, or which chains are shopping. A retail chain must never see another chain's shortlist — that's their sourcing strategy. And a vendor learns a chain even exists only when that chain opens a conversation first.
+That asymmetry shaped most of the design.
+
+[One number for scale] Around three thousand active users a day, thirty-five requests a second at peak, forty thousand listings at the five-year mark.
+>> "Nothing in this system is hard because of load. It's hard because of who must not see what — and because product metadata has no fixed shape."
+
+
+================================================================
+[MY ROLE, IN ONE LINE] I was a backend engineer on the marketplace platform. I owned the catalog data layer and search, the vendor and retailer APIs, the identity and authorization model, the async and import paths, and the Azure infrastructure and the pipeline that ships it.
+
+
+================================================================
+THE SHAPE OF THE SYSTEM (~90 s)
+================================================================
+
+Six FastAPI services, clean architecture, each owning its own tables and exposing its database to nobody. If a service needs data it doesn't own, it calls an API or consumes an event.
+
+- catalog-service — the read side. Search, facets, detail, compare. Highest traffic, purely read.
+- vendor-service — the write side. Listing authoring, publish, bulk imports.
+- retailer-service — the buyer's private working set: groups, stores, shortlists.
+- connection-service — requests, threads, messages. The platform's commercial event.
+- billing-service — vendor plans and charges.
+- identity-service — the OAuth2 authorization server. A different trust boundary from everything else.
+
+Plus three Celery worker pools: imports, indexing, notifications. Same codebase, different deployment — so a twenty-thousand-row import can't eat web-tier capacity.
+
+The requirement I was given was that a listing change must never spill into a connection or a billing flow. That's the reason for the split, and I want to be honest about the trade-off, because a modular monolith is genuinely defensible at thirty-five requests a second — and cheaper.
+>> "A module boundary documents that rule. A process boundary enforces it. We paid for enforcement."
+
+What makes it affordable is that it isn't nine repositories. One repository, one Alembic migration history, one pipeline, one cluster. Splitting the repos at this scale would have cost more in coordination than the boundaries are worth.
+
+  [IF ASKED "would you build it as a monolith today?"]
+  For a smaller team, yes — one deployable, the same six modules, the same schema-per-module boundary. I'd extract on a real trigger: a component with its own release cadence, its own hardware, or its own owner. Here the trigger was blast radius on data two competitors share.
+  >> "Splitting by domain nouns is how you end up with a distributed monolith."
+
+
+================================================================
+THE DATA LAYER (~90 s)
+================================================================
+
+This is the part I designed most of, and it starts from a contradiction in the requirements. Product metadata has to have no fixed column set — a POS system and a loyalty engine describe themselves with completely different attributes — but retailers still have to filter and compare on those attributes.
+
+The resolution is that a listing has two halves with different governance:
+- The spine is relational, in Postgres — identity, vendor, category, status, publication date, price tiers. It has referential integrity, it takes part in shortlists and connections, and it's what the admin workspace edits.
+- The body is a document in MongoDB — everything specific to being a POS or an inventory system. Validated at write time against a per-category facet schema, and stored as immutable revisions.
+>> "Schemaless doesn't mean uncontracted. Adding a category is a document insert, not a migration."
+
+Then the seam: an indexer worker projects the filterable subset of the Mongo document into a single Postgres table, with the free-text vector and the facets alongside it.
+>> "Postgres holds the truth. Mongo holds the shape we can't fix. The projection table is a read model — we can rebuild it from both."
+
+Four things about that table, because it's where the performance lives:
+- It's denormalised on purpose. Vendor, status and publication date are copied onto it, so the hot search query touches exactly one relation and never joins.
+- Partial indexes carry the status predicate — the browse index is defined WHERE status = published, which keeps drafts and archived rows out of the index entirely and removes the filter from every plan.
+- Keyset pagination, never offset. Page forty of a comparison costs the same as page one. Offset looks fine in staging and falls over in production.
+- Every index exists for one named access pattern. If I can't name the endpoint it serves, the index doesn't get created.
+>> "That's how a faceted search lands around a hundred milliseconds uncached, and thirty-five from cache."
+
+And one honest constraint I put in the API rather than in the database: a query with more than two facet predicates has to name a category. That guarantees a viable leading index instead of a bitmap scan over the whole table — and it matches how sourcing actually works. Nobody compares a POS against a loyalty engine.
+
+Redis sits in front of all of it, cache-aside, and it holds nothing durable — hot listings, search pages, facet counts, rate limits, idempotency keys.
+>> "If we lose Redis we get slow, not wrong. Latency goes from thirty-five milliseconds to a hundred, and Postgres takes about six times the load. Capacity is sized to survive exactly that."
+
+
+================================================================
+AUTHENTICATION AND AUTHORIZATION (~90 s)
+================================================================
+
+This is the part I'd call the heart of the system, because every serious threat here is an authenticated one. The dangerous actor isn't an intruder — it's a legitimate vendor enumerating the buyer side to build a sales list.
+
+Identity first. One service is the OAuth2 authorization server; nothing else authenticates anybody. Authorization code with PKCE for the web app and the admin console, client credentials for vendor systems pushing catalog data. Access tokens are RS256, fifteen minutes, signing key in Key Vault with a rotation overlap. Refresh tokens rotate — a one-time-use identifier, and presenting a revoked one revokes the whole chain and raises an alert.
+
+Verification happens twice, deliberately. The gateway validates signature, expiry and audience at the edge, so a forged token never reaches the cluster. Each service validates again locally against a cached key set and then applies its own rules.
+>> "The edge is a filter, never the authority. And neither check makes a network call — an introspection round-trip per request would have eaten a fifth of the latency budget."
+
+Then authorization, which is three checks in order:
+- Account type, from a claim on the token. Vendor routes require a vendor token, retailer routes a retailer token, admin routes a platform token. A retailer token cannot reach a vendor route whatever its scopes.
+- Role to scope. A vendor viewer gets read only; a category manager gets connection-write but not group administration, so they can't add stores or change who's in the group.
+- Tenant scope — which organisation's rows you can reach.
+
+That third one is the one that matters, and I enforced it in exactly one place: a session-level filter in the repository layer, not a check in each endpoint.
+>> "A per-endpoint check is a control that works right up until the day someone adds an endpoint."
+Platform admins bypass it explicitly, and every bypass writes an audit row.
+
+And one decision I want to state plainly, because it's the opposite of what I'd normally reach for. Postgres row-level security is the stronger mechanism, and I chose not to use it as the primary control here. The read path runs on a replica through a pooled connection with a shared role, and setting a per-request session variable through a transaction-mode pooler is exactly where row-level security silently becomes a no-op — or worse, leaks into the next caller's query.
+>> "A security control that quietly stops working is worse than one you never had. If I can't guarantee it under real connection handling, it doesn't get to be the primary control."
+The compensating control is that the filter lives in one auditable layer, with a test asserting that a cross-tenant read returns empty for every repository method that touches an org-owned table.
+
+
+================================================================
+HOW SERVICES TALK, AND HOW THEY STAY CONSISTENT (~120 s)
+================================================================
+
+The rule is one sentence: synchronous when the caller can't act without the answer, asynchronous when the caller only needs the work to happen.
+
+In practice there are four transports and each has a stated job:
+- Synchronous REST for anything a user is waiting for.
+- Azure Service Bus topics for domain facts that cross a boundary — listing published, connection requested, user deactivated.
+- Celery for work we own and must retry — imports, indexing, notification policy.
+- Azure Functions for delivery and media processing, triggered off a queue and off blob writes.
+>> "Celery moves work between Python processes we own. Service Bus moves events across a boundary. That split is a rule, not a preference."
+
+I'll flag one thing on the sync side: exactly one synchronous call crosses a service boundary in the whole design — connection-service asking retailer-service whether that group already has an open thread. It has a 250-millisecond timeout, and on timeout it fails open and permits the connection.
+>> "Refusing a real connection request costs the marketplace more than an occasional duplicate thread — and the duplicate is caught by a unique constraint anyway."
+
+Consistency is where I spent most of my design time, because two stores and a projection can't be one transaction. Three rules:
+
+- First — nothing is dual-written. A publish writes the revision document to Mongo, then commits the Postgres pointer and an outbox row in the same transaction, and a relay publishes from there. Mongo first is deliberate: an orphaned document nothing points at is invisible garbage we can sweep, whereas a committed pointer to a document that doesn't exist is a broken listing. The cost is honest — a listing is searchable in about five seconds, thirty at p99. With a dual write, a successful commit plus a failed publish leaves you permanently wrong with nothing to detect it. With an outbox, the backlog is a metric and it drains by itself.
+- Second — duplicates are absorbed by the schema, not by code. The projection upserts on product id and ignores any event whose revision is older than the row's current one, so redelivery is a no-op and out-of-order delivery can't roll a listing backwards. A connection request carries an idempotency key with a unique constraint on it, so a double-clicked form can't create two threads or bill the vendor twice.
+>> "At-least-once delivery should turn into arithmetic, not into a bug."
+- Third — there's a reconciliation job, because an event can still be lost. Nightly, it re-projects any listing whose projection timestamp trails its update timestamp by more than five minutes, and sweeps orphaned revisions. And the lag itself is a metric with an alert on it, because a dead indexer is a silent failure — nothing else surfaces it. New listings simply stop appearing, and no error is raised anywhere.
+
+[On the security side of all that] TLS everywhere, private endpoints on every data store — none of them has a public IP — default-deny network policy inside the cluster with explicit allows per pair, default-deny egress, and workload identity so there are no connection strings and no static credentials anywhere in the cluster or in CI.
+I did not implement mutual TLS between services, and that's a stated choice rather than an oversight: doing it properly means a service mesh, and a mesh's cost is disproportionate for nine workloads in one namespace where no untrusted container runs. The trigger to revisit it is concrete — a third-party workload in the cluster, or a compliance requirement that names it.
+
+
+================================================================
+[OPTIONAL] THE VENDOR WORKSPACE AND BULK IMPORTS (~40 s)
+================================================================
+
+I built the admin workspace over vendors, chains, stores and products — the point being that every entity a support ticket would otherwise touch is editable by the right role without an engineering change. It's a static console calling the same versioned public API, not a private backend.
+>> "The benefit is that no admin capability exists which the public contract doesn't already describe and test."
+
+Imports are the other half. A vendor uploading twenty thousand rows must not degrade browse for everyone else, so: the file is chunked into five-hundred-row tasks on their own queue and their own worker pool, with a per-vendor concurrency cap held as a Redis semaphore, so one vendor can't occupy the pool. Rows land in a staging collection and are validated against the category schema before any live row moves — a malformed file fails wholly, with a per-row error digest, never half-applied. And the projection is batched: a completed import re-projects in batches of two hundred, otherwise one import means twenty thousand cache invalidations.
+
+
+================================================================
+[OPTIONAL] HOW IT SHIPS (~40 s)
+================================================================
+
+GitLab CI is the only path to production, and every gate can genuinely fail the build: ruff, type checking, unit tests, then integration tests against real containers — real Postgres, real Mongo, real Redis — then a functional pass against the OpenAPI contract, then image and dependency scanning.
+>> "The projection pipeline and the query plans are exactly the things a mocked test passes while broken."
+
+Terraform owns every Azure resource, including the alert rules — an alert silenced by hand during an incident and never restored is the standard way monitoring rots. It applies only from CI, authenticated by OIDC federation rather than a stored secret.
+
+One thing I'd call out, because it's the piece people skip: every migration is expand-contract. One release adds nullable columns and indexes concurrently; dropping what's no longer read is a separate merge request at least one release later.
+>> "That's what makes rollback real. The old image has to be able to run against the new schema — otherwise 'roll back' is just a word."
+
+The read service gets a canary at ten percent held against its error rate and p95, because it carries the risky query plans. Everything else is a rolling update, and workers are drained rather than killed.
+
+
+================================================================
+[OPTIONAL] LOGS, METRICS AND TRACES (~40 s)
+================================================================
+
+Azure Monitor and Application Insights, with one OpenTelemetry SDK emitting metrics, logs and traces — so all three carry the same resource attributes and one instrumentation dependency.
+
+The piece that makes it actually work is that trace context travels in Service Bus message properties, not just HTTP headers. So one trace covers the request, the outbox publish, the projection and the cache invalidation — which is precisely the chain nobody can debug from logs alone.
+
+Every log line carries a request id, a trace id, and the organisation id — so a support question can be scoped to one tenant without a full-text sweep. Two standing rules: no conversation message body, token or secret is ever logged.
+>> "And audit is a database table, append-only, with no update or delete grant — never a log stream. Mix them, and your log retention quietly becomes your audit policy."
+
+
+  ================================================================
+  [IF ASKED] TWO PROBLEMS THAT COST US (~80 s)
+  ================================================================
+
+  PROBLEM ONE — the publish that looked lost.
+
+  Eventual consistency was invisible to retailers and glaring to vendors. A vendor clicked publish, the API returned two-oh-one, and their own listing page showed the old content for the next few seconds. So they clicked publish again. And again. We got support tickets saying the platform had lost their changes — and a burst of duplicate work behind every one of them.
+
+  The lag was within budget. The mistake was mine, and it was a routing mistake, not a latency one: the vendor workspace was reading the same cached projection the retailer-facing catalog reads.
+
+  The fix was to route by audience rather than by endpoint. The vendor workspace now reads the authoritative sources directly — the Postgres primary and the metadata document — never the projection and never the cache. Vendors get read-your-writes; retailers get the fast, slightly stale, cached view. The one place a vendor sees the projection is an explicit "preview as a retailer sees it", where the staleness is the point.
+
+  >> "The lesson: eventual consistency isn't a property of a system. It's a property of a reader. Decide per audience who's allowed to see stale data, and route the query accordingly."
+
+
+  PROBLEM TWO — the cache that made the spike worse.
+
+  We cached hot listings on a plain fifteen-minute TTL, which is the obvious thing to do and is fine almost all of the time. Then a vendor's product got featured in a trade newsletter.
+
+  Under concentrated traffic the failure is precise: the key expires, every concurrent request misses in the same instant, and all of them hit Postgres and Mongo together. The cache didn't absorb the spike — it synchronised it. And it did that at exactly the moment the traffic was highest, which is the only moment it mattered.
+
+  Two mechanisms fixed it, both small. Single-flight per key: on a miss the first pod takes a short lock and recomputes, and the others poll briefly and then serve the stale value. And probabilistic early expiry, so readers recompute a little before the TTL with a rising probability — recomputation spreads over a window instead of landing on one instant. Together they bound database load on any one listing to roughly one recomputation per TTL, no matter how many concurrent readers there are.
+
+  >> "The lesson: a cache changes when the load arrives, not just how much. A bare TTL is a scheduled thundering herd — you just haven't been popular enough to see it yet."
+
+
+================================================================
+CLOSE (~20 s)
+================================================================
+
+So, in one line: six services split for isolation rather than for throughput, a relational spine with a schemaless body joined by a projection I can rebuild, tenant scoping enforced in one auditable layer, and every write that crosses a boundary going through an outbox instead of a dual write.
+
+My part was the catalog data layer and search, the vendor and retailer APIs, the identity and authorization model, the async and import paths, and the infrastructure and pipeline that ship all of it.
+I'm happy to go deeper anywhere.
