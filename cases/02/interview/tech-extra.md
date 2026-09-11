@@ -1,6 +1,5 @@
 # Technical — Extended Questions & Answers
 
-> Generated as a continuation of the original question set. Same interviewer style, new angles.
 > Weighted toward the client brief in `candidate-profile.txt`.
 
 ## Questions by project

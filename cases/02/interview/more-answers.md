@@ -1,7 +1,7 @@
 # Supplied Questions — Answers by Topic
 
-> Questions 1-36 were supplied by the client; questions 37-48 were generated to cover patterns the supplied set relies on but never asks about. Answers throughout are generated from the project briefs and system design documents in this case.
-> Grouped by topic and tiered by difficulty rather than kept in source order — this is a preparation document, not a reproduction of an interviewer's running order.
+> Answers throughout are generated from the project briefs and system design documents in this case.
+> Grouped by topic and tiered by difficulty.
 > Weighted toward the client brief in `candidate-profile.txt`.
 
 **Difficulty tiers.** `Q1` baseline — the foundational knowledge behind a stated responsibility. `Q2` deep dive — implementation detail, failure modes, the gotchas only someone who did the work has. `Q3` architectural — trade-offs, system-wide impact, what changes at scale. The tier follows the question that was asked, so not every topic carries all three.
