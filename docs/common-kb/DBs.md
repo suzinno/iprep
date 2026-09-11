@@ -284,7 +284,7 @@ The split is 123 MUST, 53 NICE and 26 OPTIONAL across 27 topics. A MUST-heavy li
 
   Naive modulo hashing remaps almost every key when node count changes, so adding a node means moving nearly all the data. **Consistent hashing** places nodes and keys on a ring so that adding or removing a node moves only the neighbouring slice, and virtual nodes smooth the imbalance that a small number of physical nodes would otherwise create.
 
-  Many systems instead use a fixed large number of logical partitions assigned to nodes — Kafka partitions, Elasticsearch shards, Redis Cluster hash slots — which makes **rebalancing** a matter of reassigning ownership rather than rehashing. The topic is worth knowing because it explains why partition counts are chosen up front and are painful to change later.
+  Many systems instead use a fixed large number of logical partitions assigned to nodes — [Kafka](https://kafka.apache.org/documentation/ "Apache Kafka — Distributed log that stores partitioned, replicated streams of records for publish-subscribe and stream processing") partitions, Elasticsearch shards, Redis Cluster hash slots — which makes **rebalancing** a matter of reassigning ownership rather than rehashing. The topic is worth knowing because it explains why partition counts are chosen up front and are painful to change later.
 
   </details>
 
