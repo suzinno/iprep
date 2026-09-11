@@ -1,0 +1,152 @@
+old_id	new_id	disposition	tier	file	section	note
+B-55	API-01	kept	Q1	API	1. Contracts and versioning	
+B-69	API-02	kept	Q1	API	1. Contracts and versioning	
+B-70a	API-03	kept	Q1	API	1. Contracts and versioning	
+A-17	API-04	kept	Q2	API	1. Contracts and versioning	
+B-56	API-05	kept	Q2	API	1. Contracts and versioning	
+C-Q53	API-06	kept	Q2	API	1. Contracts and versioning	
+A-19	API-07	kept	Q2	API	2. Idempotency and bulk operations	
+B-57	API-08	kept	Q2	API	2. Idempotency and bulk operations	
+C-Q32	API-09	kept	Q2	API	2. Idempotency and bulk operations	
+C-Q41	API-10	kept	Q1	API	3. Search	
+C-Q40	API-11	kept	Q2	API	3. Search	
+C-Q42	API-12	kept	Q2	API	3. Search	
+C-Q43	API-13	kept	Q2	API	3. Search	
+C-Q44	API-14	kept	Q2	API	3. Search	
+C-Q45	API-15	kept	Q3	API	3. Search	
+C-Q46	API-16	kept	Q1	API	4. Caching	
+A-24	API-17	kept	Q2	API	4. Caching	
+C-Q47	API-18	kept	Q2	API	4. Caching	
+C-Q48	API-19	kept	Q2	API	4. Caching	
+C-Q49	API-20	kept	Q2	API	4. Caching	
+C-Q50	API-21	kept	Q2	API	4. Caching	
+A-39	ARCH-01	kept	Q2	ARCH	1. Service boundaries and distributed data	
+A-40	ARCH-02	kept	Q2	ARCH	1. Service boundaries and distributed data	
+B-71	ARCH-03	kept	Q2	ARCH	1. Service boundaries and distributed data	
+C-Q17	ARCH-04	kept	Q2	ARCH	1. Service boundaries and distributed data	
+A-2	ARCH-05	kept	Q3	ARCH	1. Service boundaries and distributed data	
+A-38	ARCH-06	kept	Q3	ARCH	1. Service boundaries and distributed data	
+A-41	ARCH-07	kept	Q3	ARCH	1. Service boundaries and distributed data	
+A-42	ARCH-08	kept	Q2	ARCH	2. Resilience	
+B-61	ARCH-09	kept	Q2	ARCH	2. Resilience	
+B-62	ARCH-10	kept	Q3	ARCH	2. Resilience	
+B-65	ARCH-11	kept	Q1	ARCH	3. Scaling and system composition	
+B-66	ARCH-12	kept	Q1	ARCH	3. Scaling and system composition	
+B-67	ARCH-13	kept	Q2	ARCH	3. Scaling and system composition	
+C-Q58	ARCH-14	kept	Q2	ARCH	3. Scaling and system composition	
+A-29	ARCH-15	kept	Q3	ARCH	3. Scaling and system composition	
+A-30	ARCH-16	kept	Q3	ARCH	3. Scaling and system composition	
+B-68	ARCH-17	kept	Q3	ARCH	3. Scaling and system composition	
+B-72	ARCH-18	kept	Q3	ARCH	3. Scaling and system composition	
+B-73	ARCH-19	kept	Q3	ARCH	3. Scaling and system composition	
+A-3	DB-01	kept	Q1	DB	1. Data modelling and polyglot persistence	
+A-4	DB-02	kept	Q2	DB	1. Data modelling and polyglot persistence	
+C-Q30	DB-03	kept	Q2	DB	1. Data modelling and polyglot persistence	
+A-6	DB-04	kept	Q1	DB	2. Transactions, locking and concurrency	
+B-58	DB-05	kept	Q1	DB	2. Transactions, locking and concurrency	
+A-7	DB-06	kept	Q2	DB	2. Transactions, locking and concurrency	
+A-8	DB-07	kept	Q2	DB	2. Transactions, locking and concurrency	
+B-59	DB-08	kept	Q2	DB	2. Transactions, locking and concurrency	
+A-10	DB-09	kept	Q1	DB	3. Query performance and data access	
+A-11	DB-10	kept	Q2	DB	3. Query performance and data access	
+A-12	DB-11	kept	Q2	DB	3. Query performance and data access	
+C-Q24	DB-12	kept	Q2	DB	3. Query performance and data access	
+C-Q25	DB-13	kept	Q2	DB	3. Query performance and data access	
+C-Q28	DB-14	kept	Q2	DB	3. Query performance and data access	
+C-Q29	DB-15	kept	Q2	DB	3. Query performance and data access	
+A-13	DB-16	kept	Q3	DB	3. Query performance and data access	
+A-14	DB-17	kept	Q2	DB	4. Migrations and backfills	
+A-15	DB-18	kept	Q2	DB	4. Migrations and backfills	
+C-Q22	DB-19	kept	Q2	DB	4. Migrations and backfills	
+C-Q27	DB-20	kept	Q2	DB	4. Migrations and backfills	
+A-16	DB-21	kept	Q3	DB	4. Migrations and backfills	
+C-Q21	DB-22	kept	Q3	DB	4. Migrations and backfills	
+A-33	INF-01	kept	Q1	INF	1. Containers and images	
+C-Q80	INF-02	kept	Q1	INF	1. Containers and images	
+C-Q82	INF-03	kept	Q1	INF	1. Containers and images	
+A-34	INF-04	kept	Q2	INF	1. Containers and images	
+C-Q81	INF-05	kept	Q2	INF	1. Containers and images	
+C-Q83	INF-06	kept	Q2	INF	1. Containers and images	
+C-Q57	INF-07	kept	Q2	INF	2. Kubernetes and runtime	
+C-Q59	INF-08	kept	Q2	INF	2. Kubernetes and runtime	
+C-Q60	INF-09	kept	Q2	INF	2. Kubernetes and runtime	
+C-Q61	INF-10	kept	Q2	INF	2. Kubernetes and runtime	
+C-Q62	INF-11	kept	Q2	INF	3. Terraform, CI/CD and GitOps	
+C-Q63	INF-12	kept	Q2	INF	3. Terraform, CI/CD and GitOps	
+C-Q66	INF-13	kept	Q2	INF	3. Terraform, CI/CD and GitOps	
+C-Q64	INF-14	kept	Q3	INF	3. Terraform, CI/CD and GitOps	
+C-Q65	INF-15	kept	Q3	INF	3. Terraform, CI/CD and GitOps	
+C-Q67	INF-16	kept	Q3	INF	3. Terraform, CI/CD and GitOps	
+C-Q70	INF-17	kept	Q2	INF	4. Quality gates and dependencies	
+C-Q71	INF-18	kept	Q2	INF	4. Quality gates and dependencies	
+C-Q72	INF-19	kept	Q2	INF	4. Quality gates and dependencies	
+C-Q68	INF-20	kept	Q3	INF	4. Quality gates and dependencies	
+C-Q69	INF-21	kept	Q3	INF	4. Quality gates and dependencies	
+A-1	MSG-01	kept	Q2	MSG	1. Delivery semantics and the outbox	
+B-63	MSG-02	kept	Q2	MSG	1. Delivery semantics and the outbox	
+C-Q20	MSG-03	kept	Q2	MSG	1. Delivery semantics and the outbox	
+A-37	MSG-04	kept	Q3	MSG	1. Delivery semantics and the outbox	
+A-26	MSG-05	kept	Q2	MSG	2. RabbitMQ topology and operations	
+A-27	MSG-06	kept	Q2	MSG	2. RabbitMQ topology and operations	
+C-Q33	MSG-07	kept	Q2	MSG	2. RabbitMQ topology and operations	
+C-Q34	MSG-08	kept	Q2	MSG	2. RabbitMQ topology and operations	
+C-Q35	MSG-09	kept	Q2	MSG	2. RabbitMQ topology and operations	
+C-Q36	MSG-10	kept	Q2	MSG	2. RabbitMQ topology and operations	
+A-28	MSG-11	kept	Q3	MSG	2. RabbitMQ topology and operations	
+C-Q37	MSG-12	kept	Q3	MSG	2. RabbitMQ topology and operations	
+C-Q18	MSG-13	kept	Q1	MSG	3. Asynchronous jobs and workers	
+C-Q39	MSG-14	kept	Q2	MSG	3. Asynchronous jobs and workers	
+B-64	MSG-15	kept	Q3	MSG	3. Asynchronous jobs and workers	
+A-20	PY-01	kept	Q1	PY	1. Async model and the runtime	
+B-50	PY-02	kept	Q1	PY	1. Async model and the runtime	
+B-51	PY-03	kept	Q2	PY	1. Async model and the runtime	
+C-Q15	PY-04	kept	Q3	PY	1. Async model and the runtime	
+B-49	PY-05	kept	Q1	PY	2. The request path and service structure	
+A-21	PY-06	kept	Q2	PY	2. The request path and service structure	
+A-22	PY-07	kept	Q2	PY	2. The request path and service structure	
+C-Q16	PY-08	kept	Q2	PY	2. The request path and service structure	
+C-Q26	PY-09	kept	Q2	PY	2. The request path and service structure	
+B-52	PY-10	kept	Q2	PY	3. Pools, sizing and concurrency diagnosis	
+C-Q19	PY-11	kept	Q2	PY	3. Pools, sizing and concurrency diagnosis	
+A-23	PY-12	kept	Q3	PY	3. Pools, sizing and concurrency diagnosis	
+B-53	PY-13	kept	Q3	PY	3. Pools, sizing and concurrency diagnosis	
+C-Q14	PY-14	kept	Q3	PY	3. Pools, sizing and concurrency diagnosis	
+A-31	SEC-01	kept	Q2	SEC	1. Authentication and token validation	
+C-Q51	SEC-02	kept	Q2	SEC	1. Authentication and token validation	
+A-46	SEC-03	kept	Q3	SEC	1. Authentication and token validation	
+C-Q52	SEC-04	kept	Q3	SEC	1. Authentication and token validation	
+B-70b	SEC-05	kept	Q2	SEC	2. Authorization and tenant isolation	
+C-Q55	SEC-06	kept	Q2	SEC	2. Authorization and tenant isolation	
+C-Q56	SEC-07	kept	Q3	SEC	2. Authorization and tenant isolation	
+A-43	SEC-08	kept	Q2	SEC	3. SCIM and directory integration	
+A-44	SEC-09	kept	Q2	SEC	3. SCIM and directory integration	
+A-45	SEC-10	kept	Q3	SEC	3. SCIM and directory integration	
+A-47	SEC-11	kept	Q3	SEC	3. SCIM and directory integration	
+A-48	SEC-12	kept	Q3	SEC	3. SCIM and directory integration	
+A-35	SEC-13	kept	Q2	SEC	4. Secrets and data protection	
+C-Q54	SEC-14	kept	Q2	SEC	4. Secrets and data protection	
+A-36	SEC-15	kept	Q3	SEC	4. Secrets and data protection	
+C-Q73	VER-01	kept	Q2	VER	1. Testing	
+C-Q74	VER-02	kept	Q2	VER	1. Testing	
+C-Q75	VER-03	kept	Q2	VER	1. Testing	
+C-Q76	VER-04	kept	Q2	VER	1. Testing	
+C-Q78	VER-05	kept	Q2	VER	1. Testing	
+C-Q77	VER-06	kept	Q3	VER	1. Testing	
+B-54	VER-07	kept	Q2	VER	2. Observability and production diagnosis	
+C-Q84	VER-08	kept	Q2	VER	2. Observability and production diagnosis	
+C-Q85	VER-09	kept	Q2	VER	2. Observability and production diagnosis	
+C-Q86	VER-10	kept	Q2	VER	2. Observability and production diagnosis	
+C-Q87	VER-11	kept	Q2	VER	2. Observability and production diagnosis	
+A-9	VER-12	kept	Q3	VER	2. Observability and production diagnosis	
+C-Q88	VER-13	kept	Q3	VER	2. Observability and production diagnosis	
+A-5	VER-14	kept	Q3	VER	3. Domain and unfamiliar stacks	
+C-Q89	VER-15	kept	Q3	VER	3. Domain and unfamiliar stacks	
+C-Q90	VER-16	kept	Q3	VER	3. Domain and unfamiliar stacks	
+A-18	API-08	absorbed	-	API		merge; carry 5 points listed in ledger row 1
+A-25	API-11	absorbed	-	API		also C-Q43, C-Q45; strict subset, carry nothing
+B-60	ARCH-08	absorbed	-	ARCH		carry no-sync-dependency-needs-no-breaker line
+C-Q31	DB-11	absorbed	-	DB		carry mechanism-vs-requirement generalisation
+C-Q23	DB-18	absorbed	-	DB		merge; carry generated-SQL habit + down-migration framing
+C-Q79	INF-01	absorbed	-	INF		carry scan-as-gate + scheduled base rebuild
+C-Q38	MSG-15	absorbed	-	MSG		carry soft/hard time limits + kill-worker test
+A-32	SEC-06	absorbed	-	SEC		also C-Q56; union of both, carry nothing
