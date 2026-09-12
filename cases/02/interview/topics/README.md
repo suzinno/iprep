@@ -2,8 +2,6 @@
 
 143 technical questions and answers for this engagement, grouped into eight topic files. Each question carries a stable identifier (`PY-01`, `DB-07`), a difficulty tier and a project attribution, and each file opens with its own per-project index.
 
-Which of the eight files exist yet, and what remains to be moved, is recorded in `../tmp/EXECUTION-STATUS.md`.
-
 ## Difficulty tiers
 
 - **`Q1` baseline** — the foundational knowledge behind a stated responsibility.
