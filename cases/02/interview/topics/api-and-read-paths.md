@@ -438,10 +438,10 @@ By evaluating against a judged set rather than by looking at results. Relevance 
 **What I would insist on instead.**
 
 - **A judged set.** A few hundred real queries with relevance labels for the returned documents. On a clinical system those judgements have to come from clinicians — I cannot label whether a note is relevant to a query, and pretending otherwise produces a metric that measures my guesses.
-- **A metric that reflects the interface.** Something rank-weighted over the first page, because that is what a user sees. Precision over the whole result set is measuring something nobody experiences.
+- **A metric that reflects the interface.** Something rank-weighted over the first page, because that is what a user sees — normalised discounted cumulative gain, mean reciprocal rank, or precision at 10, depending on what the surface is for. Precision over the whole result set is measuring something nobody experiences.
 - **Baseline first, then change one thing.** Two changes at once and you cannot attribute the movement.
 - **Look at what regressed, not just the aggregate.** A change lifting the mean while badly breaking one query class is usually a bad change, and the aggregate hides it.
-- **Online evidence where it is available.** Click and reformulation rates, with the caveat that they measure engagement rather than correctness, and on a clinical tool that difference is not academic.
+- **Online evidence where it is available.** Click and reformulation rates, with the caveat that they measure engagement rather than correctness, and on a clinical tool that difference is not academic. Where traffic is modest, interleaving — mixing results from both rankers into one list — is much more sensitive than a plain A/B.
 
 **Where the [CV](https://en.wikipedia.org/wiki/Curriculum_vitae "Curriculum Vitae — Document summarizing a candidate's work history and qualifications") claims a relevance improvement**, the honest framing is that the number comes from an offline evaluation on a judged set with clinician labels, comparing a defined baseline against the tuned configuration. What would make it a false claim: measuring on the queries the change was designed for, changing the judged set at the same time as the configuration, or reporting an aggregate that a subgroup regression is hiding. I would rather state the evaluation method with the number than state the number alone.
 
