@@ -29,19 +29,19 @@
 3. Six services, one repository, one pipeline. Split for blast radius and tenant data, not for load.
 4. Postgres is the spine. Mongo is the body. A projection table is the seam between them.
 5. One denormalised table, partial indexes, keyset pagination — the hot query joins nothing. → **107 ms**
-6. Cache-aside, revision-keyed, expendable. Single-flight and early expiry, never a bare TTL. → **85% hit**
+6. Cache-aside, revision-keyed, expendable. Single-flight and early expiry, never a bare [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires"). → **85% hit**
 7. Three checks: account type, role, tenant scope. Tenant scope lives in one layer, not per endpoint.
 8. I rejected row-level security deliberately — a pooled connection is where it silently stops working.
-9. Outbox, not dual write. Celery for work we own, Service Bus across a boundary.
+9. Outbox, not dual write. [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") for work we own, Service Bus across a boundary.
 10. Two war stories: the publish that looked lost, and the cache that made the spike worse.
 
 ## What the Product Is (~60 s)
 
 Quick shape first — what the product does, then how it's built. I'll point out my own work as I pass through it.
 
-It's a B2B marketplace for retail operations software. Software vendors publish their products — point-of-sale, inventory, loyalty, payment and reconciliation tools. Category managers at retail chains compare features, pricing and country coverage, shortlist what fits, and open a conversation with the vendor directly.
+It's a [B2B](https://en.wikipedia.org/wiki/Business-to-business "Business to Business — Describes commerce conducted between organizations rather than to individual consumers") marketplace for retail operations software. Software vendors publish their products — point-of-sale, inventory, loyalty, payment and reconciliation tools. Category managers at retail chains compare features, pricing and country coverage, shortlist what fits, and open a conversation with the vendor directly.
 
-**The problem product resolves:** Before this, a chain with a gap in checkout or stock software ran a full sourcing round — an RFP, a spreadsheet of vendors, weeks of email — to reach a conversation it could have had on day one. The platform replaces the round, not the negotiation.
+**The problem product resolves:** Before this, a chain with a gap in checkout or stock software ran a full sourcing round — an [RFP](https://en.wikipedia.org/wiki/Request_for_proposal "Request For Proposal — Formal solicitation inviting vendors to bid on a project"), a spreadsheet of vendors, weeks of email — to reach a conversation it could have had on day one. The platform replaces the round, not the negotiation.
 
 > **"It's three-sided: vendors, retail chains, and us in the middle. Which means competitors are on the same platform."**
 
@@ -59,7 +59,7 @@ I sat on the backend team for the marketplace platform, and my area was the cata
 
 ## The Shape of the System (~90 s)
 
-Six FastAPI services, clean architecture, each owning its own tables and exposing them to nobody. If a service needs data it doesn't own, it calls an API or consumes an event.
+Six [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation") services, clean architecture, each owning its own tables and exposing them to nobody. If a service needs data it doesn't own, it calls an [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") or consumes an event.
 
 <details>
 <summary><strong>If asked: "six services, so six databases?"</strong></summary>
@@ -77,7 +77,7 @@ No — one Postgres instance, and I'd rather be straight about what that means. 
 - **retailer-service** — the buyer's private working set: groups, stores, shortlists.
 - **connection-service** — requests, threads, messages. The platform's commercial event.
 - **billing-service** — vendor plans and charges.
-- **identity-service** — the OAuth2 authorization server. A different trust boundary from everything else.
+- **identity-service** — the [OAuth2](https://datatracker.ietf.org/doc/html/rfc6749 "OAuth 2.0 — Authorization framework that lets an application access resources on a user's behalf") authorization server. A different trust boundary from everything else.
 
 Plus three Celery worker pools: imports, indexing, notifications. Same codebase, different deployment — so a twenty-thousand-row import can't eat web-tier capacity.
 
@@ -85,7 +85,7 @@ The requirement I was given was that a listing change must never spill into a co
 
 > **"A module boundary documents that rule. A process boundary enforces it. We paid for enforcement."**
 
-What makes it affordable is that it isn't nine repositories. One repository, one Alembic migration history, one pipeline, one cluster. Splitting the repos at this scale would have cost more in coordination than the boundaries are worth.
+What makes it affordable is that it isn't nine repositories. One repository, one [Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy") migration history, one pipeline, one cluster. Splitting the repos at this scale would have cost more in coordination than the boundaries are worth.
 
 <details>
 <summary><strong>If asked: "would you build it as a monolith today?"</strong></summary>
@@ -102,13 +102,13 @@ For a smaller team, yes — one deployable, the same six modules, the same schem
 <details>
 <summary>Designed a marketplace backend with clean architecture, splitting catalog, vendor, and retailer modules so listing changes did not spill into connection and billing flows</summary>
 
-**The layering.** Three rings. The innermost holds domain entities and the rules that are true regardless of technology — a listing cannot be published while its vendor is still `pending`, a connection request bills at most once. The middle ring holds use cases that orchestrate those rules and speak only to abstract repository interfaces. The outer ring holds everything that would change if we swapped a technology: the FastAPI routers, the SQLAlchemy repositories, the Mongo document mapper, the Celery task definitions.
+**The layering.** Three rings. The innermost holds domain entities and the rules that are true regardless of technology — a listing cannot be published while its vendor is still `pending`, a connection request bills at most once. The middle ring holds use cases that orchestrate those rules and speak only to abstract repository interfaces. The outer ring holds everything that would change if we swapped a technology: the FastAPI routers, the [SQLAlchemy](https://www.sqlalchemy.org/ "SQLAlchemy — Python SQL toolkit and ORM that maps objects to relational tables and builds queries") repositories, the Mongo document mapper, the Celery task definitions.
 
 **What actually enforces it.** Python has no visibility modifiers — `from app.infrastructure.db import session` inside a domain module compiles and runs perfectly. So the rule is mechanical: an import-linter contract in the pipeline declares the layer graph and fails the build on a back-edge. Without that check, "clean architecture" degrades into a folder naming convention, which is what most codebases claiming it actually have.
 
 **Where the module boundary becomes a process boundary.** Six services, each owning its own tables and exposing them to nobody; a peer that needs data it doesn't own calls an API or consumes an event. `billing-service` is separate specifically because the brief named billing as a flow listing changes must not reach — separation is the mechanism, not a preference.
 
-**The one place I broke the abstraction deliberately.** The catalog search query uses SQLAlchemy Core with hand-written predicates rather than the ORM, because the generated plan is the thing being engineered. Hiding it behind a generic repository method would mean nobody could see what the database was being asked to do. Abstraction is worth it where the implementation is genuinely interchangeable and it's a liability where the implementation *is* the design.
+**The one place I broke the abstraction deliberately.** The catalog search query uses SQLAlchemy Core with hand-written predicates rather than the [ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping "Object Relational Mapper — Maps application objects to relational database rows and queries"), because the generated plan is the thing being engineered. Hiding it behind a generic repository method would mean nobody could see what the database was being asked to do. Abstraction is worth it where the implementation is genuinely interchangeable and it's a liability where the implementation *is* the design.
 
 **The honest limit.** One Postgres instance, and the read path runs on a shared role. The boundary is enforced in the process and documented in the schema, not enforced by the database. Per-service roles and grants were the next step and we hadn't taken it.
 
@@ -121,9 +121,9 @@ For a smaller team, yes — one deployable, the same six modules, the same schem
 
 **The connection surface.** `POST /v1/connections` takes `{ product_id, message, store_scope? }` plus a required `Idempotency-Key` header. That header is the whole point — a double-submitted form from a category manager must not create two threads and must not bill the vendor twice — and it's backed by a unique constraint in the database, not by the cache.
 
-**Contract mechanics.** Versioned at `/v1`. Pydantic models define every request and response body and generate the OpenAPI document, so the contract is a build artefact rather than documentation, and the functional stage in CI tests against it. Unknown fields are rejected rather than absorbed. Keyset pagination everywhere — offset degrades badly on exactly the deep result pages a comparison workflow produces.
+**Contract mechanics.** Versioned at `/v1`. [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") models define every request and response body and generate the [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") document, so the contract is a build artefact rather than documentation, and the functional stage in [CI](https://en.wikipedia.org/wiki/Continuous_integration "Continuous Integration — Automatically builds and tests code on every change") tests against it. Unknown fields are rejected rather than absorbed. Keyset pagination everywhere — offset degrades badly on exactly the deep result pages a comparison workflow produces.
 
-**Why async handlers.** The workload is dominated by waiting on Postgres, Mongo and Redis rather than by CPU, so a small connection pool per pod is sufficient and the sum of all pod pool maxima stays under the Flexible Server connection limit.
+**Why async handlers.** The workload is dominated by waiting on Postgres, Mongo and [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") rather than by CPU, so a small connection pool per pod is sufficient and the sum of all pod pool maxima stays under the Flexible Server connection limit.
 
 **The asymmetry is in the surface itself.** No vendor-side endpoint returns retail group, store or retailer user data at all. A vendor learns a retail group exists only through a connection request that group initiated. That's an API design decision, not a filter applied later.
 
@@ -135,12 +135,12 @@ For a smaller team, yes — one deployable, the same six modules, the same schem
 
 ## The Data Layer (~115 s)
 
-This is the part I designed most of, and it starts from a contradiction in the requirements. Product metadata has to have no fixed column set — a POS system and a loyalty engine describe themselves with completely different attributes — but retailers still have to filter and compare on those attributes.
+This is the part I designed most of, and it starts from a contradiction in the requirements. Product metadata has to have no fixed column set — a [POS](https://en.wikipedia.org/wiki/Point_of_sale "Point of Sale — The system and moment at which a retail transaction is completed") system and a loyalty engine describe themselves with completely different attributes — but retailers still have to filter and compare on those attributes.
 
 The resolution is that a listing has two halves with different governance:
 
 - **The spine** is relational, in Postgres — identity, vendor, category, status, publication date, price tiers. It has referential integrity, it takes part in shortlists and connections, and it's what the admin workspace edits.
-- **The body** is a document in MongoDB — everything specific to being a POS or an inventory system. Validated at write time against a per-category facet schema, and stored as immutable revisions.
+- **The body** is a document in [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents") — everything specific to being a POS or an inventory system. Validated at write time against a per-category facet schema, and stored as immutable revisions.
 
 > **"Schemaless doesn't mean uncontracted. Adding a category is a document insert, not a migration."**
 
@@ -160,7 +160,7 @@ Four things about that table, because it's where the performance lives:
 <details>
 <summary><strong>If asked: "how do you know it's a hundred milliseconds?"</strong></summary>
 
-Because that number is a query plan, not a guess — and the plan is the part that can be wrong. The risk is specific: Postgres has to combine those GIN indexes into a bitmap AND, and its selectivity estimates for array containment and jsonb are poor, so on an unselective combination it can degrade toward a sequential scan as the table grows. So it's EXPLAIN ANALYZE against a seeded forty-thousand-row table on the pinned minor version, not an eyeball in staging. And if the plan comes out wrong, the fix is a composite covering index per high-traffic category — not a bigger instance.
+Because that number is a query plan, not a guess — and the plan is the part that can be wrong. The risk is specific: Postgres has to combine those [GIN](https://www.postgresql.org/docs/current/gin.html "Generalized Inverted Index — PostgreSQL index type suited to values containing multiple keys, such as arrays or text search") indexes into a bitmap AND, and its selectivity estimates for array containment and jsonb are poor, so on an unselective combination it can degrade toward a sequential scan as the table grows. So it's EXPLAIN ANALYZE against a seeded forty-thousand-row table on the pinned minor version, not an eyeball in staging. And if the plan comes out wrong, the fix is a composite covering index per high-traffic category — not a bigger instance.
 
 </details>
 
@@ -199,9 +199,9 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 <details>
 <summary>Built PostgreSQL schemas for vendors, retailers, and product listings used by search, shortlists, and the admin workspace</summary>
 
-**Conventions across every table.** `uuid` primary key defaulting to `gen_random_uuid()`, `created_at timestamptz` defaulting to `now()`, `updated_at` where the row is mutable. Money is integer minor units with an explicit ISO-4217 `currency char(3)` — never floating point, anywhere.
+**Conventions across every table.** `uuid` primary key defaulting to `gen_random_uuid()`, `created_at timestamptz` defaulting to `now()`, `updated_at` where the row is mutable. Money is integer minor units with an explicit [ISO-4217](https://www.six-group.com/en/products-services/financial-information/data-standards.html "ISO 4217 — Standardizes three-letter currency codes for unambiguous monetary values") `currency char(3)` — never floating point, anywhere.
 
-**Four groups of tables.** Organisations and people: `vendor`, `vendor_user`, `retail_group`, `store`, `retailer_user`, `platform_user`. `auth_subject` is the JWT `sub`, and no password material is stored on these tables at all. The catalog spine: `product_category`, `product` with `UNIQUE (vendor_id, slug)` and a `current_revision_id` pointing into Mongo, `product_price_tier`, and the projection. The buyer's working set: `shortlist` and `shortlist_item`. The commercial side: `connection_request`, `connection_thread`, `connection_message`, `billing_account`, `billing_charge`.
+**Four groups of tables.** Organisations and people: `vendor`, `vendor_user`, `retail_group`, `store`, `retailer_user`, `platform_user`. `auth_subject` is the [JWT](https://datatracker.ietf.org/doc/html/rfc7519 "JSON Web Token — Compact, signed token format for carrying claims between parties") `sub`, and no password material is stored on these tables at all. The catalog spine: `product_category`, `product` with `UNIQUE (vendor_id, slug)` and a `current_revision_id` pointing into Mongo, `product_price_tier`, and the projection. The buyer's working set: `shortlist` and `shortlist_item`. The commercial side: `connection_request`, `connection_thread`, `connection_message`, `billing_account`, `billing_charge`.
 
 **Rules I pushed into the schema rather than into code.** `UNIQUE (retail_group_id, idempotency_key)` on `connection_request` — the database, not the cache, is what finally prevents a duplicate thread. `UNIQUE (connection_request_id) WHERE kind = 'connection'` on `billing_charge` — a connection bills at most once, enforced by a constraint rather than by retry logic. `PRIMARY KEY (shortlist_id, product_id)` on shortlist items. `UNIQUE (retail_group_id, external_ref)` on stores. At-least-once delivery should land on a constraint, not on a code path that hopes it never fires twice.
 
@@ -213,7 +213,7 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 **Platform mechanics that also live here.** `oauth_client`, `refresh_token` with its rotation chain, `catalog_import_job` — job state is relational so the vendor workspace can query progress, while row-level detail stays in Mongo staging — and `outbox_event`, which carries exactly one index: `BTREE (occurred_at) WHERE published_at IS NULL`, the relay's only query.
 
-**The honest limit.** Neither store is sharded and both should stay that way for the full five-year horizon — roughly 110 GB and about two writes a second. The trigger to reconsider is ~2,000 sustained write TPS or a ~1 TB working set, and the far likelier first move is pushing `audit_event` out to blob-backed cold storage, which removes ~25 GB and most of the growth.
+**The honest limit.** Neither store is sharded and both should stay that way for the full five-year horizon — roughly 110 GB and about two writes a second. The trigger to reconsider is ~2,000 sustained write [TPS](https://en.wikipedia.org/wiki/Transaction_processing "Transactions Per Second — Throughput measure of how many transactions a system completes each second") or a ~1 TB working set, and the far likelier first move is pushing `audit_event` out to blob-backed cold storage, which removes ~25 GB and most of the growth.
 
 </details>
 
@@ -226,7 +226,7 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 - `idx_plf_browse` — `BTREE (category_slug, published_at DESC, product_id) WHERE status = 'published'`. Composite *and* partial, each for a separate reason. Composite because the default browse is "this category, newest first, paged", and the trailing `product_id` is what turns keyset pagination into a single index read. Partial because roughly 40,000 of 55,000 rows are published — drafts and archived rows never enter the index at all, and the status predicate disappears from every plan that uses it.
 - `idx_plf_price` — `BTREE (category_slug, price_from_minor) WHERE status = 'published' AND price_from_minor IS NOT NULL`. The price-sorted variant of the same browse, partial on the same grounds plus the null exclusion.
-- `idx_plf_search` — `GIN (search_vector)`, over a `tsvector` built from name, summary and vendor name. GIN rather than GiST because the column is read far more often than it is written and GIN's lookups are the faster half of that trade.
+- `idx_plf_search` — `GIN (search_vector)`, over a `tsvector` built from name, summary and vendor name. GIN rather than [GiST](https://www.postgresql.org/docs/current/gist.html "Generalized Search Tree — PostgreSQL index type supporting range and exclusion constraints") because the column is read far more often than it is written and GIN's lookups are the faster half of that trade.
 - `idx_plf_arrays` — `GIN` on `country_coverage` and on `integrations`. Array containment is the actual predicate: "sells in DE", "integrates with SAP".
 - `idx_plf_facets` — `GIN (facets jsonb_path_ops)`. `jsonb_path_ops` rather than the default operator class, because containment is the only operator the facet filter ever uses — it gives a smaller index and faster containment in exchange for key-existence operators I don't need.
 
@@ -242,7 +242,7 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 - Projection upserts are batched 200 rows to a statement during imports.
 - No index goes in without a named access pattern behind it. Otherwise it's write amplification on every upsert, paid forever.
 
-**The honest limit.** The 45 ms figure is `EXPLAIN (ANALYZE, BUFFERS)` against a seeded 40,000-row table on the pinned PostgreSQL 15 minor version, not an eyeball in staging — and the plan is the part that can be wrong. Postgres's selectivity estimates for `text[]` containment and `jsonb_path_ops` are poor, so on an unselective combination the bitmap AND I'm relying on can degrade toward a sequential scan as the table grows. If it does, the fix is a composite covering index per high-traffic category, not a bigger instance.
+**The honest limit.** The 45 ms figure is `EXPLAIN (ANALYZE, BUFFERS)` against a seeded 40,000-row table on the pinned [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") 15 minor version, not an eyeball in staging — and the plan is the part that can be wrong. Postgres's selectivity estimates for `text[]` containment and `jsonb_path_ops` are poor, so on an unselective combination the bitmap AND I'm relying on can degrade toward a sequential scan as the table grows. If it does, the fix is a composite covering index per high-traffic category, not a bigger instance.
 
 **The one I'd flag as unprototyped.** `to_tsvector` with a single dictionary handles a monolingual catalog well and handles "Kassensystem" versus "POS" not at all. A multilingual European marketplace needs a language-per-listing configuration and probably trigram similarity for vendor-name fuzziness — and that, rather than volume, is the most likely trigger for a dedicated search engine.
 
@@ -264,7 +264,7 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 **How a read actually uses it.** Search returns ids from `cat:search`, then one `MGET` across the listing keys, then a single bulk `$in` into Mongo for whatever missed — never one lookup per item. That shape is what keeps the uncached path at ~107 ms rather than thirty round trips.
 
-**The hit ratio is an SLI, not a statistic.** Above 0.85 on `cat:search`, because the latency budget assumes it. If it drops, the p95 moves before anything else tells you.
+**The hit ratio is an [SLI](https://sre.google/sre-book/service-level-objectives/ "Service Level Indicator — Measured metric, such as latency or error rate, used to judge service health"), not a statistic.** Above 0.85 on `cat:search`, because the latency budget assumes it. If it drops, the p95 moves before anything else tells you.
 
 **Degradation is specified, not hoped for.** Losing Redis is not an outage — every read falls through. Latency goes from ~35 ms to ~107 ms and Postgres load multiplies about six times, and capacity is sized to survive exactly that. Rate limiting and idempotency degrade with it, and they do so asymmetrically on purpose: both fail *closed* for writes and *open* for reads.
 
@@ -278,7 +278,7 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 This is the section that matters most, because every serious threat here is an authenticated one. The dangerous actor isn't an intruder — it's a legitimate vendor enumerating the buyer side to build a sales list.
 
-Identity first. One service is the OAuth2 authorization server; nothing else authenticates anybody. Authorization code with PKCE for the web app and the admin console, client credentials for vendor systems pushing catalog data. Access tokens are RS256, fifteen minutes, signing key in Key Vault with a rotation overlap. Refresh tokens rotate — a one-time-use identifier, and presenting a revoked one revokes the whole chain and raises an alert.
+Identity first. One service is the OAuth2 authorization server; nothing else authenticates anybody. Authorization code with [PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Proof Key for Code Exchange — Protects an OAuth authorization code exchange for clients that cannot hold a secret") for the web app and the admin console, client credentials for vendor systems pushing catalog data. Access tokens are [RS256](https://datatracker.ietf.org/doc/html/rfc7518 "RSA Signature with SHA-256 — Asymmetric signing algorithm commonly used to sign JWTs"), fifteen minutes, signing key in Key Vault with a rotation overlap. Refresh tokens rotate — a one-time-use identifier, and presenting a revoked one revokes the whole chain and raises an alert.
 
 Verification happens twice, deliberately. The gateway validates signature, expiry and audience at the edge, so a forged token never reaches the cluster. Each service validates again locally against a cached key set and then applies its own rules.
 
@@ -310,7 +310,7 @@ The compensating control is that the filter lives in one auditable layer, with a
 
 **Two grants, for two genuinely different clients.** Authorization code with PKCE for the marketplace web app and the admin console — both public clients holding no secret, with the refresh token in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to the API origin. Client credentials for vendor system integrations pushing catalog data — confidential clients, with the secret stored as an Argon2id hash on `oauth_client`.
 
-**Token shape.** RS256, fifteen-minute lifetime. Claims are `sub`, `act` for account type — vendor, retailer or platform — `org_id`, `roles[]`, `scopes[]`, `jti` and `exp`. The signing key lives in Key Vault on a 90-day rotation, with both keys published at the JWKS endpoint through the overlap window. Refresh tokens live 30 days and rotate: one-time-use `jti`, and presenting a revoked one revokes the entire chain and raises an alert.
+**Token shape.** RS256, fifteen-minute lifetime. Claims are `sub`, `act` for account type — vendor, retailer or platform — `org_id`, `roles[]`, `scopes[]`, `jti` and `exp`. The signing key lives in Key Vault on a 90-day rotation, with both keys published at the [JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "JSON Web Key Set — Publishes the public keys a party needs to verify a signed token") endpoint through the overlap window. Refresh tokens live 30 days and rotate: one-time-use `jti`, and presenting a revoked one revokes the entire chain and raises an alert.
 
 **Verification happens twice, and that's the design.** The gateway validates signature, expiry and audience at the edge, so a forged or expired token never reaches the cluster. Each service then validates again locally against the JWKS cached in Redis and applies its own scope and tenant rules. The edge is a filter, never the authority. And neither check makes a network call per request — an introspection round trip would add 15 to 30 ms to every hop in both the cached and uncached columns of the latency budget.
 
@@ -322,9 +322,9 @@ The compensating control is that the filter lives in one auditable layer, with a
 
 **What revocation actually costs.** Because nothing calls the identity service per request, revocation is bounded by the fifteen-minute access-token lifetime. The refresh chain is revoked immediately, and for the one case where fifteen minutes isn't good enough — a suspended vendor — the identity service publishes a deactivation event and services consult a small Redis denylist of revoked `jti` values.
 
-**The honest limit, and it's the decision I'd lead with.** Postgres row-level security is the stronger mechanism and I chose not to use it as the primary control. The read path runs on a replica through a pooled connection with a shared role, and setting a per-request session variable through a transaction-mode pooler is exactly where RLS silently becomes a no-op — or worse, leaks into the next caller's query. A security control that quietly stops working is worse than one you never had. The compensating control is that the filter lives in one auditable layer, with a test asserting a cross-tenant read returns empty for every repository method that touches an org-owned table.
+**The honest limit, and it's the decision I'd lead with.** Postgres row-level security is the stronger mechanism and I chose not to use it as the primary control. The read path runs on a replica through a pooled connection with a shared role, and setting a per-request session variable through a transaction-mode pooler is exactly where [RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html "Row Level Security — Restricts which rows a database query can see or modify based on the current user") silently becomes a no-op — or worse, leaks into the next caller's query. A security control that quietly stops working is worse than one you never had. The compensating control is that the filter lives in one auditable layer, with a test asserting a cross-tenant read returns empty for every repository method that touches an org-owned table.
 
-**The second limit, which is operational.** The gateway caches the JWKS on its own schedule, independent of the `authz:jwks` key in Redis. During a signing-key rotation the two caches can disagree, and tokens signed with the new key may be rejected at the edge while the cluster accepts them. The key-overlap window has to be strictly longer than the gateway's OpenID configuration refresh interval, and that interval has to be confirmed on the target tier before the first rotation — not discovered during one.
+**The second limit, which is operational.** The gateway caches the JWKS on its own schedule, independent of the `authz:jwks` key in Redis. During a signing-key rotation the two caches can disagree, and tokens signed with the new key may be rejected at the edge while the cluster accepts them. The key-overlap window has to be strictly longer than the gateway's [OpenID](https://openid.net/ "OpenID — Federated identity standard letting a user authenticate once and reuse that identity across sites") configuration refresh interval, and that interval has to be confirmed on the target tier before the first rotation — not discovered during one.
 
 </details>
 
@@ -336,7 +336,7 @@ The rule is one sentence: synchronous when the caller can't act without the answ
 
 In practice there are four transports and each has a stated job:
 
-- **Synchronous REST** on anything with a user attached to it.
+- **Synchronous [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs")** on anything with a user attached to it.
 - **Azure Service Bus topics** for domain facts that cross a boundary — listing published, connection requested, user deactivated.
 - **Celery** for the jobs we're on the hook for and have to retry — imports, indexing, notification policy.
 - **Azure Functions** for delivery and media processing, triggered off a queue and off blob writes.
@@ -360,7 +360,7 @@ Keeping two stores and a projection in agreement is where most of my design time
 
 - **Third** — there's a reconciliation job, because an event can still be lost. Nightly, it re-projects any listing whose projection timestamp trails its update timestamp by more than five minutes, and sweeps orphaned revisions. And the lag itself is a metric with an alert on it, because a dead indexer is a silent failure — nothing else surfaces it. New listings simply stop appearing, and no error is raised anywhere.
 
-**On the security side of all that:** TLS everywhere, private endpoints on every data store — none of them has a public IP — default-deny network policy inside the cluster with explicit allows per pair, default-deny egress, and workload identity so there are no connection strings and no static credentials anywhere in the cluster or in CI.
+**On the security side of all that:** [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere, private endpoints on every data store — none of them has a public IP — default-deny network policy inside the cluster with explicit allows per pair, default-deny egress, and workload identity so there are no connection strings and no static credentials anywhere in the cluster or in CI.
 
 I did not implement mutual TLS between services, and that's a stated choice rather than an oversight: doing it properly means a service mesh, and a mesh's cost is disproportionate for nine workloads in one namespace where no untrusted container runs. The trigger to revisit it is concrete — a third-party workload in the cluster, or a compliance requirement that names it.
 
@@ -385,20 +385,20 @@ And the cost of that, stated plainly: the erasure isn't total, and the retained 
 
 **Three queues, three separate worker deployments.** `imports`, `indexing`, `notifications`. Same application codebase, different deployment — which is the whole point, because a twenty-thousand-row import running in the web tier eats the capacity that browse needs. Separate queues mean imports cannot starve indexing either.
 
-**Queue depth does three jobs at once.** It's the autoscaling signal — an HPA on `celery_queue_depth` through a custom metric adapter, so a large import scales the importers and never touches the web tier. It's an SLI, with thresholds of 500 on `imports` and 100 on the others. And it's an alert input. Task failures are their own metric per task name, alerting on any sustained rate — that's the brief's "job failures", made concrete.
+**Queue depth does three jobs at once.** It's the autoscaling signal — an [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ "Horizontal Pod Autoscaler — Automatically adjusts the number of Kubernetes pod replicas to match load") on `celery_queue_depth` through a custom metric adapter, so a large import scales the importers and never touches the web tier. It's an SLI, with thresholds of 500 on `imports` and 100 on the others. And it's an alert input. Task failures are their own metric per task name, alerting on any sustained rate — that's the brief's "job failures", made concrete.
 
 **One owner per step in the notification path.** The notification worker decides *whether and what* to notify, which is a policy decision needing database context and therefore belongs in Python. The Function performs *delivery* to the email provider. No overlap, and neither half re-implements the other.
 
 **Workers are drained, not killed.** A `preStop` hook stops queue consumption and waits for the in-flight task, bounded by a 120-second termination grace period, and chunk sizes are chosen to finish well inside it. A rolling deploy therefore doesn't abandon work mid-task.
 
-**The honest limit, and it's a real one.** Celery here runs on Redis, and Redis has no true acknowledgement semantics. `acks_late` plus a visibility timeout is what makes it tolerable, with AOF persistence at `everysec` underneath — but a worker killed mid-task relies on that visibility timeout expiring, and a broker failover can still drop an unacknowledged task. That needed a kill-the-worker test on the pinned Celery and Redis versions before I'd call imports durable. And if they had to be genuinely durable, the move was to run the `imports` queue on Service Bus, which was already in the stack, keeping Redis for `notifications` and `indexing` — whose work is fully rebuildable from the outbox and therefore doesn't need the guarantee.
+**The honest limit, and it's a real one.** Celery here runs on Redis, and Redis has no true acknowledgement semantics. `acks_late` plus a visibility timeout is what makes it tolerable, with [AOF](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/ "Append Only File — Redis persistence mode that logs every write for durability") persistence at `everysec` underneath — but a worker killed mid-task relies on that visibility timeout expiring, and a broker failover can still drop an unacknowledged task. That needed a kill-the-worker test on the pinned Celery and Redis versions before I'd call imports durable. And if they had to be genuinely durable, the move was to run the `imports` queue on Service Bus, which was already in the stack, keeping Redis for `notifications` and `indexing` — whose work is fully rebuildable from the outbox and therefore doesn't need the guarantee.
 
 </details>
 
 <details>
 <summary>Integrated Azure Functions, Blob Storage, and Service Bus for catalog updates and vendor–retailer notifications when a listing changed or a chain opened a thread</summary>
 
-**Service Bus topology.** Two topics and one queue: catalog events, connection events, and a notification-dispatch queue. Topics because the pattern is fan-out with competing consumers, plus dead-lettering and a native Function trigger, with no cluster to run. Kafka and Event Hubs were considered and rejected on volume — this system emits roughly 0.2 events a second.
+**Service Bus topology.** Two topics and one queue: catalog events, connection events, and a notification-dispatch queue. Topics because the pattern is fan-out with competing consumers, plus dead-lettering and a native Function trigger, with no cluster to run. [Kafka](https://kafka.apache.org/documentation/ "Apache Kafka — Distributed log that stores partitioned, replicated streams of records for publish-subscribe and stream processing") and Event Hubs were considered and rejected on volume — this system emits roughly 0.2 events a second.
 
 **Every event carries the same envelope** — event id, type, occurrence time, aggregate id, an optional source revision id, and a payload — and every consumer is idempotent on the event id.
 
@@ -406,9 +406,9 @@ And the cost of that, stated plainly: the erasure isn't total, and the retained 
 
 **Nothing is published directly.** Every one of those is written to the outbox table in the same Postgres transaction as the state change; the relay publishes afterwards and stamps `published_at`. Delivery is at-least-once and never zero-times, which is why consumers must be idempotent rather than merely careful.
 
-**Two Functions, each with a reason to exist off the request path.** Media processing is blob-triggered — thumbnails and PDF previews, because thumbnailing a forty-page datasheet must never hold an HTTP connection open. It's also a security control: it re-encodes vendor-supplied images, which is what neutralises a malicious upload. Notification dispatch is queue-triggered and does delivery only.
+**Two Functions, each with a reason to exist off the request path.** Media processing is blob-triggered — thumbnails and [PDF](https://en.wikipedia.org/wiki/PDF "Portable Document Format — Fixed-layout document format for reliable printing and viewing") previews, because thumbnailing a forty-page datasheet must never hold an [HTTP](https://datatracker.ietf.org/doc/html/rfc9110 "Hypertext Transfer Protocol — Application protocol used to request and transfer web resources") connection open. It's also a security control: it re-encodes vendor-supplied images, which is what neutralises a malicious upload. Notification dispatch is queue-triggered and does delivery only.
 
-**Blob layout is by prefix, with a lifecycle rule per prefix.** Listing media under the product and revision, moving to cool tier after 180 days. Derived thumbnails under that, regenerable and deleted with the revision. Import uploads under the vendor and job, deleted after 90 days. The admin console bundle under its build SHA, last five builds retained. Terraform state in its own container, versioned and lease-locked. Because those paths are content-addressed, CDN invalidation is never needed — a new revision is simply a new URL.
+**Blob layout is by prefix, with a lifecycle rule per prefix.** Listing media under the product and revision, moving to cool tier after 180 days. Derived thumbnails under that, regenerable and deleted with the revision. Import uploads under the vendor and job, deleted after 90 days. The admin console bundle under its build [SHA](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm — Family of cryptographic hash functions used to verify content integrity"), last five builds retained. [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files") state in its own container, versioned and lease-locked. Because those paths are content-addressed, [CDN](https://en.wikipedia.org/wiki/Content_delivery_network "Content Delivery Network — Distributes cached content across edge locations to reduce latency") invalidation is never needed — a new revision is simply a new [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web").
 
 **One deliberate separation on the serving side.** Vendor-supplied files go out with `Content-Disposition: attachment` through a dedicated download hostname, so no vendor file is ever served from the origin that hosts the admin console.
 
@@ -484,7 +484,7 @@ GitLab CI is the only path to production, and none of the gates are decorative: 
 
 > **"The projection pipeline and the query plans are exactly the things a mocked test passes while broken."**
 
-Terraform owns every Azure resource, including the alert rules — an alert silenced by hand during an incident and never restored is the standard way monitoring rots. It applies only from CI, authenticated by OIDC federation rather than a stored secret.
+Terraform owns every Azure resource, including the alert rules — an alert silenced by hand during an incident and never restored is the standard way monitoring rots. It applies only from CI, authenticated by [OIDC](https://openid.net/developers/how-connect-works/ "OpenID Connect — Identity layer on top of OAuth 2.0 for authenticating users") federation rather than a stored secret.
 
 The step teams tend to skip is the migration discipline, so I'll name it: every migration here is expand-contract. One release adds nullable columns and builds indexes concurrently; dropping what nothing reads any more is a separate merge request, at least one release later.
 
@@ -498,7 +498,7 @@ The read service gets a canary at ten percent held against its error rate and p9
 <details>
 <summary>Automated GitLab CI pipelines for test and deploy across marketplace services</summary>
 
-**One repository, one pipeline, nine deployable images.** Stages in order: lint with ruff and mypy, unit tests, integration tests against real data stores brought up by Compose, a functional pass against the OpenAPI contract, image build with digest pinning, image CVE and dependency scanning, the expand migration, staging deploy, smoke, then production as canary into rolling — with the contract migration landing later as a separate merge request.
+**One repository, one pipeline, nine deployable images.** Stages in order: lint with ruff and mypy, unit tests, integration tests against real data stores brought up by Compose, a functional pass against the OpenAPI contract, image build with digest pinning, image [CVE](https://www.cve.org/ "Common Vulnerabilities and Exposures — Public identifier for a known software security flaw") and dependency scanning, the expand migration, staging deploy, smoke, then production as canary into rolling — with the contract migration landing later as a separate merge request.
 
 **No gate is decorative.** Dependencies are pinned by hash, images by digest, base images rebuilt weekly. The scan stage blocks rather than reports.
 
@@ -513,7 +513,7 @@ The read service gets a canary at ten percent held against its error rate and p9
 <details>
 <summary>Provisioned Azure marketplace infrastructure with Terraform so AKS, storage, and functions stayed in versioned config</summary>
 
-**What it owns — which is everything.** The cluster and its node pools, the Postgres Flexible Server and its read replica, both Redis instances, the Mongo deployment, blob containers and their lifecycle rules, the Service Bus namespace with its topics, subscriptions and dead-letter settings, both Function Apps, the API gateway, the CDN and WAF edge, Key Vault, and every monitoring alert rule.
+**What it owns — which is everything.** The cluster and its node pools, the Postgres Flexible Server and its read replica, both Redis instances, the Mongo deployment, blob containers and their lifecycle rules, the Service Bus namespace with its topics, subscriptions and dead-letter settings, both Function Apps, the API gateway, the CDN and [WAF](https://owasp.org/www-community/Web_Application_Firewall "Web Application Firewall — Filters and blocks malicious HTTP traffic before it reaches an application") edge, Key Vault, and every monitoring alert rule.
 
 **State handling.** State lives in its own blob container with versioning and lease locking, so two concurrent applies can't interleave.
 
@@ -536,7 +536,7 @@ The read service gets a canary at ten percent held against its error rate and p9
 
 **Blue/green was considered and rejected**, and the reason is worth giving: it doubles the pod footprint and, because both colours share the same Postgres, delivers no database-level isolation — which is the only part of the risk that expand-contract migrations don't already cover.
 
-**Network posture inside the cluster.** Default-deny NetworkPolicy with explicit allows per service pair, and default-deny egress that reaches only the payment provider, the email provider and Azure service endpoints. Workload identity federates each Kubernetes service account to its own managed identity, so there are no connection strings and no static credentials anywhere in the cluster.
+**Network posture inside the cluster.** Default-deny NetworkPolicy with explicit allows per service pair, and default-deny egress that reaches only the payment provider, the email provider and Azure service endpoints. Workload identity federates each [Kubernetes](https://kubernetes.io/ "Kubernetes — Automates deployment, scaling and management of containerized applications") service account to its own managed identity, so there are no connection strings and no static credentials anywhere in the cluster.
 
 **The honest limit.** There is no mutual TLS between services, and that's a stated choice rather than an oversight. Doing it properly means a service mesh, and a mesh's cost — sidecar lifecycle, certificate rotation, a new failure mode in every request path — is disproportionate for nine workloads in one namespace where no untrusted container runs. The trigger to revisit it is concrete: a third-party or customer-supplied container in the cluster, a second tenant-facing workload, or a compliance requirement that names encryption in transit between internal services. Any of those, and a mesh goes in.
 
@@ -561,7 +561,7 @@ The read service gets a canary at ten percent held against its error rate and p9
 
 ## Optional — Logs, Metrics and Traces (~40 s)
 
-Azure Monitor and Application Insights, with one OpenTelemetry SDK emitting metrics, logs and traces — so all three carry the same resource attributes and one instrumentation dependency.
+Azure Monitor and Application Insights, with one OpenTelemetry [SDK](https://en.wikipedia.org/wiki/Software_development_kit "Software Development Kit — Packaged set of tools and libraries for building against a platform") emitting metrics, logs and traces — so all three carry the same resource attributes and one instrumentation dependency.
 
 What makes it usable is that the trace id rides along in Service Bus message properties, not only in HTTP headers. So one trace covers the request, the outbox publish, the projection and the cache invalidation — precisely the chain nobody can debug from logs alone.
 
@@ -581,7 +581,7 @@ Every log line carries a request id, a trace id, and the organisation id — so 
 
 **What pages versus what raises a ticket.** Pages: catalog read error-budget burn at 14.4× over an hour, connection-create 5xx above 1% over five minutes, indexer lag p95 above 60 seconds for ten minutes, outbox age above 300 seconds. Tickets: any dead-letter on any subscription, an import job failing more than 5% of its rows, replica lag above 30 seconds for ten minutes, and a certificate or Key Vault secret thirty days from expiry. Each rule names an owner and a runbook, and all of them are Terraform resources rather than portal edits.
 
-**Logging rules.** JSON to stdout. Every line carries request id, trace id, service, actor side, org id, route and status — org id always present, so a support question can be scoped to one tenant without a full-text sweep. Two standing prohibitions: no connection message body, no token, no client secret, ever.
+**Logging rules.** [JSON](https://www.json.org/json-en.html "JavaScript Object Notation — Lightweight text format for structured data exchange") to stdout. Every line carries request id, trace id, service, actor side, org id, route and status — org id always present, so a support question can be scoped to one tenant without a full-text sweep. Two standing prohibitions: no connection message body, no token, no client secret, ever.
 
 **Tracing, and the part that makes it useful.** Auto-instrumentation for FastAPI, SQLAlchemy, the Mongo driver, Redis and Celery. Trace context propagates through Service Bus *message properties*, not only HTTP headers — so one trace spans publish, projection, cache invalidation and notification, which is precisely the chain nobody can reconstruct from logs alone. Sampling is 100% of errors and of write-path requests, 5% of catalog reads.
 
