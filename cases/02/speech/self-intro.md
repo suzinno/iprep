@@ -13,7 +13,7 @@ As for education, I have a university degree in Computer Science.
 
 On the business side, most of my work has been in e-commerce and retail. More recently, I've worked in the healthcare domain.
 
-I've built modular monoliths, and also I've extracted services out of them, so I've seen both sides of that decision.
+I've built modular monoliths, and I've also extracted services out of them, so I've seen both sides of that decision.
 
 ## Stack
 
@@ -23,7 +23,7 @@ The main databases I've worked with are PostgreSQL and MongoDB. I've also worked
 
 For asynchronous work between services I've used RabbitMQ over AMQP, and MQTT where devices were involved. Earlier on I also worked with Kafka and cloud queues.
 
-Talking about infrastructure — I'm not only about writing code, I'm also always eager to take on the DevOps side if needed. I've worked with Azure and AWS, and I provisioned infrastructure with Terraform, so all of that infrastructure stayed in versioned configuration.
+Talking about infrastructure — I'm not only about writing code, I'm also eager to take on the DevOps side if needed. I've worked with Azure and AWS, and I provisioned infrastructure with Terraform, so all of that infrastructure stayed in versioned configuration.
 
 ## Quality
 
@@ -35,9 +35,9 @@ I'm used to a setup where the pipeline decides whether code ships. To keep the f
 
 As for teams, I've worked in small teams of fewer than ten people. I've also worked in large international teams across time zones.
 
-I've started projects from scratch, building the MVP first and then taking it end to end over later iterations, and I've also joined systems that were already live, continuing the development process in already organised environments.
+I've started projects from scratch, building the MVP first and taking it through later releases. And I've also joined live systems with established processes.
 
-I'm comfortable with both Scrum and Kanban or even Scrumban — I also have experience with that kind of hybrid. In my daily routine I keep my estimates, statuses and documentation up to date, and I say early when something is blocked.
+I'm comfortable with both Scrum and Kanban or even a mix of the two, so called Scrumban. In my daily routine I keep my estimates, statuses and documentation up to date, and I say early when something is blocked.
 
 ## How I Work
 
@@ -46,8 +46,8 @@ A few words on how I usually work. I tend to be careful rather than fast.
 I always appreciate getting well-shaped requirements, but it usually isn't like that in real life, so when a task description is thin, I'd rather have a couple of back-and-forth rounds asking questions to get more details and a better idea of desired output than build the wrong thing.
 From my perspective, it's better to spend the time on design up front than to guess and rebuild later.
 
-I do use AI tools like Claude Code — mostly for exploring, reviewing code and drafting. But I review everything I ship line by line. And I only submit code as my own if I can explain it step by step in a review.
+I do use AI tools the team has approved such as Claude Code — mostly for exploring, reviewing code and drafting. But I review everything I ship line by line. And I don't submit code I can't explain step by step.
 
 ## Close
 
-That's my short introduction. I'm happy to answer any questions. Or, if it would be useful, I can tell you more about my most recent project and my responsibilities on it to showcase what I've recently been up to.
+That's my short introduction. I'm happy to answer any questions. Or, if it would be useful, I can tell you about my responsibilities on a recent project to give you an idea of what I've been up to lately.
