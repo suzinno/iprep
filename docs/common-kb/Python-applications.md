@@ -543,6 +543,8 @@ The split is 76 MUST, 38 NICE and 19 OPTIONAL across 19 topics. The security gro
 
 **Why it comes up:** the N+1 query is the most common performance defect in a Python web service, and it is invisible in the code that causes it.
 
+**Deep dive:** the SQLAlchemy mechanics behind these answers are in [`deep-dives/sqlalchemy.md`](deep-dives/sqlalchemy.md).
+
 - **MUST** — The N+1 query
 
   <details><summary><strong>Answer</strong></summary>
@@ -577,7 +579,7 @@ The split is 76 MUST, 38 NICE and 19 OPTIONAL across 19 topics. The security gro
 
   <details><summary><strong>Answer</strong></summary>
 
-  A pool keeps connections open because establishing one costs a round trip and authentication. The size is a real constraint: workers multiplied by pool size must stay under the database's connection limit, and twenty pods with a pool of ten each is two hundred connections against a default limit of one hundred.
+  A pool keeps connections open because establishing one costs a round trip and authentication. The size is a real constraint: every process has its own pool, so processes multiplied by the pool's ceiling — pool size plus overflow — must stay under the database's connection limit. Twenty worker processes with a pool of ten and no overflow is two hundred connections against a default limit of one hundred, and SQLAlchemy's default overflow of ten on top would make it four hundred.
 
   A pool that is too small queues requests invisibly, which shows as latency with no slow query. `pool_pre_ping`, or a recycle interval, handles connections killed by an idle timeout in a proxy or the database — otherwise the first query after a quiet period fails.
 

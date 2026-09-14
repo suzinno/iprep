@@ -312,6 +312,8 @@ The split is 123 MUST, 53 NICE and 26 OPTIONAL across 27 topics. A MUST-heavy li
 
 **Why it comes up:** it is the cheapest test of whether you have actually debugged a slow endpoint, and the answer reveals how you think about ORMs.
 
+**Deep dive:** the SQLAlchemy mechanics behind these answers are in [`deep-dives/sqlalchemy.md`](deep-dives/sqlalchemy.md).
+
 - **MUST** — What it is and why it is invisible in the code
 
   <details><summary><strong>Answer</strong></summary>
@@ -336,7 +338,7 @@ The split is 123 MUST, 53 NICE and 26 OPTIONAL across 27 topics. A MUST-heavy li
 
   <details><summary><strong>Answer</strong></summary>
 
-  Count queries per request and assert on the count — a test that fails when an endpoint issues more than a fixed number of queries catches the regression at the commit that introduces it, which no amount of code review does reliably. In development, echo SQL or use a toolbar that shows repeated identical statements with different parameters, which is the visual signature. In production it shows up as an endpoint whose latency scales with page size, and as one statement dominating `pg_stat_statements` by call count rather than by mean time.
+  Count queries per request and assert that the count stays the same when the data grows — the same endpoint at 3 rows and at 30 — which catches the regression at the commit that introduces it, as no amount of code review does reliably. A fixed ceiling is the weaker form: the first harmless extra query breaks it, the number gets raised without thought, and the test stops testing anything. In development, echo SQL or use a toolbar that shows repeated identical statements with different parameters, which is the visual signature. In production it shows up as an endpoint whose latency scales with page size, and as one statement dominating `pg_stat_statements` by call count rather than by mean time.
 
   Naming `pg_stat_statements` ordered by calls is the detail that separates having read about the problem from having chased one.
 

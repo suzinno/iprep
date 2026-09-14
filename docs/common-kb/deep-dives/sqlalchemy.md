@@ -392,6 +392,7 @@ engine = create_engine(url, pool_size=5, max_overflow=0, pool_timeout=5)
 - Match in-process concurrency to the pool: five connections behind 40 threads means 35 threads queue, and with a 5-second timeout they fail. Lower the thread limit, or use more processes with fewer threads.
 - Use a short `pool_timeout` so waiting fails fast and visibly.
 - Monitor checked-out connections and checkout wait time.
+- **Dead idle connections.** A proxy, firewall or the database closes connections idle past its timeout, and the pool does not know. The first query after a quiet period fails with "server closed the connection unexpectedly" — unlike the fork case below, it follows idle time, not load. `pool_pre_ping=True` tests each connection on checkout and replaces a dead one, at the cost of a small round trip per checkout; `pool_recycle=<seconds>`, set below the shortest idle timeout on the path, retires connections by age with no per-checkout cost.
 - **Across `fork`,** create the engine in each child, or call `engine.dispose(close=False)` in the child. A connection inherited across a fork is used by two processes at once, surfacing as random `SSL error: decryption failed or bad record mac` or "server closed the connection unexpectedly".
 
 **When the fix is wrong.**
