@@ -99,7 +99,8 @@ For a smaller team, yes — one deployable, the same six modules, the same schem
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Designed a marketplace backend with clean architecture, splitting catalog, vendor, and retailer modules so listing changes did not spill into connection and billing flows</summary>
 
 **The layering.** Three rings. The innermost holds domain entities and the rules that are true regardless of technology — a listing cannot be published while its vendor is still `pending`, a connection request bills at most once. The middle ring holds use cases that orchestrate those rules and speak only to abstract repository interfaces. The outer ring holds everything that would change if we swapped a technology: the FastAPI routers, the [SQLAlchemy](https://www.sqlalchemy.org/ "SQLAlchemy — Python SQL toolkit and ORM that maps objects to relational tables and builds queries") repositories, the Mongo document mapper, the Celery task definitions.
@@ -112,9 +113,9 @@ For a smaller team, yes — one deployable, the same six modules, the same schem
 
 **The honest limit.** One Postgres instance, and the read path runs on a shared role. The boundary is enforced in the process and documented in the schema, not enforced by the database. Per-service roles and grants were the next step and we hadn't taken it.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Built FastAPI REST APIs for catalog browse and vendor–retailer connection so a chain could go from a listing to an open conversation without a separate sourcing tool</summary>
 
 **The browse surface.** `GET /v1/catalog/products` takes `q`, `category`, `country`, `deployment_model`, `price_max`, `integrations[]`, `sort`, `cursor` and `limit` capped at 50, and returns `PagedProducts { items, next_cursor, total_estimate }`. Then `GET /v1/catalog/products/{id}` for detail — spine from Postgres, metadata document from Mongo, media URLs signed against blob storage — `GET /v1/catalog/categories/{slug}/facets` for the counts, and `POST /v1/catalog/compare` for two to five products, which returns the union of their categories' facet schemas with null cells where a vendor didn't supply an attribute.
@@ -129,7 +130,8 @@ For a smaller team, yes — one deployable, the same six modules, the same schem
 
 **The trade-off I'd state.** The admin console calls these same versioned public APIs rather than a private backend. It costs a chattier UI on entity screens that join across services; it buys that no admin capability exists which the public contract doesn't already describe and test.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -177,7 +179,8 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Designed MongoDB schemas for product metadata so vendors could publish POS, inventory, and loyalty tools without a fixed column set</summary>
 
 **Four collections, one database.** `product_metadata` holds the live document — `category_slug`, `revision`, `schema_version`, free-form `attributes`, plus `modules`, `integrations`, `compliance` and `media`. `product_metadata_revisions` holds an immutable snapshot per publish. `facet_schemas` holds, per category, which attribute keys are typed, which are facetable, their value domains and their display order. `import_staging` holds one document per parsed import row.
@@ -194,9 +197,9 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 **The honest limit.** Facet schema evolution is unresolved. When a category's `facet_schemas` document changes shape, existing documents stay on the old `schema_version` and the projection has to handle both. Lazy migrate-on-read, a backfill job, or a hard version cutover per category — which one you pick determines how expensive category changes are for the rest of the platform's life, and it deserves a prototype before the first category ships rather than a decision under pressure afterwards.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Built PostgreSQL schemas for vendors, retailers, and product listings used by search, shortlists, and the admin workspace</summary>
 
 **Conventions across every table.** `uuid` primary key defaulting to `gen_random_uuid()`, `created_at timestamptz` defaulting to `now()`, `updated_at` where the row is mutable. Money is integer minor units with an explicit [ISO-4217](https://www.six-group.com/en/products-services/financial-information/data-standards.html "ISO 4217 — Standardizes three-letter currency codes for unambiguous monetary values") `currency char(3)` — never floating point, anywhere.
@@ -215,9 +218,9 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 **The honest limit.** Neither store is sharded and both should stay that way for the full five-year horizon — roughly 110 GB and about two writes a second. The trigger to reconsider is ~2,000 sustained write [TPS](https://en.wikipedia.org/wiki/Transaction_processing "Transactions Per Second — Throughput measure of how many transactions a system completes each second") or a ~1 TB working set, and the far likelier first move is pushing `audit_event` out to blob-backed cold storage, which removes ~25 GB and most of the growth.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Optimized SQL queries and indexes for catalog search and listing filters used when chains compare coverage and pricing</summary>
 
 **The first optimization is the table.** All of it happens on `product_listing_facets`, the projection — written only by the indexer, read only by the catalog service. Vendor, status and publication date are copied onto it, so the hot query touches exactly one relation and never joins.
@@ -246,9 +249,9 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 **The one I'd flag as unprototyped.** `to_tsvector` with a single dictionary handles a monolingual catalog well and handles "Kassensystem" versus "POS" not at all. A multilingual European marketplace needs a language-per-listing configuration and probably trigram similarity for vendor-name fuzziness — and that, rather than volume, is the most likely trigger for a dedicated search engine.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Cached hot catalog reads in Redis to cut database load on popular POS and inventory listings</summary>
 
 **Cache-aside, not write-through, and deliberately.** Write-through would put cache population inside the vendor's publish transaction, coupling a write path to a cache the design treats as expendable. Cache-aside keeps Redis strictly optional: if it's gone, everything still works, more slowly.
@@ -270,7 +273,8 @@ Redis sits in front of all of it, cache-aside, and it holds nothing durable — 
 
 **The honest limit.** A bare TTL on the hot listing key is what turned this cache into a synchronised stampede under concentrated traffic. The two mechanisms that fixed it — single-flight and probabilistic early expiry — are under "Two Problems That Cost Us", because the story is worth more than the mechanism.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -305,7 +309,8 @@ The compensating control is that the filter lives in one auditable layer, with a
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Implemented OAuth2 and JWT authentication for vendors and retailers so catalog and connection APIs stayed behind the right account type</summary>
 
 **Two grants, for two genuinely different clients.** Authorization code with PKCE for the marketplace web app and the admin console — both public clients holding no secret, with the refresh token in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to the API origin. Client credentials for vendor system integrations pushing catalog data — confidential clients, with the secret stored as an Argon2id hash on `oauth_client`.
@@ -326,7 +331,8 @@ The compensating control is that the filter lives in one auditable layer, with a
 
 **The second limit, which is operational.** The gateway caches the JWKS on its own schedule, independent of the `authz:jwks` key in Redis. During a signing-key rotation the two caches can disagree, and tokens signed with the new key may be rejected at the edge while the cluster accepts them. The key-overlap window has to be strictly longer than the gateway's [OpenID](https://openid.net/ "OpenID — Federated identity standard letting a user authenticate once and reuse that identity across sites") configuration refresh interval, and that interval has to be confirmed on the target tier before the first rotation — not discovered during one.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -376,7 +382,8 @@ And the cost of that, stated plainly: the erasure isn't total, and the retained 
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Configured Celery for catalog imports and notification jobs so new listings and connection requests did not block the API</summary>
 
 *The import mechanics are under "The Vendor Workspace and Bulk Imports"; this is the transport rule and the durability question.*
@@ -393,9 +400,9 @@ And the cost of that, stated plainly: the erasure isn't total, and the retained 
 
 **The honest limit, and it's a real one.** Celery here runs on Redis, and Redis has no true acknowledgement semantics. `acks_late` plus a visibility timeout is what makes it tolerable, with [AOF](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/ "Append Only File — Redis persistence mode that logs every write for durability") persistence at `everysec` underneath — but a worker killed mid-task relies on that visibility timeout expiring, and a broker failover can still drop an unacknowledged task. That needed a kill-the-worker test on the pinned Celery and Redis versions before I'd call imports durable. And if they had to be genuinely durable, the move was to run the `imports` queue on Service Bus, which was already in the stack, keeping Redis for `notifications` and `indexing` — whose work is fully rebuildable from the outbox and therefore doesn't need the guarantee.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Integrated Azure Functions, Blob Storage, and Service Bus for catalog updates and vendor–retailer notifications when a listing changed or a chain opened a thread</summary>
 
 **Service Bus topology.** Two topics and one queue: catalog events, connection events, and a notification-dispatch queue. Topics because the pattern is fan-out with competing consumers, plus dead-lettering and a native Function trigger, with no cluster to run. [Kafka](https://kafka.apache.org/documentation/ "Apache Kafka — Distributed log that stores partitioned, replicated streams of records for publish-subscribe and stream processing") and Event Hubs were considered and rejected on volume — this system emits roughly 0.2 events a second.
@@ -416,7 +423,8 @@ And the cost of that, stated plainly: the erasure isn't total, and the retained 
 
 **The honest limit.** If Service Bus is down, events simply queue at the outbox — `published_at` stays null, the relay resumes, and nothing is lost. What you get instead is projection and notification lag for the duration of the outage. Functions dead-letter after ten attempts with an alert on it: delayed email, no data loss. The residual risk I'd name is that a dead indexer is a *silent* failure — new listings just stop appearing and no error is raised anywhere — which is why the projection lag is a metric with a page on it rather than something you notice from a support ticket.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -438,7 +446,8 @@ Nothing is half-applied — that's what the staging collection is for. A dead ch
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Built an admin panel for vendors, retail chains, stores, and software products so vendor teams could update listings and category managers could shortlist without engineering tickets</summary>
 
 **What it is architecturally.** A static single-page bundle served from blob storage through the CDN, keyed by build SHA, calling the same versioned `/v1` APIs everything else calls. There is no private admin backend anywhere in this design.
@@ -453,9 +462,9 @@ Nothing is half-applied — that's what the staging collection is for. A dead ch
 
 **One routing rule that belongs here.** The vendor workspace reads the authoritative sources directly — the Postgres primary and the metadata document — never the projection and never the cache, so vendors get read-your-writes. The single place a vendor sees the projection is an explicit "preview as a retailer sees it" view, where the staleness is the point rather than a defect.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Configured Celery for catalog imports and notification jobs so new listings and connection requests did not block the API</summary>
 
 *The transport rule and the Celery-on-Redis durability question are under "How Services Talk"; this is what an import actually does.*
@@ -474,7 +483,8 @@ Nothing is half-applied — that's what the staging collection is for. A dead ch
 
 **Two limits around the edges.** Imports are rate-limited to five jobs per vendor per day, as a marketplace-integrity control rather than a capacity one. And failures above 5% of a job's rows raise a ticket, with the vendor seeing the same error digest the alert names.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -495,7 +505,8 @@ The read service gets a canary at ten percent held against its error rate and p9
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Automated GitLab CI pipelines for test and deploy across marketplace services</summary>
 
 **One repository, one pipeline, nine deployable images.** Stages in order: lint with ruff and mypy, unit tests, integration tests against real data stores brought up by Compose, a functional pass against the OpenAPI contract, image build with digest pinning, image [CVE](https://www.cve.org/ "Common Vulnerabilities and Exposures — Public identifier for a known software security flaw") and dependency scanning, the expand migration, staging deploy, smoke, then production as canary into rolling — with the contract migration landing later as a separate merge request.
@@ -508,9 +519,9 @@ The read service gets a canary at ten percent held against its error rate and p9
 
 **The honest limit.** The CI deploy identity is the single largest concentration of privilege in the design — it can apply Terraform across the whole subscription. Splitting it into a plan-only identity for merge requests and an apply identity gated on protected-branch pipelines, and separating the network and data-plane modules into their own state with their own identity, is worth designing before the first production apply rather than after an incident.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Provisioned Azure marketplace infrastructure with Terraform so AKS, storage, and functions stayed in versioned config</summary>
 
 **What it owns — which is everything.** The cluster and its node pools, the Postgres Flexible Server and its read replica, both Redis instances, the Mongo deployment, blob containers and their lifecycle rules, the Service Bus namespace with its topics, subscriptions and dead-letter settings, both Function Apps, the API gateway, the CDN and [WAF](https://owasp.org/www-community/Web_Application_Firewall "Web Application Firewall — Filters and blocks malicious HTTP traffic before it reaches an application") edge, Key Vault, and every monitoring alert rule.
@@ -523,9 +534,9 @@ The read service gets a canary at ten percent held against its error rate and p9
 
 **Role assignments are Terraform resources too**, which is the point I'd make about security here: a widened permission shows up as a reviewable diff rather than as something nobody notices. None of this section is enforced by code review alone.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Deployed services to Azure AKS with Docker and Kubernetes</summary>
 
 **Shape.** One cluster, one namespace, nine workloads — six services and three worker pools. Compose reproduces the full data-store set for local development and for CI integration tests, so the containers a developer runs and the ones CI tests against are the same images at the same pinned versions.
@@ -540,9 +551,9 @@ The read service gets a canary at ten percent held against its error rate and p9
 
 **The honest limit.** There is no mutual TLS between services, and that's a stated choice rather than an oversight. Doing it properly means a service mesh, and a mesh's cost — sidecar lifecycle, certificate rotation, a new failure mode in every request path — is disproportionate for nine workloads in one namespace where no untrusted container runs. The trigger to revisit it is concrete: a third-party or customer-supplied container in the cluster, a second tenant-facing workload, or a compliance requirement that names encryption in transit between internal services. Any of those, and a mesh goes in.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Wrote unit, integration, and functional tests with Pytest for catalog, auth, and connection paths</summary>
 
 **Three levels with three different jobs.** Unit tests cover domain rules with no database at all — which is the payoff of the clean-architecture layering, not a separate discipline. Integration tests run against real Postgres, Mongo and Redis brought up by Compose at the pinned versions. Functional tests exercise the API against the generated OpenAPI contract.
@@ -555,7 +566,8 @@ The read service gets a canary at ten percent held against its error rate and p9
 
 **Three things I'd single out as needing a test before being believed rather than assumed.** The query plan, via `EXPLAIN (ANALYZE, BUFFERS)` on a seeded 40,000-row table at the pinned Postgres minor version. Celery-on-Redis redelivery, via a kill-the-worker test, before calling imports durable. And an end-to-end trace id across a publish-to-notify flow, because the OpenTelemetry propagation through Service Bus and Celery has been partly manual in the past and is the claim most likely to be false as written.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -572,7 +584,8 @@ Every log line carries a request id, a trace id, and the organisation id — so 
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Monitored services with Azure Monitor, tracking API errors and job failures on catalog and connection flows</summary>
 
 **One SDK for all three signals.** Metrics, logs and traces all emit through the same OpenTelemetry SDK into Azure Monitor and Application Insights — so there is one instrumentation dependency to keep pinned and one set of resource attributes shared across every signal. That's what makes it possible to move from a metric to the trace behind it without correlating by hand.
@@ -589,7 +602,8 @@ Every log line carries a request id, a trace id, and the organisation id — so 
 
 **The honest limit.** Trace continuity across Service Bus and Celery is the claim here most likely to be false as written: it depends on the instrumentation versions actually injecting and extracting the trace header, and both have been partly manual. The versions are pinned and an integration test asserts an end-to-end trace id across a publish-to-notify flow — because the moment you discover it doesn't work is during an incident, which is the worst possible time.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -618,7 +632,8 @@ Two mechanisms fixed it, both small. Single-flight per key: on a miss the first 
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Cached hot catalog reads in Redis to cut database load on popular POS and inventory listings</summary>
 
 *The keyspaces, TTLs and invalidation rules are under "The Data Layer"; this is the stampede fix, in mechanism.*
@@ -635,7 +650,8 @@ Two mechanisms fixed it, both small. Single-flight per key: on a miss the first 
 
 **Why the blast radius stayed survivable while we had it wrong.** Cache-aside means Redis is expendable by design: losing it entirely takes latency from ~35 ms to ~107 ms and multiplies Postgres load about six times, and capacity is sized for exactly that. The stampede was *worse* than losing the cache — it delivered that same multiplied load concentrated onto a single instant rather than spread across the minute.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 

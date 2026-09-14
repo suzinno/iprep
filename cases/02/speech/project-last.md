@@ -92,7 +92,8 @@ Three seams that actually justify a split: a different release cadence, differen
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Designed a FastAPI modular monolith with separate patient diary, clinical content, and identity modules, and extracted microservices for SCIM provisioning and clinical NLP so those releases no longer blocked the rest of the product</summary>
 
 *Why `records` is a fourth module is answered in the "your [CV](https://en.wikipedia.org/wiki/Curriculum_vitae "Curriculum Vitae — Document summarizing a candidate's work history and qualifications") says three modules" note above; this is what the split buys and what it costs.*
@@ -109,7 +110,8 @@ Three seams that actually justify a split: a different release cadence, differen
 
 **The honest limit.** Nothing mechanical enforces the module boundary. Python has no visibility modifier, and there is no import check in the pipeline that fails the build on a cross-module import — schema ownership plus code review is what holds it. On a codebase this size that is weaker than it sounds, and adding that check is what I would do before splitting anything further.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -137,7 +139,8 @@ I designed the Postgres schemas and the Elasticsearch indexes. And here I think,
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Designed PostgreSQL schemas and Elasticsearch indexes for clinical content search so patients and clinicians could find notes, guidance, and visit history without scanning the full record, cutting query latency by 35%</summary>
 
 **One owning store per fact.** `pg-clinical` carries the `identity`, `records`, `diary`, `content` and `audit` schemas and is the only store a client read is served from without qualification. `mongo-content` owns the pages and the guidance corpus. `es-clinical` owns nothing at all — it is a projection, fully rebuildable from the other two, which is what makes a complete reindex a routine operation rather than a disaster procedure.
@@ -167,9 +170,9 @@ I designed the Postgres schemas and the Elasticsearch indexes. And here I think,
 
 **The honest limit.** Search quality on oncology notes depends on a synonym and abbreviation set — drug brand versus generic names, staging notation — and building and maintaining that is clinical work, not engineering work. It needs a named owner before a latency number can be paired with a relevance claim. The other rough edge is scope change: reassigning a patient to a different care team rewrites `care_team_ids` on that patient's documents, and until `celery.index` finishes that reindex the outgoing team can still match in search. That is precisely why reassignment also closes the `care_relationship` row, which the record layer honours immediately.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Migrated data access to SQLAlchemy 2 and tightened SQL for clinical record queries used on the patient timeline and care-team views</summary>
 
 *The indexes behind these queries are under the previous bullet; this is the query side and the [ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping "Object Relational Mapper — Maps application objects to relational database rows and queries").*
@@ -188,7 +191,8 @@ I designed the Postgres schemas and the Elasticsearch indexes. And here I think,
 
 **The honest limit.** Every audited read is a write, so none of this runs on a replica — the timeline is served by the primary and the headroom is the primary's headroom. And the targets the design records are p95 under 120 ms cached and under 250 ms cold, with a named index behind every query; what it does not record is the pre-migration baseline those improvements were measured against.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -229,7 +233,8 @@ The alternative was queueing the audit rows so reads survive a failover — and 
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Implemented REST APIs with SCIM 2.0 and Azure Entra ID JWT so clinician and care-team accounts stay provisioned from the hospital directory and stay off the patient portal</summary>
 
 **The SCIM surface, and who is allowed to call it.** `scim-provisioning-svc` implements `Users` and `Groups` with the standard verbs — `GET|POST /scim/v2/Users`, `GET|PATCH|DELETE /scim/v2/Users/{id}`, the `Groups` equivalents, and `GET /scim/v2/ServiceProviderConfig` so Entra can discover what is supported rather than assume it. Entra ID is the only authorised caller: its own client credential, network-restricted, and never reachable through the patient plane.
@@ -246,7 +251,8 @@ The alternative was queueing the audit rows so reads survive a failover — and 
 
 **The honest limit — two of them.** Deprovisioning closes the care relationships instantly, but a token already issued stays valid until it expires, so there is a 15-minute window where authentication succeeds and every reach check returns nothing. And the check-in transport authenticates per *connection*, not per publish, because [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers")'s MQTT plugin has no per-message authentication. A long-lived mobile connection therefore has to carry a maximum lifetime shorter than the refresh window and be forced to re-authenticate — a gap the design flags as needing a prototype against real token lifetimes before that transport is committed to. The transport itself is the next chapter.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -283,7 +289,8 @@ The third rule is what cut missed reminders by over twenty percent. Before, remi
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Implemented event-driven FastAPI services with RabbitMQ AMQP and MQTT to take wellbeing check-ins and appointment reminders off the request path, cutting missed reminders by 22%</summary>
 
 **What goes on the exchange.** `care.events` is a topic exchange carrying domain facts — `checkin.recorded`, `visitnote.created`, `appointment.scheduled`, `carerelationship.changed`. Publishing a fact does not entitle the publisher to know who consumes it, which is the reason these are not Celery tasks: a task registry couples every consumer to the publisher's deployment.
@@ -300,9 +307,9 @@ The third rule is what cut missed reminders by over twenty percent. Before, remi
 
 **The honest limits, and there are two real ones.** Celery's support for quorum queues is recent and interacts with `task_acks_late`, global QoS and priority; that combination has to be pinned and tested against the broker version before the reminder path is committed to it, and the fallback — raw AMQP consumers for `celery.reminders` — is something the topic-exchange design already accommodates. The second is accepted rather than fixed: if a receipt is lost after delivery, a reminder can go out twice. A patient seeing a reminder twice is a far better failure than not seeing it.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Migrated file ingestion and async notifications to Azure Blob Storage, Service Bus, and Event Grid so scans, letters, and follow-up messages no longer sat in ad-hoc folders</summary>
 
 **The upload never touches the API.** `POST /api/v1/documents:upload-intent` returns a `document_id` and a short-lived signed URL, and the client sends the bytes straight into the `ingest-quarantine` container. Proxying multi-megabyte scans through `care-core` would put them on the same pods serving a clinician's timeline; the signed URL moves the bytes elsewhere while the metadata write stays transactional.
@@ -317,7 +324,8 @@ The third rule is what cut missed reminders by over twenty percent. Before, remi
 
 **The honest limit.** Running `rmq-core` and `sb-integration` means two brokers to operate, and that cost is real. The seam is drawn where the platform hands work to Azure, which keeps the rule memorable, but it is the first thing to revisit if MQTT ingress is ever dropped — at that point Service Bus could carry the whole estate. The smaller one: if Blob is unavailable, document download fails while the rest of the record loads, because the metadata is in Postgres and only the bytes are over there.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -342,7 +350,8 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Fine-tuned Hugging Face models with transfer learning and built LangChain workflows that turn diagnosis and treatment context into education pages patients actually read, raising relevance scores by 28%</summary>
 
 **Two models, two jobs.** One extracts clinical entities and codes from visit notes; its output lands in `nlp_extractions` and enriches the notes index. The other reranks candidate guidance passages during retrieval. The 28% is attributable to the two together — reranking approved passages against the patient's actual diagnosis, treatment line and stage, instead of serving one generic leaflet per cancer type.
@@ -359,7 +368,8 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 
 **The honest limit.** The fine-tuning itself is the unresolved part. Transfer learning on real visit notes means patient text in a training corpus, and whether that is lawful processing, what de-identification standard applies, and whether the resulting weights can leak training text all need a completed impact assessment before the first tuning run, not a retrospective one — it is the highest-risk processing in the system. The smaller and deliberately accepted cost is fluency: constraining generation to approved passages measurably narrows what a page can say, and that is the intended outcome.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -376,7 +386,8 @@ One thing I'd call out, because it's the piece people skip: every migration is e
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Moved core FastAPI services to Python 3.14 with Poetry-managed dependencies so runtime and packages stayed consistent across modules</summary>
 
 **What the lock actually covers.** One [Poetry](https://python-poetry.org/docs/ "Poetry — Python dependency and packaging tool that manages, builds and publishes projects") lockfile per service — `care-core`, `scim-provisioning-svc`, `clinical-nlp-svc` — resolved once and installed identically in CI and in the image, with the interpreter version pinned the same way across all three. The drift this removes was a deploy-time surprise: a dependency that resolved one way in the pipeline and another way on a developer's machine, discovered in the cluster.
@@ -385,9 +396,9 @@ One thing I'd call out, because it's the piece people skip: every migration is e
 
 **The honest limit.** Three lockfiles is three things that can diverge. The design states that versions are pinned identically across services; it names no check that fails the build when they stop being identical, so that consistency is currently a convention held by review rather than a gate.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Configured GitLab CI with ruff, pyright, and SonarQube gates, automating lint, type checks, and test runs before OpenShift deploys, and fixed failing pipeline and deploy jobs</summary>
 
 **The chain, and every link can genuinely fail the build.** `ruff` on lint, then `pyright --strict` on types, then Pytest unit and contract suites, then Pytest integration against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache` and `rmq-core` containers on Docker Compose, then the SonarQube quality gate on coverage and new-code quality, then a Docker build with an image scan and a digest-pinned push. Integration runs against the real brokers and the real search engine because a mocked broker cannot fail the way a real one does.
@@ -398,9 +409,9 @@ One thing I'd call out, because it's the piece people skip: every migration is e
 
 **The honest limit.** Running the real broker in CI is not the same as having settled the flagged question about Celery on quorum queues — that needs a pinned-version test of `task_acks_late`, global QoS and priority against the broker, and the pipeline as designed does not assert it yet.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Wrote Pytest unit and integration tests for API contracts, identity flows, and clinical content services so SCIM and portal changes did not break patient access</summary>
 
 **The contract is an artifact, not a document.** Pydantic models define every request and response body, FastAPI emits the [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") document from them, and the contract suite tests against that document. A breaking change to a response shape fails the pipeline rather than a client.
@@ -411,9 +422,9 @@ One thing I'd call out, because it's the piece people skip: every migration is e
 
 **The honest limit.** The pooled-connection leakage test is only meaningful against the transaction-mode pooler production runs behind, and the Compose stack the design lists names Postgres, not the pooler. That is exactly the gap that makes a control look tested when it is not, and it is the piece of the test suite I would want proven before trusting it. Beyond SonarQube's gate on new code, no coverage figure is claimed — the useful statement is which paths are covered and why, not a percentage.
 
-</details>
+</details></li>
 
-<details>
+<li><details>
 <summary>Deployed releases with ArgoCD to OpenShift and Kubernetes so diary, content, and identity services rolled out on the same GitOps path</summary>
 
 **One declared desired state, two clusters.** ArgoCD syncs `aro-primary` — `care-core`, `scim-provisioning-svc`, `celery-worker`, `rmq-core`, `mongo-content`, `es-clinical` — and `aks-ml`, which carries `clinical-nlp-svc` and nothing else. There are no cluster-side imperative deploys, so "what is running" is a question the Git history answers rather than the cluster.
@@ -426,7 +437,8 @@ One thing I'd call out, because it's the piece people skip: every migration is e
 
 **The honest limit.** Two clusters is the most expensive choice in the design, and it is justified only by GPU node-pool management and the independent NLP release cadence. It is kept collapsible on purpose — `aks-ml` holds no state — so if GPU inference ever moves to a managed endpoint, the right move is folding it back into `aro-primary` rather than continuing to pay for it.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
@@ -443,7 +455,8 @@ Two rules on logging. No clinical text is ever logged: sensitive fields are mark
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
-<details>
+<ul>
+<li><details>
 <summary>Instrumented Elastic APM, Prometheus, and Kibana to track API and consumer latency and error rates on wellbeing and reminder traffic.</summary>
 
 **The join is the whole trick.** There are two telemetry planes — the clusters, and the Azure-native services — and they are joined rather than left side by side. `traceparent` propagates on every hop including AMQP, MQTT and Service Bus message headers, and Azure Monitor's diagnostic logs from the gateway, Functions, Service Bus and Blob are shipped into the same Elasticsearch. So one trace covers the HTTP request, the broker hop, the Celery task and the index write, and Kibana is a single pane. Without that join, a reminder that fails between `celery.reminders` and `fn-notify-dispatch` is two unconnected half-stories.
@@ -456,7 +469,8 @@ Two rules on logging. No clinical text is ever logged: sensitive fields are mark
 
 **The honest limit.** Trace continuity through MQTT is unresolved. MQTT 3.1.1 has no user-property header to carry `traceparent`, so either the check-in clients move to MQTT 5 or the context travels inside the payload envelope — and that has to be decided before instrumenting, because retrofitting it breaks every published client.
 
-</details>
+</details></li>
+</ul>
 
 </details>
 
