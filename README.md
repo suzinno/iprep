@@ -17,6 +17,8 @@ Case folders are two digits by convention; project folder names are free-form. C
 
 `cases/nn/` is the template, not a case. It carries the folder structure and the empty input files; copy it to start a case.
 
+`cases/02/interview/topics/` is a hand-curated regroup of that case's technical questions into eight topic files. It is specific to that case and is not produced by any skill; `topics/README.md` owns what it holds.
+
 ## A new case
 
 There is no scaffolding command yet. Copy the template and rename:

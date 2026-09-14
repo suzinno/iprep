@@ -114,7 +114,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
 **Backs:** FastAPI [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs") APIs for catalog browse and vendor-retailer connection.
 
-- **MUST** — [ASGI](https://asgi.readthedocs.io/en/latest/ "Asynchronous Server Gateway Interface — Standard interface between asynchronous Python web servers and applications") vs WSGI; uvicorn/gunicorn workers, the event loop, the thread pool
+- **MUST** — [ASGI](https://asgi.readthedocs.io/en/latest/ "Asynchronous Server Gateway Interface — Standard interface between asynchronous Python web servers and applications") vs [WSGI](https://peps.python.org/pep-3333/ "Web Server Gateway Interface — Synchronous standard interface between Python web servers and applications"); uvicorn/gunicorn workers, the event loop, the thread pool
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -278,7 +278,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   Once you verify locally, the access-token lifetime *is* the revocation window — fifteen minutes here — and everything else is about making that window survivable. Refresh tokens live 30 days and rotate: each use issues a new one and marks the old `jti` spent, so presenting a spent `jti` means the chain was replayed, which revokes the entire chain and raises an alert rather than merely refusing the request. That converts a stolen refresh token from silent persistent access into a detectable event, at the cost of false positives when a client races itself. For the case fifteen minutes cannot cover — a vendor suspended for fraud — `identity-service` publishes `identity.user.deactivated` and services consult a small denylist of revoked `jti` values in `redis-cache`, which is the deliberate exception rather than the rule, because a denylist consulted on every request is introspection wearing a different hat. **Deeper:** [interview-questions.md](./interview-questions.md#q2-access-tokens-live-15-minutes-so-revocation-is-bounded-by-that-a-vendor-is-suspended-for-fraud-and-must-lose-access-now-walk-me-through-it) — "Access tokens live 15 minutes, so revocation is bounded by that. A vendor is suspended for fraud and must lose access now. Walk me through it."
 
   </details>
-- **NICE** — Token storage in a browser: HttpOnly/Secure/SameSite cookies vs localStorage, CSRF, and the trade-offs
+- **NICE** — Token storage in a browser: HttpOnly/Secure/SameSite cookies vs localStorage, [CSRF](https://owasp.org/www-community/attacks/csrf "Cross Site Request Forgery — Attack that makes a signed-in user's browser submit an unintended request"), and the trade-offs
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -315,7 +315,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   <details><summary><strong>Answer</strong></summary>
 
-  Broken object-level authorization is the case where the endpoint checks that you are authenticated and authorised for the *route* and then trusts the identifier in the path. It is the top API vulnerability because it needs no exploit, no tooling and no unusual traffic — a category manager changes one UUID in a URL and reads another chain's shortlist, and every log line looks legitimate. The structural fix is that no repository method takes an id without also taking the tenant, so "fetch shortlist X" does not exist and "fetch shortlist X belonging to group Y" is the only shape available; the lookup returning empty is then indistinguishable from not found, which also closes the enumeration oracle. Unguessable identifiers are worth having and are not a control — they are why this schema uses UUIDs rather than sequential keys, but the check is what actually protects the row.
+  Broken object-level authorization is the case where the endpoint checks that you are authenticated and authorised for the *route* and then trusts the identifier in the path. It is the top API vulnerability because it needs no exploit, no tooling and no unusual traffic — a category manager changes one [UUID](https://datatracker.ietf.org/doc/html/rfc9562 "Universally Unique Identifier — 128-bit identifier that can be generated without a central authority") in a URL and reads another chain's shortlist, and every log line looks legitimate. The structural fix is that no repository method takes an id without also taking the tenant, so "fetch shortlist X" does not exist and "fetch shortlist X belonging to group Y" is the only shape available; the lookup returning empty is then indistinguishable from not found, which also closes the enumeration oracle. Unguessable identifiers are worth having and are not a control — they are why this schema uses UUIDs rather than sequential keys, but the check is what actually protects the row.
 
   </details>
 - **MUST** — Enforcing the tenant filter in exactly one place (a session/repository-level filter) rather than per endpoint — a per-endpoint check works until someone adds an endpoint
@@ -400,7 +400,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   A read model is a table that exists to answer one query shape, populated by copying from the system of record. `product_listing_facets` copies the facetable subset of the Mongo document plus `vendor_id`, `status`, `published_at` and a `search_vector`, and it is written only by `indexer-worker` and read only by `catalog-service`. Two rules make that safe rather than a second source of truth: exactly one writer, and a `source_revision_id` so the row knows which revision it reflects and can ignore an older event. The payoff is that the hot query touches one relation and never joins — no join to `product` for status, none to `vendor` for the name — which is what lets a partial index carry the whole predicate. The cost is real and stated: a projection pipeline, a lag SLI, a reconciliation job, and a listing that is seconds stale for retailers. **Deeper:** [interview-questions.md](./interview-questions.md#q1-product_listing_facets-copies-vendor_id-status-and-published_at-from-product-why-deliberately-denormalise-and-what-is-the-rule-for-when-that-is-acceptable) — "`product_listing_facets` copies `vendor_id`, `status` and `published_at` from `product`. Why deliberately denormalise, and what is the rule for when that is acceptable?"
 
   </details>
-- **MUST** — jsonb for open attributes: indexing it, statistics, TOAST, write amplification
+- **MUST** — jsonb for open attributes: indexing it, statistics, [TOAST](https://www.postgresql.org/docs/current/storage-toast.html "The Oversized-Attribute Storage Technique — Stores oversized column values out of line in a side table, compressed where possible"), write amplification
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -489,7 +489,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   N+1 is the dominant one and it hides well: the page looks correct, each query is a millisecond, and the total is two hundred round trips. In this design the detail-hydration path is the place it would appear, which is why the sequence is an `MGET` against `redis-cache` followed by a single bulk `$in` to Mongo for the misses, never a lookup per listing. `SELECT *` is the quiet version — it drags TOASTed `jsonb` off disk and defeats an index-only scan that would otherwise have answered from the index alone. The rest are about accidentally hiding the column from the index: a function or an implicit cast on the indexed side, a leading wildcard, or an `OR` chain that the planner cannot turn into a bitmap and rewrites best as a `UNION`. The way I would catch these is `pg_stat_statements` ordered by total time rather than mean, because N+1 never shows up as a slow query.
 
   </details>
-- **MUST** — Every index is a tax on every write; index bloat, autovacuum, HOT updates
+- **MUST** — Every index is a tax on every write; index bloat, autovacuum, [HOT](https://www.postgresql.org/docs/current/storage-hot.html "Heap Only Tuple — PostgreSQL update path that keeps the new row version on the same page and touches no index") updates
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -571,7 +571,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   Alembic's history is a directed graph rather than a list — each revision names its `down_revision`, so two branches merged in Git leave two heads and `upgrade head` fails until a merge revision joins them, which is the correct failure and the one people work around by editing a down-revision by hand. Autogenerate is a first draft and not an answer: it misses server defaults, cannot generate a `CREATE INDEX CONCURRENTLY` at all because that must run outside a transaction, handles PostgreSQL enum changes badly, and by definition cannot invent a data migration. With one migration history shared across nine deployments the two-heads case is routine here rather than exotic, so the rules I would hold are that every generated revision is read and edited before it lands, and that a backfill is a job the release triggers rather than a loop inside the migration.
 
   </details>
-- **MUST** — Expand/contract migrations: the previous image must run against the new schema, CREATE INDEX CONCURRENTLY, lock-taking DDL, statement timeouts
+- **MUST** — Expand/contract migrations: the previous image must run against the new schema, CREATE INDEX CONCURRENTLY, lock-taking [DDL](https://en.wikipedia.org/wiki/Data_definition_language "Data Definition Language — The SQL statements that create and alter database objects"), statement timeouts
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -721,7 +721,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   Command Query Responsibility Segregation is the general name for what `product_listing_facets` already is: writes go to one model, reads to another shaped for the query, joined asynchronously. Naming it adds nothing here and risks importing the parts this design deliberately does not have — no command bus, no event-sourced write model, no second service to operate — which is where it becomes over-engineering, when the projection is adopted as a framework rather than as the answer to one query shape that actually hurt.
 
   </details>
-- **MUST** — The honest alternative (everything in Postgres with JSONB) and what it trades
+- **MUST** — The honest alternative (everything in Postgres with [JSONB](https://www.postgresql.org/docs/current/datatype-json.html "JSON Binary — PostgreSQL type storing JSON documents in a decomposed binary form that can be indexed")) and what it trades
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -1051,7 +1051,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
 
   <details><summary><strong>Answer</strong></summary>
 
-  An image is layers, and the build cache keys on the instruction plus its inputs, so the ordering rule is dependencies before source — copy the lock file and install, then copy the application, or every code change reinstalls the world. A multi-stage build leaves the toolchain behind in the builder stage, so the shipped image carries the application and its runtime dependencies and nothing that was needed only to produce it — smaller to pull on every rollout, and with far less inside it worth exploiting. Running as a non-root user with a read-only root filesystem costs nothing and removes a whole category of container escape preconditions. Pinning matters twice over: base images by digest so a rebuild is reproducible, and dependencies by hash so the supply chain is not "whatever PyPI served that morning" — with weekly base-image rebuilds so pinning does not quietly mean unpatched. Compose is the other half of this in practice: it brings up real Postgres, Mongo and Redis at the pinned versions for local development and for the CI integration stage, which is what makes those tests worth running at all.
+  An image is layers, and the build cache keys on the instruction plus its inputs, so the ordering rule is dependencies before source — copy the lock file and install, then copy the application, or every code change reinstalls the world. A multi-stage build leaves the toolchain behind in the builder stage, so the shipped image carries the application and its runtime dependencies and nothing that was needed only to produce it — smaller to pull on every rollout, and with far less inside it worth exploiting. Running as a non-root user with a read-only root filesystem costs nothing and removes a whole category of container escape preconditions. Pinning matters twice over: base images by digest so a rebuild is reproducible, and dependencies by hash so the supply chain is not "whatever [PyPI](https://pypi.org/ "Python Package Index — Public repository from which Python packages are installed") served that morning" — with weekly base-image rebuilds so pinning does not quietly mean unpatched. Compose is the other half of this in practice: it brings up real Postgres, Mongo and Redis at the pinned versions for local development and for the CI integration stage, which is what makes those tests worth running at all.
 
   </details>
 
@@ -1101,7 +1101,7 @@ The split is 149 MUST, 46 NICE, 10 OPTIONAL across 24 topics. A MUST-heavy list 
   Why staging is the same topology at smaller instance sizes is owned by "Environments" in the Terraform topic; the pipeline's contribution is that promotion moves an artefact rather than rebuilding one — the digest that passed staging is the digest deployed to production, so "it worked in staging" is a statement about the same bytes rather than about the same commit. That narrows what the smoke test has to prove, and being explicit about it matters: that the thing which shipped is running, reachable through the real edge, talking to its real data stores and on the migration it expects — not that the feature is correct, which the earlier stages already gated. The honest limit is that staging carries neither production's data volume nor its traffic, so it cannot tell you anything about a query plan or a cache hit ratio; it tells you about wiring, and treating a green smoke as a performance signal is precisely how an unverified latency figure gets quoted.
 
   </details>
-- **NICE** — Supply chain: digest-pinned images, hash-pinned dependencies, [CVE](https://www.cve.org/ "Common Vulnerabilities and Exposures — Public identifier for a known software security flaw") scanning, SBOM, weekly base-image rebuilds
+- **NICE** — Supply chain: digest-pinned images, hash-pinned dependencies, [CVE](https://www.cve.org/ "Common Vulnerabilities and Exposures — Public identifier for a known software security flaw") scanning, [SBOM](https://www.cisa.gov/sbom "Software Bill of Materials — Inventory of every component and dependency in a build"), weekly base-image rebuilds
 
   <details><summary><strong>Answer</strong></summary>
 

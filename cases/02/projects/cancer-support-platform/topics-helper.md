@@ -121,7 +121,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
 **Backs:** event-driven FastAPI services; moving core services to Python 3.14.
 
-- **MUST** — [ASGI](https://asgi.readthedocs.io/en/latest/ "Asynchronous Server Gateway Interface — Standard interface between asynchronous Python web servers and applications") vs WSGI; how uvicorn/gunicorn workers, the event loop and the thread pool actually run your handlers
+- **MUST** — [ASGI](https://asgi.readthedocs.io/en/latest/ "Asynchronous Server Gateway Interface — Standard interface between asynchronous Python web servers and applications") vs [WSGI](https://peps.python.org/pep-3333/ "Web Server Gateway Interface — Synchronous standard interface between Python web servers and applications"); how uvicorn/gunicorn workers, the event loop and the thread pool actually run your handlers
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -306,7 +306,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **NICE** — Where to store tokens in a browser: HttpOnly/Secure/SameSite cookies, CSRF
+- **NICE** — Where to store tokens in a browser: HttpOnly/Secure/SameSite cookies, [CSRF](https://owasp.org/www-community/attacks/csrf "Cross Site Request Forgery — Attack that makes a signed-in user's browser submit an unintended request")
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -510,7 +510,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **MUST** — jsonb vs columns vs [EAV](https://en.wikipedia.org/wiki/Entity%E2%80%93attribute%E2%80%93value_model "Entity Attribute Value — Schema pattern for storing entities whose attributes vary and are not known in advance") — what jsonb costs (statistics, TOAST, write amplification) and what a [GIN](https://www.postgresql.org/docs/current/gin.html "Generalized Inverted Index — PostgreSQL index type suited to values containing multiple keys, such as arrays or text search") index over it buys
+- **MUST** — jsonb vs columns vs [EAV](https://en.wikipedia.org/wiki/Entity%E2%80%93attribute%E2%80%93value_model "Entity Attribute Value — Schema pattern for storing entities whose attributes vary and are not known in advance") — what jsonb costs (statistics, [TOAST](https://www.postgresql.org/docs/current/storage-toast.html "The Oversized-Attribute Storage Technique — Stores oversized column values out of line in a side table, compressed where possible"), write amplification) and what a [GIN](https://www.postgresql.org/docs/current/gin.html "Generalized Inverted Index — PostgreSQL index type suited to values containing multiple keys, such as arrays or text search") index over it buys
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -642,7 +642,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **NICE** — Bloat, autovacuum, HOT updates, index maintenance
+- **NICE** — Bloat, autovacuum, [HOT](https://www.postgresql.org/docs/current/storage-hot.html "Heap Only Tuple — PostgreSQL update path that keeps the new row version on the same page and touches no index") updates, index maintenance
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -727,7 +727,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **MUST** — Expand/contract migrations: why the previous image must run against the new schema, CREATE INDEX CONCURRENTLY, lock-taking DDL and statement timeouts
+- **MUST** — Expand/contract migrations: why the previous image must run against the new schema, CREATE INDEX CONCURRENTLY, lock-taking [DDL](https://en.wikipedia.org/wiki/Data_definition_language "Data Definition Language — The SQL statements that create and alter database objects") and statement timeouts
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -1154,7 +1154,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **MUST** — Evaluation that means something: held-out set, precision/recall/F1 per entity type, NDCG/MRR for reranking, a baseline to beat, statistical noise
+- **MUST** — Evaluation that means something: held-out set, precision/recall/F1 per entity type, [NDCG](https://en.wikipedia.org/wiki/Discounted_cumulative_gain "Normalized Discounted Cumulative Gain — Ranking metric that rewards relevant results appearing near the top")/[MRR](https://en.wikipedia.org/wiki/Mean_reciprocal_rank "Mean Reciprocal Rank — Ranking metric scoring how high the first relevant result appears") for reranking, a baseline to beat, statistical noise
 
   <details><summary><strong>Answer</strong></summary>
 
@@ -1483,7 +1483,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **NICE** — Build and supply chain: digest pinning, image scanning, dependency audit, SBOM, reproducibility
+- **NICE** — Build and supply chain: digest pinning, image scanning, dependency audit, [SBOM](https://www.cisa.gov/sbom "Software Bill of Materials — Inventory of every component and dependency in a build"), reproducibility
 
   <details><summary><strong>Answer</strong></summary>
 
