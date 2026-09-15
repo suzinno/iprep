@@ -239,13 +239,13 @@ Check-ins are published as JavaScript Object Notation ([JSON](https://www.json.o
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Why MQTT at all.** The client is a phone on a lossy connection. QoS 1 with client-side offline queueing is the whole point: the handset holds the check-in through a tunnel or a dead spot and delivers it on reconnect. That is also why the broker is RabbitMQ rather than a cloud queue service — the MQTT plugin bridges MQTT topics into the same `care.events` exchange the rest of the platform consumes, so there is no separate ingress path to keep consistent.
+**Why MQTT at all.** The client is a phone on a lossy connection. QoS 1 on a persistent session, with client-side offline queueing, is the whole point: the handset holds the check-in through a tunnel or a dead spot and delivers it on reconnect. The session has to be persistent, because a clean session discards a publish that was sent but not yet acknowledged. That is also why the broker is RabbitMQ rather than a cloud queue service — the MQTT plugin bridges MQTT topics into the same `care.events` exchange the rest of the platform consumes, so there is no separate ingress path to keep consistent.
 
-**The payload and the three settings that carry the durability claim.** The message is a JSON envelope — the check-in fields plus a correlation identifier and the trace context — validated by a Pydantic model on the consumer side, because a device is untrusted input regardless of transport. Three broker settings are non-default and each one matters:
+**The payload and the three broker details that carry the durability claim.** The message is a JSON envelope — the check-in fields plus a correlation identifier and the trace context — validated by a Pydantic model on the consumer side, because a device is untrusted input regardless of transport. Two broker settings are non-default and one translation is fixed, and each one matters:
 
 - `mqtt.exchange` must point at `care.events`, or the plugin publishes to the default topic exchange instead and nothing consumes it.
-- MQTT's `/` separator is translated to AMQP's `.`, so `care/checkin/{patient_id}` binds as `care.checkin.{patient_id}` — the binding pattern has to be written for the translated form.
-- `care.events` needs an **alternate exchange**, because RabbitMQ returns a publish acknowledgement for a QoS 1 message that routes to no queue. Without one, an unbound topic is acknowledged to the device and silently dropped — the exact loss the path exists to prevent. The alternate exchange turns it into a visible dead-letter.
+- MQTT's `/` separator is always translated to AMQP's `.`, so `care/checkin/{patient_id}` binds as `care.checkin.{patient_id}` — the binding pattern has to be written for the translated form.
+- `care.events` needs an **alternate exchange**, because RabbitMQ returns a publish acknowledgement for a QoS 1 message that routes to no queue. Without one, an unbound topic is acknowledged to the device and silently dropped — the exact loss the path exists to prevent. The alternate exchange re-publishes it into the queue bound to the alternate exchange, where it is visible.
 
 **Delivery is at-least-once, so the write is idempotent.** The projection is an `INSERT ... ON CONFLICT (patient_id, recorded_for) DO UPDATE`. Redelivery is arithmetic, not a bug, and no application-side deduplication is needed.
 
@@ -307,8 +307,8 @@ By making durability a property of the acknowledgement rather than of the consum
 
 **The mechanisms, in the order they matter:**
 
-- **Quorum queues** for `care.events` and every Celery queue, with **publisher confirms mandatory**. Nothing is acknowledged that is not replicated. RabbitMQ 4 removed classic mirrored queues, so this is also the only supported answer.
-- **An alternate exchange on the topic exchange.** This is the subtle one: a QoS 1 publish that routes to no queue still gets acknowledged, so an unbound topic would be confirmed to the device and dropped. The alternate exchange converts that into a visible dead-letter.
+- **Quorum queues** for every queue bound to `care.events` and every Celery queue, with **publisher confirms mandatory**. Nothing routed to a quorum queue is acknowledged before a majority of its replicas has it. RabbitMQ 4 removed classic mirrored queues, so this is also the only supported answer.
+- **An alternate exchange on the topic exchange.** This is the subtle one: a QoS 1 publish that routes to no queue still gets acknowledged, so an unbound topic would be confirmed to the device and dropped. The alternate exchange routes that message into a queue where it is visible.
 - **Late acknowledgement and idempotent handlers** on consumers, with bounded retries and then a dead-letter queue. A worker that crashes mid-task causes redelivery, not loss.
 - **The database, not the cache, provides idempotency.** `(patient_id, recorded_for)` is unique, so redelivery is an upsert. Redis idempotency keys are an optimisation; losing them to a flush permits a duplicate request to be reprocessed, and the natural key is what makes that safe.
 - **The transactional outbox** for everything the platform publishes, so a commit followed by a broker failure leaves an unpublished row that drains on recovery rather than a fact that never left.

@@ -334,15 +334,15 @@ The third rule is what cut missed reminders by over twenty percent. Before, remi
 
 This is work the platform owns. It has owners, deadlines and retry policies. That fits Celery's model, not the model of a fire-and-forget event.
 
-**The check-in path, and the three broker settings it depends on.** The phone publishes to `care/checkin/{patient_id}` at [QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1. The broker acknowledges once the message is durable on a quorum queue. From that moment, the recovery point is zero, and the UI can honestly say "recorded". That claim depends on three settings, and none of them is a default:
+**The check-in path, and the three broker details it depends on.** The phone publishes to `care/checkin/{patient_id}` at [QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1. The broker acknowledges once the message is durable on a quorum queue. From that moment, the recovery point is zero, and the UI can honestly say "recorded". That claim depends on two settings that are not defaults, and on one fixed translation:
 
 - `mqtt.exchange` has to point at `care.events`. Otherwise, the plugin publishes to `amq.topic`.
-- MQTT's `/` separator becomes [AMQP](https://www.amqp.org/ "Advanced Message Queuing Protocol — Standardizes reliable message queueing and routing between applications")'s `.`. So the topic binds as `care.checkin.{patient_id}`.
+- MQTT's `/` separator always becomes [AMQP](https://www.amqp.org/ "Advanced Message Queuing Protocol — Standardizes reliable message queueing and routing between applications")'s `.`. So the topic binds as `care.checkin.{patient_id}`.
 - `care.events` needs an alternate exchange. This is because RabbitMQ returns a [PUBACK](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT PUBACK packet — Confirms receipt of a QoS 1 published message") for a QoS 1 publish that routes to no queue at all.
 
 Problem one at the end of this document is about that third setting.
 
-**Quorum queues, because there is no longer an alternative.** RabbitMQ 4 removed classic mirrored queues. So `care.events` and every Celery queue use quorum queues on a three-node cluster. Publisher confirms are mandatory. The broker acknowledges a message only after it is replicated.
+**Quorum queues, because there is no longer an alternative.** RabbitMQ 4 removed classic mirrored queues. So every queue bound to `care.events`, and every Celery queue, is a quorum queue on a three-node cluster. Publisher confirms are mandatory. The broker acknowledges a message routed to a quorum queue only after a majority of its replicas has it.
 
 **Where the 22% comes from. It is not the queue.** The state machine is in `pg-clinical`, not in the transport. The 22% comes from that.
 
@@ -563,7 +563,7 @@ The check-in path promises no data loss. The phone publishes a check-in and gets
 
 We found that the broker returns that acknowledgement even when the message routes to no queue at all. So for an unbound topic, the broker acknowledges the message to the device and then silently drops it. That is exactly the loss the path existed to prevent.
 
-The fix was small. We added an alternate exchange, so an unroutable message becomes a visible dead letter instead of nothing. We also had to point the MQTT plugin at our exchange explicitly, because by default it publishes somewhere else.
+The fix was small. We added an alternate exchange, so an unroutable message goes to a queue where we can see it, instead of nowhere. We also had to point the MQTT plugin at our exchange explicitly, because by default it publishes somewhere else.
 
 > **"The lesson: an acknowledgement is a promise from one component, not from the system."**
 
