@@ -168,7 +168,7 @@ The clearest one was over where tenant isolation belongs — PostgreSQL row-leve
 **How it was resolved.** Not by seniority and not by preference, but by naming the mechanism each design depends on:
 
 - On the health platform the identity is set with `SET LOCAL` inside the request transaction, and the pooled-connection leakage test proves it does not survive into the next caller's query. That is what makes RLS trustworthy there.
-- On the marketplace, `catalog-service` reads a replica through a pooled connection under a shared role. Setting a per-request session variable through that pool is exactly where RLS silently becomes a no-op or leaks across sessions. Getting that wrong is worse than not relying on it.
+- On the marketplace, `catalog-service` reads a replica through a pooled connection under a shared role. RLS would work there too with `SET LOCAL`, but only if every read keeps that discipline: a plain `SET` leaks across sessions, and a `SET LOCAL` outside a transaction silently does nothing. Getting that wrong is worse than not relying on it.
 
 So the marketplace filters on the token's `org_id` in **one** place — a session-level filter applied by the repository layer, never per endpoint — and pays for the weaker mechanism with a test that asserts a cross-tenant read returns empty for every org-owned repository method, plus an audit row on every platform-admin bypass. The disagreement ended when both positions were written into the design file with the trigger that would reverse them, rather than settled in a conversation nobody could reconstruct later.
 
