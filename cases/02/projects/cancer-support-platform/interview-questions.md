@@ -370,7 +370,7 @@ Range partitioning splits one logical table into physical child tables by a key 
 
 **Why not partition everything.** Partitioning costs you: a unique constraint must include the partition key, cross-partition queries pay planning overhead, foreign keys pointing *into* a partitioned table are constrained, and you need automation to create next month's partition before it is needed — a missing partition is an insert failure at midnight on the first. `appointment`, `prescription`, and `visit_note` are millions of rows, not hundreds of millions, and are queried by patient rather than by time window. They get composite B-tree indexes instead. Partitioning them would buy pruning that patient-scoped queries do not need and impose constraints on the tables most involved in joins.
 
-**The detail that connects to security.** RLS policies on the partitioned tables must be written so the `patient_id` predicate still reaches the planner. A policy that wraps the check in an opaque subquery defeats pruning and turns an index scan into a full sweep across every partition — which is why the design guards the plan shape with an `EXPLAIN` assertion in the test suite rather than trusting review.
+**The detail that connects to security.** RLS policies on the partitioned tables must be written so the patient scope can use the index. A policy written as a plain `IN` subquery or a function the planner cannot inline runs as a filter, so a query that relies on it reads every row of the partitions it touches instead of using the patient index. Pruning is unaffected, because it comes from the time bound, but the lost index is silent — which is why the design guards the plan shape with an `EXPLAIN` assertion in the test suite rather than trusting review.
 
 </details>
 
@@ -493,7 +493,7 @@ The row stores the encrypted value plus a blind index — a keyed Hash-based Mes
 ### Q2. The clinician timeline query has become slow in production. Walk me through diagnosing it.
 
 **Brief answer**
-Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE, BUFFERS)` on a representative patient, and compare estimated against actual rows to find where the planner is wrong. On this query the usual answers are a lost keyset cursor, an RLS policy defeating partition pruning, or plan drift from stale statistics.
+Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE, BUFFERS)` on a representative patient, and compare estimated against actual rows to find where the planner is wrong. On this query the usual answers are a lost keyset cursor, an RLS policy that stops the patient index being used, or plan drift from stale statistics.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -505,7 +505,7 @@ Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE,
 **Step 3 — the specific suspects on this query.**
 
 - *Offset pagination has crept back in.* Somebody added a page-number parameter for a report and the branch `LIMIT` push-down is gone. The tell is a `Sort` node above the union with a row count far larger than the page size.
-- *Partition pruning is not happening.* The plan lists every monthly partition of `wellbeing_checkin` instead of one or two. The usual cause is an RLS policy that buries `patient_id` in a form the planner cannot use, which is why the design asserts plan shape in a test rather than trusting that it stayed correct.
+- *Partition pruning is not happening.* The plan lists every monthly partition of `wellbeing_checkin` instead of one or two. The usual cause is a query without a bound on the partition key, or a generic plan that cannot prune (the pooling pair in Q3). An RLS policy does not stop pruning; its shape decides whether the patient index is used, which is why the design asserts plan shape in a test rather than trusting that it stayed correct.
 - *The composite index is not being used on one branch.* Often because a new column was added to the sort, or a branch filters on `encounter_date` instead of `timeline_at` and so cannot use `(patient_id, timeline_at DESC)`.
 - *Statistics are stale* after a bulk backfill; `ANALYZE` on the affected tables is the cheap first thing to try and takes seconds.
 - *Not the query at all.* `pg_stat_activity` for lock waits, and check whether an audit write is contending — remembering that every patient-facing read here is also a write, so the read path is subject to write-path contention in a way that surprises people.
@@ -599,14 +599,14 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 ### Q3. Row-level security, monthly partitioning, and connection pooling all interact on the same query. Describe the failure that arises from each pair.
 
 **Brief answer**
-RLS with pooling can leak identity across requests if the session variable is not transaction-scoped; RLS with partitioning can defeat pruning if the policy hides the partition key from the planner; pooling with partitioning affects plan caching. All three are silent — none produces an error.
+RLS with pooling can leak identity across requests if the session variable is not transaction-scoped; RLS with partitioning can stop the patient index being used if the policy is written as a filter rather than an index condition; pooling with partitioning affects plan caching. All three are silent — none produces an error.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 **RLS × pooling — the dangerous one.** Each request sets a session parameter (`app.actor_id`, `app.actor_kind`) that the policies read. Azure Flexible Server fronted by a transaction-mode pooler reuses a backend connection across requests, so a plain `SET` persists past the request that issued it and the next caller inherits the previous caller's identity. The strongest control in the design becomes its exact opposite: a clinician sees a patient they have no relationship with, and every layer reports success. The fix is `SET LOCAL` inside the request transaction, so the value dies with the transaction. Because the failure is invisible, this is asserted by a pooled-connection leakage test rather than left to review — the test runs two requests as different actors over the same pooled backend and asserts the second sees nothing of the first.
 
-**RLS × partitioning.** The policy on `wellbeing_checkin` must express the patient constraint in a form the planner can push down. Written as a direct predicate, pruning survives and a windowed query touches one or two partitions. Written as an opaque subquery or a function the planner cannot inline, the predicate is applied after the scan — so every monthly partition is read, and a query that should touch 2 million rows touches 110 million. It returns correct results, just slowly, which is why it survives testing on a small dataset and appears in production three months later. The guard is an `EXPLAIN` assertion on plan shape.
+**RLS × partitioning.** The policy on `wellbeing_checkin` must express the patient constraint in a form that becomes an index condition, such as `patient_id = ANY (ARRAY(SELECT …))`. Written as a plain `IN` subquery or a function the planner cannot inline, the check is applied as a filter after the scan — so a query that relies on the policy for its patient scope reads every row of the monthly partitions in its window instead of the reachable patients' rows. Pruning itself survives, because it comes from the time bound on the partition key. It returns correct results, just slowly, which is why it survives testing on a small dataset and appears in production three months later. The guard is an `EXPLAIN` assertion on plan shape.
 
 **Pooling × partitioning.** With many partitions and a pooled backend, PostgreSQL's generic plan caching can choose a plan that does not prune, because a generic plan cannot know the parameter value. The symptom is a query that is fast the first five times and slow on the sixth — the point where the planner switches from custom to generic plans. It is diagnosable, and the mitigations are ensuring the partition key is a directly-bound parameter or forcing custom plans for that statement.
 
@@ -1249,7 +1249,7 @@ With `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and a policy, PostgreSQL rewrit
 
 - The session variable is set with **`SET LOCAL`** inside the transaction. A plain `SET` persists on a pooled backend and leaks one caller's identity into the next caller's query — turning the strongest control into its exact inverse. A pooled-connection leakage test asserts it.
 - The application role is `NOSUPERUSER` and lacks `BYPASSRLS`; migrations run as a separate owning role that never serves a request. A privilege that quietly grew would disable every policy without changing a line of application code, so a role-privilege assertion runs in the pipeline.
-- Policies keep the `patient_id` predicate reachable by the planner, so partition pruning survives on the monthly-partitioned tables. An `EXPLAIN` assertion guards the plan shape.
+- Policies keep the `patient_id` scope in a form the index can use; partition pruning comes from the time bound and does not depend on the policy. An `EXPLAIN` assertion guards the plan shape.
 
 **And the boundary of the control.** Row-level security protects PostgreSQL. It does nothing for Elasticsearch, which is why search carries mandatory scope fields and a filter injected from the same `care_relationship` table — one definition of reach, projected into the second store, rather than a second definition that can drift.
 
@@ -1419,7 +1419,7 @@ The strongest argument is that it is invisible: it protects perfectly right up u
 2. **The pooled-connection leakage test**, run against a real pooler in transaction mode — proof the `SET LOCAL` discipline holds under connection reuse.
 3. **A role-privilege assertion**: the application role is `NOSUPERUSER`, lacks `BYPASSRLS`, and is not the owner of any policied table.
 4. **A schema conformance check**: every table containing `patient_id` has row-level security enabled and forced, and at least one policy. This is the one that catches the *new* table added next quarter without a policy — the most likely real-world failure, and the one no existing test would cover.
-5. **An `EXPLAIN` assertion** on plan shape, showing the security predicate reaches the planner and pruning survives.
+5. **An `EXPLAIN` assertion** on plan shape, showing the security predicate is used as an index condition rather than a filter.
 6. **Detection rules over the audit stream** for out-of-team access and direct database queries from non-application principals — evidence that the control is monitored in production, not only tested in the pipeline.
 7. **Mutation evidence.** The most persuasive artefact of all: deliberately break each control in a scratch environment and show the corresponding test failing. A test suite that has only ever passed proves that it runs, not that it detects anything.
 
@@ -1704,7 +1704,7 @@ Because the defects that matter here only exist in the interaction: row-level se
 
 **What mocks cannot reproduce, concretely.** A mocked PostgreSQL does not enforce row-level security, so the single most important control in the design would be untested. It does not enforce a unique constraint, so the idempotency of the check-in projection would be an assumption. It does not exhibit transaction-mode pooling, so the `SET LOCAL` leakage test — which is the difference between the control working and inverting — cannot exist. A mocked RabbitMQ does not redeliver, does not apply flow control, and does not translate MQTT topic separators into AMQP routing keys, so three of the four things that make the check-in path lose data silently are invisible. A mocked Elasticsearch accepts any document, so a mapping mismatch ships.
 
-**And the ones that are genuinely subtle.** Driver behaviour under a real connection pool. Migration application against a table that already has data. Whether the query planner still prunes partitions with the security policy applied. None of those is expressible as an assertion about a mock, because the thing being asserted is the real component's behaviour.
+**And the ones that are genuinely subtle.** Driver behaviour under a real connection pool. Migration application against a table that already has data. Whether the query planner still uses the patient index with the security policy applied. None of those is expressible as an assertion about a mock, because the thing being asserted is the real component's behaviour.
 
 **The developer-experience argument, which matters as much.** The same Docker Compose stack developers run locally is what the pipeline tests against, so "works on my machine" and "works in the pipeline" converge. Developers running the real brokers and the real search engine rather than fakes is a stated design property, not an accident.
 

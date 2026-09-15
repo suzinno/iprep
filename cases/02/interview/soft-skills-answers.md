@@ -42,7 +42,7 @@ Three implementation details decide whether that control is real, and each is as
 
 - The session setting carrying the caller's identity is applied with `SET LOCAL` inside the request transaction, never a plain `SET`. Azure Database for PostgreSQL Flexible Server behind a transaction-mode pooler reuses a backend across requests, and a session-scoped setting would leak one caller's identity into the next caller's query — turning the strongest control in the design into its exact opposite. A pooled-connection leakage test asserts it.
 - The application role is `NOSUPERUSER` and lacks `BYPASSRLS`; migrations run as a separate owning role that never serves a request. A role-privilege assertion runs in CI.
-- Policies are written so the `patient_id` predicate still reaches the planner. A policy that hides it behind an opaque subquery silently converts a pruned index scan into a full sweep of a monthly-partitioned 110-million-row table, so an `EXPLAIN` assertion guards the plan shape.
+- Policies are written so the `patient_id` scope can use the index. A policy written as a plain `IN` subquery or hidden in a function becomes a filter, so a query that relies on it reads every row of the monthly partitions it touches on a 110-million-row table; partition pruning still comes from the time bound. An `EXPLAIN` assertion guards the plan shape.
 
 **The connection request on the marketplace.** A category manager opening a conversation with a vendor is the platform's commercial event: it creates a thread, moves a `shortlist_item` to `contacted`, and accrues a `billing_charge`. A double submit must produce one of each. The guarantee is not the [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") idempotency key — that is the optimisation. It is `UNIQUE (retail_group_id, idempotency_key)` on `connection_request` and `UNIQUE (connection_request_id) WHERE kind = 'connection'` on `billing_charge`. The database is what finally prevents the duplicate thread and the duplicate charge, which is why the one synchronous inter-service hop in that path is allowed to fail open on a 250 ms timeout: refusing a legitimate connection costs the marketplace more than an occasional duplicate the constraint catches anyway.
 
@@ -114,7 +114,7 @@ Integration tests against real stores are not a stylistic preference. The projec
 **A coverage target is worth having and worth being honest about.** A high number tells you the suite executes the code; it does not tell you the suite asserts anything useful. So alongside it I look at whether the tests that matter exist:
 
 - the pooled-connection leakage test on the RLS session setting, and the role-privilege assertion that the application role has no `BYPASSRLS`;
-- an `EXPLAIN` assertion that the policy has not destroyed partition pruning;
+- an `EXPLAIN` assertion that the policy has not stopped the patient index being used;
 - on the marketplace, a test asserting that a cross-tenant read returns empty for **every** org-scoped repository method — because a per-endpoint check is a control that works until the day someone adds an endpoint;
 - a CI check that fails the build if a log call passes a model containing a field marked sensitive, since no clinical free text may reach a log line.
 
