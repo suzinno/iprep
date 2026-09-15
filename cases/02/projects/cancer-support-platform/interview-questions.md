@@ -359,7 +359,7 @@ The one thing typing does not give you is query *plan* safety. A perfectly typed
 ### Q1. What is declarative range partitioning, and why are `wellbeing_checkin` and `audit_event` partitioned by month while the other tables are not?
 
 **Brief answer**
-Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query. Those two tables are partitioned because they are append-only, read by recent time window, and enormous — 110 million and 1.8 billion rows over five years.
+Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query bounded on that key. Those two tables are partitioned because they are written in time order (audit append-only, check-ins insert-mostly), read by recent time window, and enormous — 110 million and 1.8 billion rows over five years.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -386,11 +386,11 @@ A [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index �
 
 A B-tree on `recorded_at` across 110 million check-ins is several gigabytes and has to be maintained on every insert. A BRIN on the same column stores, per 128-page range, the minimum and maximum timestamp in that range — a few hundred kilobytes total. A range query consults the summary, discards ranges whose bounds cannot match, and scans the survivors.
 
-The correlation requirement is the whole story. Check-ins and audit events are inserted in time order and never updated, so block N contains timestamps strictly after block N−1 and the summary is tight. If rows were updated or inserted out of order the min/max per range would widen until nearly every range matched every query, and the index would degenerate into a sequential scan with extra steps. That is the failure mode to name in an interview: a BRIN never returns wrong results when correlation is poor, it just silently stops helping.
+The correlation requirement is the whole story. Audit events are inserted in time order and never updated, so block N contains timestamps strictly after block N−1 and the summary is tight. Check-ins are inserted in time order too; the only update is the idempotent upsert on `(patient_id, recorded_for)`, which is rare enough that the summary stays close to tight. If rows were updated or inserted out of order the min/max per range would widen until nearly every range matched every query, and the index would degenerate into a sequential scan with extra steps. That is the failure mode to name in an interview: a BRIN never returns wrong results when correlation is poor, it just silently stops helping.
 
 In this design the two indexes are complementary rather than competing. BRIN on the time column serves the range scan cheaply; the composite B-tree `(patient_id, timeline_at DESC)` serves the patient-scoped access pattern where selectivity comes from the patient, not the time. Both exist because both access patterns are named in the API contract, and the design is explicit that an index with no query behind it is write amplification on a 110-million-row table — which is a real cost, not a stylistic preference.
 
-You can check correlation directly with `pg_stats.correlation` for the column, and if it has drifted, `CLUSTER` or a repack restores it. On an append-only partitioned table it does not drift, which is precisely why BRIN is the right tool here and would be the wrong tool on a table with heavy updates.
+You can check correlation directly with `pg_stats.correlation` for the column, and if it has drifted, `CLUSTER` or a repack restores it. On an append-only partitioned table it does not drift, and on an insert-mostly one it drifts only as far as its rare updates move rows, which is precisely why BRIN is the right tool here and would be the wrong tool on a table with heavy updates.
 
 </details>
 
@@ -586,7 +586,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 
 **Why `audit_event` moves cheaply.** It has three properties that make extraction almost free. It is append-only, so there is no update or delete path to keep consistent. No foreign key points at it, so no join breaks. Nothing on the request path reads it — it is queried for compliance and Data Subject Access Requests ([DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them")), which tolerate a different instance and a different latency profile. The one genuine coupling is that the audit row is written in the same transaction as the access, and moving the table to another instance breaks that atomicity. That is the real cost of this step and I would want it on the table: either accept a two-phase write with a reconciliation sweep, or keep a small local staging table that is drained. The design should be honest that step one is not free, only *cheapest*.
 
-**Why `wellbeing_checkin` is second.** Same append-only shape, 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
+**Why `wellbeing_checkin` is second.** Nearly the same shape — insert-mostly rather than append-only — 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
 
 **Why sharding is last.** Sharding the record by `patient_id` touches every query, every migration, and the RLS model; it breaks cross-patient queries like a clinician's patient list; it makes the timeline union a scatter-gather; and it is close to irreversible. Reaching the point where it is necessary means roughly twenty times the modelled load. Doing it earlier buys operational complexity against a number the system does not have — which is the same reasoning that rejected a microservice fleet at 200 queries per second.
 
@@ -624,7 +624,7 @@ For a bounded per-row document that is read whole and rarely updated in place, y
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Why the current call is right.** A check-in's `symptom_scores` is written once, read whole, and never updated. PostgreSQL's MVCC rewrites the entire row on any update, so document size only matters if you update — and here you do not. The document is small, the protocol owns its shape, and a GIN index serves the trend query. Correct choice for this workload.
+**Why the current call is right.** A check-in's `symptom_scores` is written once per day, read whole, and rewritten only when the idempotent upsert on `(patient_id, recorded_for)` fires. PostgreSQL's MVCC rewrites the entire row on any update, so document size only matters if you update often — and here you rarely do. The document is small, the protocol owns its shape, and a GIN index serves the trend query. Correct choice for this workload.
 
 **Why high-churn attributes break it.** If each of a million entities has fifty attributes and individual attributes change constantly, every single-key update rewrites the whole document, produces a dead tuple, and drives autovacuum load proportional to churn × document size. Add a GIN index and it gets worse: GIN maintenance on update is expensive, and the pending-list behaviour means index updates arrive in bursts. You end up with table bloat, vacuum falling behind, and index maintenance dominating the write path.
 
