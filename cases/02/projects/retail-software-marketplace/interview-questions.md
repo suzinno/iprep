@@ -2192,7 +2192,7 @@ The test I apply is whether a human woken now can do something that a human at n
 
 *Dead-letter count above zero.* Real and needs handling, but one message quarantined is not worth a night. The exception is a rate — hundreds arriving means a systemic handler failure, and that should escalate.
 
-*Replica lag above 30 seconds.* The application already fails back to the primary automatically, so the control has worked. It needs investigating, not intervening.
+*Replica lag above 30 seconds.* The application already falls back to the primary automatically, so the control has worked. It needs investigating, not intervening.
 
 *Per-job import failures above 5% of rows.* The vendor already sees an error digest, so the failure is legible to the affected party. It is a data-quality problem for the morning.
 

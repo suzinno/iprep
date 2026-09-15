@@ -182,7 +182,7 @@ Nothing here is authoritative and nothing here holds free-text clinical content 
 |---|---|---|
 | `documents` | `{patient_id}/{document_id}/{sha256}` | Hot 90 d → Cool 1 y → Archive |
 | `ingest-quarantine` | `{upload_id}` | Deleted on promotion or after 24 h |
-| `audit-archive` | `{yyyy}/{mm}/audit-{partition}.parquet.zst` | Immutable ([WORM](https://en.wikipedia.org/wiki/Write_once_read_many "Write Once Read Many — Storage mode that prevents a written object from being modified or deleted before a retention period ends") policy), 7-year legal hold |
+| `audit-archive` | `{yyyy}/{mm}/audit-{partition}.parquet.zst` | Immutable ([WORM](https://en.wikipedia.org/wiki/Write_once_read_many "Write Once Read Many — Storage mode that prevents a written object from being modified or deleted before a retention period ends") policy), 7-year time-based retention |
 
 Uploads land in `ingest-quarantine` and are promoted to `documents` only after `fn-blob-ingest` reports a clean scan — an unscanned file is never addressable by a `document` row.
 

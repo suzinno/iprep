@@ -371,7 +371,7 @@ A terminal failure escalates to the care team instead of ending as a log line. "
 
 - `documents` uses the path `{patient_id}/{document_id}/{sha256}`. Files stay hot for 90 days, then cool for a year, then move to archive.
 - `ingest-quarantine` uses the path `{upload_id}`. A file is deleted on promotion or after 24 hours, whichever comes first.
-- `audit-archive` uses the path `{yyyy}/{mm}/audit-{partition}.parquet.zst`. It has a write-once policy and a seven-year legal hold. We keep `audit_event` partitions hot for 13 months. After that, the monthly partitions move to `audit-archive`.
+- `audit-archive` uses the path `{yyyy}/{mm}/audit-{partition}.parquet.zst`. It has a write-once policy with a seven-year retention period. We keep `audit_event` partitions hot for 13 months. After that, the monthly partitions move to `audit-archive`.
 
 **The notification edge.** `sb.notify` carries the dispatch command. The `reminder_delivery_id` is its idempotency key. `fn-notify-dispatch` delivers by push, email or [SMS](https://en.wikipedia.org/wiki/SMS "Short Message Service — Delivers short text messages over a mobile network"). Then it puts the provider's receipt back on a queue. Functions fit both edges, because the work comes in bursts, is short, and is triggered by events. Paying for idle pods to wait for an upload would be the wrong fit. Service Bus adds durable dead-lettering exactly where work goes to a third party.
 
