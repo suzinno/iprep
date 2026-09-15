@@ -35,7 +35,7 @@ Every index below exists for a named access pattern from an [API](https://en.wik
 
 **`es-clinical`.** Bulk indexing with a 5 s / 1000-document flush; `refresh_interval` of 5 s rather than the 1 s default, which roughly halves segment-merge pressure. Searches use `filter` context for scope and date clauses (cacheable, unscored) and `must` only for the user's text, so the expensive scoring pass runs on a pre-filtered set.
 
-**The freshness budget is composed, not asserted.** Outbox relay ≤ 2 s, plus a bulk flush ≤ 5 s, plus a 5 s `refresh_interval`, puts a newly-saved note in search results at **p50 < 8 s, p95 < 15 s, p99 < 30 s** — the figures carried in [`01-requirements.md`](./01-requirements.md). Tightening any one of the three alone buys nothing, which is why the target is stated as a sum rather than as a single knob.
+**The freshness budget is composed, not asserted.** Outbox relay ≤ 2 s, plus a bulk flush ≤ 5 s, plus a 5 s `refresh_interval`, puts a newly-saved note in search results at **p50 < 8 s, p95 < 15 s, p99 < 30 s** — the figures carried in [`01-requirements.md`](./01-requirements.md). Tightening any one of the three alone cannot bring the total below the sum of the other two, which is why the target is stated as a sum rather than as a single knob.
 
 **`mongo-content`.** Read-mostly; approved page versions are immutable, so reads hit the covering index on `{page_id, version}` and never contend with a writer.
 

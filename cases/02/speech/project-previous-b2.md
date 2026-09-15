@@ -233,7 +233,7 @@ Redis sits in front of all of it, as a cache-aside cache. It holds nothing durab
 **Rules I put in the schema, not in code.**
 
 - `UNIQUE (retail_group_id, idempotency_key)` on `connection_request`. The database, not the cache, is what finally prevents a duplicate thread.
-- `UNIQUE (connection_request_id) WHERE kind = 'connection'` on `billing_charge`. A connection bills at most once. A constraint enforces that, not retry logic.
+- A partial unique index on `(connection_request_id)` `WHERE kind = 'connection'` on `billing_charge`. A connection bills at most once. The schema enforces that, not retry logic.
 - `PRIMARY KEY (shortlist_id, product_id)` on shortlist items.
 - `UNIQUE (retail_group_id, external_ref)` on stores.
 

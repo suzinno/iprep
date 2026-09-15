@@ -287,7 +287,7 @@ Nothing is lost — `reminder` rows stay `pending` in `pg-clinical` and the next
 ### Q3. `celery.index` needs to handle ten times the write volume without breaking the p95 freshness budget of fifteen seconds. What do you change, and what breaks first?
 
 **Brief answer**
-Scale consumers horizontally and increase bulk batch size, but the budget is a composed sum — outbox relay 2 s, bulk flush 5 s, refresh interval 5 s — so tuning one leg alone buys nothing. The first thing to break is Elasticsearch segment-merge pressure, not consumer throughput.
+Scale consumers horizontally and increase bulk batch size, but the budget is a composed sum — outbox relay 2 s, bulk flush 5 s, refresh interval 5 s — so tuning one leg alone cannot bring the total below the sum of the other two legs. The first thing to break is Elasticsearch segment-merge pressure, not consumer throughput.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>

@@ -275,7 +275,7 @@ Both systems follow the same principle from different ends: a fact is written to
 4. That same transaction writes an `outbox_event` row. The relay publishes it to `care.events`, and only then marks it published.
 5. The index consumer bulk-indexes into Elasticsearch. `care-core` never writes the search index directly — that is what makes dual-write drift impossible.
 
-The composed freshness budget is stated as a sum rather than asserted: outbox relay under 2 seconds, plus a bulk flush of 5 seconds or 1,000 documents, plus a 5-second refresh interval, gives a newly-saved note searchable at p50 under 8 seconds and p95 under 15. Tightening any one of the three alone buys nothing.
+The composed freshness budget is stated as a sum rather than asserted: outbox relay under 2 seconds, plus a bulk flush of 5 seconds or 1,000 documents, plus a 5-second refresh interval, gives a newly-saved note searchable at p50 under 8 seconds and p95 under 15. Tightening any one of the three alone cannot bring the total below the sum of the other two.
 
 The reminder path runs on the same principles from the other direction: Celery beat ticks every 60 seconds, claims due rows with `FOR UPDATE SKIP LOCKED` so workers scale without double-dispatch, writes a `reminder_delivery` row per attempt, hands the command to Azure Service Bus, and an Azure Function delivers and returns a receipt that closes the row. Every attempt being a row is what makes "was it delivered" a query instead of a log grep.
 
