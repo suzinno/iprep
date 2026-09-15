@@ -27,7 +27,7 @@
 2. Small traffic, heavy rules — that's why it isn't twenty services.
 3. Modular monolith, four modules. Two services left, each with its own release cadence.
 4. Postgres holds the truth. Mongo holds content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
-5. Indexes for named queries, tables partitioned, timeline keyset not offset. → **35%**
+5. Indexes for named queries, tables partitioned, timeline keyset not offset, search on Elasticsearch indexes. → **35%** (search)
 6. Two identity planes. Gateway checks the audience. [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") provisions and revokes clinicians.
 7. Reach lives in the database — row-level security. Forget to scope, get nothing. And every read is audited, so reads run on the primary.
 8. Facts on the exchange, jobs on [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle"), check-ins over [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks"), delivery over Service Bus.
@@ -132,9 +132,9 @@ I designed the Postgres schemas and the Elasticsearch indexes. And here I think,
 - Schema per module, so a module boundary is also a database boundary.
 - The big tables are partitioned by month — check-ins and audit. Check-ins are around a hundred and ten million rows.
 - Every index exists for one named query in the [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data"). If I can't name the endpoint, the index doesn't get created.
-- The patient timeline is a union across five tables, and each one orders on a different natural column — one of them is a date, not a timestamp. A union across those can't be ordered deterministically and can't be served from one index shape. So every timeline table carries a normalised ordering column, and the cursor is a triple: that column, the source table, the row id. Ties across sources break the same way every time. That's what makes it keyset paginated rather than offset. Offset pagination looks fine in staging and falls over in production.
+- The patient timeline is a union across five tables, and each one orders on a different natural column — one of them is a date, not a timestamp. A union across those can't be ordered deterministically and can't be served from one index shape. So every timeline table carries a normalised ordering column, and the cursor is a triple: that column, the source table, the row id. Ties across sources break the same way every time. That's what makes it keyset paginated rather than offset. Offset pagination gets slower the deeper you page, and on a 110-million-row table it degrades badly.
 
-> **"That work cut query latency by about thirty-five percent — the Postgres side on the timeline and record queries, the Elasticsearch side on search."**
+> **"That work cut search latency by about thirty-five percent. The number is for clinical content search; I don't have a measured number for the timeline or the record queries."**
 
 <details>
 <summary><strong>Responsibilities</strong></summary>
@@ -181,7 +181,7 @@ I designed the Postgres schemas and the Elasticsearch indexes. And here I think,
 
 **The timeline query, which is the most-executed clinician query in the system.** It is a union across five tables that each order on a different natural column — `starts_at`, `prescribed_on`, `encounter_date` (a `date`, not a timestamp), `uploaded_at`, `recorded_at`. A `UNION ALL` mixing a `date` with a `timestamptz` can neither be ordered deterministically nor served from one index shape. So every timeline-feeding table carries `timeline_at timestamptz`, populated from its own natural column, and that is the only column the query orders on. The natural columns stay, because `encounter_date` is the clinical fact and `timeline_at` is only a presentation key.
 
-**Keyset, with the `LIMIT` pushed into each branch.** The cursor is the tuple `(timeline_at, source_table, id)`, so ties across sources break the same way every time. Each branch of the union carries its own window and its own `LIMIT`, so Postgres reads at most `limit` rows per source instead of materialising and sorting the entire union before discarding most of it. Offset pagination on this query is prohibited outright — it is exactly what the composite indexes exist to avoid, and it is the version that looks fine in staging.
+**Keyset, with the `LIMIT` pushed into each branch.** The cursor is the tuple `(timeline_at, source_table, id)`, so ties across sources break the same way every time. Each branch of the union carries its own window and its own `LIMIT`, so Postgres reads at most `limit` rows per source instead of materialising and sorting the entire union before discarding most of it. Offset pagination on this query is prohibited outright — it is exactly what the composite indexes exist to avoid.
 
 **The care-team views.** A clinician's patient list is served from the partial index over open `care_relationship` rows, so the query touches the currently-active set rather than the full history the temporal table keeps. Which patients are reachable is not a `WHERE` clause the query author has to remember — that is row-level security, and it is the subject of the authorization chapter above.
 
