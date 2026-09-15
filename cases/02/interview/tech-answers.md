@@ -337,7 +337,7 @@ Running your own broker, search cluster and document store in a cluster is where
 
 **Marketplace.** Single AKS cluster, one namespace, nine deployments, with the managed services around it: PostgreSQL Flexible Server plus a read replica, two Redis instances (cache and Celery broker, deliberately separate), a MongoDB replica set, Blob Storage, Service Bus, Functions, API Management, Front Door, Key Vault. Single region, zone-redundant, geo-redundant backups — active-active multi-region for a business-to-business sourcing tool at 35 queries per second is cost the business would not choose, and that is written down as a choice rather than left as an omission.
 
-**Where "on-premises" honestly applies.** Administering Linux hosts for production and development was part of the marketplace work, and the container base images and node pools are Linux throughout. What I have not done recently is run a datacentre — no bare-metal provisioning, no physical networking, no storage-array work. What transfers is the operating mindset: no store has a public endpoint, everything is reached over private endpoints from the application network, and every resource that exists is in Terraform, so anything created by hand shows up as drift and fails the pipeline rather than surviving as tribal knowledge.
+**Where "on-premises" honestly applies.** Administering Linux hosts for production and development was part of the marketplace work, and the container base images and node pools are Linux throughout. What I have not done recently is run a datacentre — no bare-metal provisioning, no physical networking, no storage-array work. What transfers is the operating mindset: no store has a public endpoint, everything is reached over private endpoints from the application network, and every resource that exists is in Terraform, so a hand-made change to any of those resources shows up as drift and fails the pipeline rather than surviving as tribal knowledge.
 
 </details>
 
@@ -430,7 +430,7 @@ Scale on the signal that reflects the work, not just on processor use; get the b
 **Project:** cancer-support-platform, retail-software-marketplace
 
 **Brief answer**
-Terraform owns every Azure resource in both systems, with state in a locked blob container and applies only from CI. Environments are the same module set with different variable files, and anything created by hand is drift — reported as a failure, not reconciled quietly.
+Terraform owns every Azure resource in both systems, with state in a locked blob container and applies only from CI. Environments are the same module set with different variable files, and anything changed by hand on a resource Terraform manages is drift — reported as a failure, not reconciled quietly.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -444,7 +444,7 @@ Terraform owns every Azure resource in both systems, with state in a locked blob
 - **State** lives in a dedicated container with versioning and lease locking, so two concurrent applies cannot corrupt it.
 - **Applies run only from CI on the default branch**, authenticated by workload identity federation rather than a stored service-principal secret, and production carries a plan-review gate.
 - **Environments are workspaces over one module set**, differing only in a variables file. That is what makes a staging smoke test meaningful — staging is the same topology at smaller instance sizes, not a different architecture.
-- **Drift is a failure.** A resource created in the portal shows up in the plan and fails the pipeline. Reconciling it silently would mean the code stops describing reality, which is the moment infrastructure-as-code becomes decorative.
+- **Drift is a failure.** A hand-made change to a resource Terraform manages shows up in the plan and fails the pipeline. Reconciling it silently would mean the code stops describing reality, which is the moment infrastructure-as-code becomes decorative.
 - **Role assignments are Terraform resources**, so a widened permission appears as a reviewable diff rather than as a click nobody sees.
 
 **The concentration of privilege, stated honestly.** The CI deploy identity is the single largest concentration of privilege in either design — it can apply across the whole subscription. The right shape is to split it: a plan-only identity for merge requests and an apply identity gated on protected-branch pipelines, with the network and data-plane modules in their own state under their own identity. That is a design decision worth taking before the first production apply rather than after an incident, and it is written down as an open item rather than left implicit. A human needing production data access goes through a time-bound privileged-access elevation that writes an audit record — the deploy identity itself holds no standing data-plane rights.

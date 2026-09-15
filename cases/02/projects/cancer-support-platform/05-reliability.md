@@ -115,7 +115,7 @@ flowchart LR
 
 **Deployment strategies differ by service and by reason:** `care-core` is blue-green (a single instantaneous Route switch, cleanest rollback for the service holding the record); `clinical-nlp-svc` is canary (model quality shows up statistically, so a percentage rollout with confidence and latency comparison is the only way to see a regression before everyone gets it); `scim-provisioning-svc` is a rolling update (external caller, idempotent operations, no user-visible surface). Azure Functions deploy via slot swap.
 
-**[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")** provisions all Azure and cluster infrastructure with state in Azure Storage, applied from CI with a plan-review gate on production. Environments are the same code with different variable files; a resource created by hand is drift and is reported as a failure.
+**[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")** provisions all Azure and cluster infrastructure with state in Azure Storage, applied from CI with a plan-review gate on production. Environments are the same code with different variable files; a change made by hand to a resource Terraform manages is drift and is reported as a failure.
 
 ## Backup, Restore, and Rehearsal
 

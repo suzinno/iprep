@@ -53,7 +53,7 @@ Peak load is roughly **200 [QPS](https://en.wikipedia.org/wiki/Queries_per_secon
 | **ArgoCD** | GitOps sync to both clusters; blue-green for `care-core`, canary for `clinical-nlp-svc` |
 | **GitLab / GitLab CI** | Source, pipeline, container registry, GitOps manifest repository |
 | **ruff / pyright / Pytest / SonarQube** | Blocking pipeline gates — lint, strict types, unit/contract/integration tests, quality gate |
-| **[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")** | All Azure and cluster infrastructure; state in Azure Storage; hand-made resources are reported as drift |
+| **[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")** | All Azure and cluster infrastructure; state in Azure Storage; hand-made changes to managed resources are reported as drift |
 | **Docker / Docker Compose** | Image builds; local stack running the real brokers and search engine, and the same stack CI integration-tests against |
 | **Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production")** | Distributed tracing across FastAPI, SQLAlchemy, Celery, and RabbitMQ, continuous through async hops via `traceparent` |
 | **Prometheus** | Metrics and [SLI](https://sre.google/sre-book/service-level-objectives/ "Service Level Indicator — Measured metric, such as latency or error rate, used to judge service health") collection from every service |
