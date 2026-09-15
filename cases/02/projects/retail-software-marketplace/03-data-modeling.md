@@ -74,7 +74,7 @@ Every table carries `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at
 Indexes on `product_listing_facets`, which every access pattern in `05-reliability.md` refers to:
 
 - `idx_plf_search` — `GIN (search_vector)`, free-text over name, summary and vendor name.
-- `idx_plf_facets` — `GIN (facets jsonb_path_ops)`, arbitrary category-specific predicates.
+- `idx_plf_facets` — `GIN (facets jsonb_path_ops)`, containment predicates on category-specific attributes.
 - `idx_plf_arrays` — `GIN (country_coverage)` and `GIN (integrations)`, array containment.
 - `idx_plf_browse` — `BTREE (category_slug, published_at DESC, product_id)` `WHERE status = 'published'`, the partial index serving the default browse ordering and keyset pagination.
 - `idx_plf_price` — `BTREE (category_slug, price_from_minor)` `WHERE status = 'published' AND price_from_minor IS NOT NULL`, the price-sorted variant.

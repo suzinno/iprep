@@ -403,7 +403,7 @@ I spent most of my design time on keeping two stores and a projection in agreeme
 
   > **"At-least-once delivery should land on a constraint. It should not depend on a code path that hopes it never runs twice."**
 
-- **Third**, there is a reconciliation job, because an event can still be lost. It runs every night. It re-projects any listing whose projection timestamp is more than five minutes behind its update timestamp. It also cleans up leftover revisions. And the lag itself is a metric with an alert on it. This is because a dead indexer fails silently, and nothing else would show it. New listings just stop appearing, and no error appears anywhere.
+- **Third**, there is a reconciliation job, because an event can still be lost. It runs every night. It re-projects any listing whose projection timestamp is more than five minutes behind its update timestamp. It also cleans up leftover revisions that are more than a day old and have no newer revision. And the lag itself is a metric with an alert on it. This is because a dead indexer fails silently, and nothing else would show it. New listings just stop appearing, and no error appears anywhere.
 
 **On the security side:** We use [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere. Every data store has a private endpoint, and none of them has a public IP. Inside the cluster, the network policy denies by default, with an explicit allow for each pair of services. Egress is also denied by default. And we use workload identity. So there are no connection strings and no static credentials anywhere in the cluster or in CI.
 

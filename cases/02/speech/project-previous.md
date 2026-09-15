@@ -364,7 +364,7 @@ Keeping two stores and a projection in agreement is where most of my design time
 
   > **"At-least-once delivery should land on a constraint, not on a code path that hopes it never fires twice."**
 
-- **Third** — there's a reconciliation job, because an event can still be lost. Nightly, it re-projects any listing whose projection timestamp trails its update timestamp by more than five minutes, and sweeps orphaned revisions. And the lag itself is a metric with an alert on it, because a dead indexer is a silent failure — nothing else surfaces it. New listings simply stop appearing, and no error is raised anywhere.
+- **Third** — there's a reconciliation job, because an event can still be lost. Nightly, it re-projects any listing whose projection timestamp trails its update timestamp by more than five minutes, and sweeps orphaned revisions that are older than a day and have no successor revision. And the lag itself is a metric with an alert on it, because a dead indexer is a silent failure — nothing else surfaces it. New listings simply stop appearing, and no error is raised anywhere.
 
 **On the security side of all that:** [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere, private endpoints on every data store — none of them has a public IP — default-deny network policy inside the cluster with explicit allows per pair, default-deny egress, and workload identity so there are no connection strings and no static credentials anywhere in the cluster or in CI.
 
