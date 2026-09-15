@@ -61,12 +61,12 @@ The one place duplicates are accepted rather than removed is reminder delivery. 
 ### Q1. What is Message Queuing Telemetry Transport (MQTT) Quality of Service (QoS) 1, and why is it the transport for patient check-ins instead of a plain Hypertext Transfer Protocol Secure (HTTPS) POST?
 
 **Brief answer**
-[QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1 is at-least-once publish with a broker acknowledgement ([PUBACK](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT PUBACK packet — Confirms receipt of a QoS 1 published message")) and client-side retry, so the phone holds the message until the broker confirms it. It is chosen because a patient on a lossy mobile connection must never lose a check-in they believe they submitted.
+[QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1 is at-least-once publish with a broker acknowledgement ([PUBACK](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT PUBACK packet — Confirms receipt of a QoS 1 published message")) and a client-side resend on reconnect over a persistent session, so the phone holds the message until the broker confirms it. It is chosen because a patient on a lossy mobile connection must never lose a check-in they believe they submitted.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-[MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") defines three delivery levels: QoS 0 fires and forgets, QoS 1 retries until a PUBACK arrives, and QoS 2 performs a four-step handshake for exactly-once. QoS 1 is the right level here because the duplicate it can produce is already absorbed by the unique key on `(patient_id, recorded_for)`, and QoS 2's extra round trips buy nothing once the receiving side is idempotent.
+[MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") defines three delivery levels: QoS 0 fires and forgets, QoS 1 resends on reconnect until a PUBACK arrives, and QoS 2 performs a four-step handshake for exactly-once. QoS 1 is the right level here because the duplicate it can produce is already absorbed by the unique key on `(patient_id, recorded_for)`, and QoS 2's extra round trips buy nothing once the receiving side is idempotent.
 
 The reason it beats an [HTTPS](https://datatracker.ietf.org/doc/html/rfc9110 "HTTP Secure — HTTP encrypted with TLS to protect requests and responses in transit") [POST](https://datatracker.ietf.org/doc/html/rfc9110 "HTTP POST — HTTP method that submits data to a server to create or process a resource") is the client library, not the wire protocol. An MQTT client with a persistent session queues publishes locally while offline and flushes them on reconnect without the application writing retry logic. Patients complete check-ins on hospital wifi, in a lift, on a train — the transport was chosen against that behaviour. With a POST, the equivalent reliability means a client-side outbox, a retry schedule, and a way to survive the app being killed, all reimplemented per platform.
 
@@ -78,7 +78,7 @@ The design keeps a Representational State Transfer ([REST](https://en.wikipedia.
 
 ---
 
-### Q1. What is a quorum queue, and why does this design mandate them for `care.events` and every Celery queue?
+### Q1. What is a quorum queue, and why does this design mandate them for the queues bound to `care.events` and every Celery queue?
 
 **Brief answer**
 A quorum queue replicates messages across a majority of broker nodes using Raft, so a message acknowledged to a publisher survives the loss of a node. RabbitMQ 4 removed classic mirrored queues, so it is also the only supported replication option.
@@ -90,13 +90,13 @@ A classic queue lives on one node. If that node dies, the queue and everything d
 
 Publisher confirms are the other half and are mandatory in this design. Without confirms the client's `publish()` returns as soon as the frame is written to the socket, which says nothing about replication. With confirms plus quorum queues, a confirmed publish has been accepted by a majority; anything unconfirmed is retried by the publisher.
 
-The costs are real and worth stating in an interview. Quorum queues use more memory and disk than classic queues, they do not support some legacy features such as per-message priority in the same way, and every publish pays a majority round trip. There is also a specific risk this design flags: [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle")'s support for quorum queues is comparatively recent and interacts with `task_acks_late`, global prefetch, and priority settings, so the Celery and RabbitMQ versions have to be pinned and integration-tested together. The documented fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates — the point being that the risky dependency has an exit, not that it is assumed to work.
+The costs are real and worth stating in an interview. Quorum queues use more memory and disk than classic queues, they do not support some legacy features such as per-message priority in the same way (on a quorum queue, RabbitMQ 4.0 to 4.2 offer two priority levels, normal and high, and 4.3 offers 32 strict levels), and every publish pays a majority round trip. There is also a specific risk this design flags: [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle")'s support for quorum queues is comparatively recent and interacts with `task_acks_late`, global prefetch, and priority settings, so the Celery and RabbitMQ versions have to be pinned and integration-tested together. The documented fallback is raw AMQP consumers for `celery.reminders`, which the topic-exchange design already accommodates — the point being that the risky dependency has an exit, not that it is assumed to work.
 
 </details>
 
 ---
 
-### Q2. The check-in path claims a Recovery Point Objective (RPO) of zero from the moment the broker acknowledges. Three RabbitMQ settings carry that claim and none of them is a default. What are they, and what breaks without each?
+### Q2. The check-in path claims a Recovery Point Objective (RPO) of zero from the moment the broker acknowledges. Two RabbitMQ settings that are not defaults and one fixed translation carry that claim. What are they, and what breaks without each?
 
 **Brief answer**
 The MQTT plugin's `mqtt.exchange` must point at `care.events`, the topic separator translation must be accounted for, and `care.events` needs an alternate exchange. Without the last one RabbitMQ acknowledges a QoS 1 publish that routes nowhere, which is exactly the silent loss the path exists to prevent.
@@ -108,7 +108,7 @@ The MQTT plugin's `mqtt.exchange` must point at `care.events`, the topic separat
 
 **Separator translation.** MQTT topics are slash-separated and AMQP routing keys are dot-separated, and the plugin translates between them. `care/checkin/{patient_id}` arrives as the routing key `care.checkin.{patient_id}`. That matters because the consumer binding has to be written in AMQP terms — a binding on `care/checkin/#` matches nothing. It is the kind of detail that is obvious once and invisible forever after, which is why it belongs in an integration test that publishes over MQTT and asserts an AMQP consumer received it.
 
-**Alternate exchange.** This is the important one. RabbitMQ returns a PUBACK for a QoS 1 publish that matches no binding — from the protocol's point of view the broker did accept the message; there was simply nowhere to route it. So a mistyped topic, a new patient cohort publishing on an unbound pattern, or a binding lost in a redeploy produces a device that is told the check-in is safe and a message that is discarded. Configuring an alternate exchange on `care.events` diverts unroutable publishes into a dead-letter queue where the count is a metric and an alert, converting silent loss into visible backlog.
+**Alternate exchange.** This is the important one. RabbitMQ returns a PUBACK for a QoS 1 publish that matches no binding — from the protocol's point of view the broker did accept the message; there was simply nowhere to route it. Over MQTT 3.1.1 the PUBACK carries no reason code; over MQTT 5 it carries `No matching subscribers`, which a client only notices if it checks the code. So a mistyped topic, a new patient cohort publishing on an unbound pattern, or a binding lost in a redeploy produces a device that is told the check-in is safe and a message that is discarded. Configuring an alternate exchange on `care.events` re-publishes unroutable messages to the alternate exchange, into the queue bound to it, where the depth is a metric and an alert, converting silent loss into visible backlog.
 
 The general principle I would take to any broker: an acknowledgement is a statement about the broker's obligations, not about your application's. You have to close the gap between "the broker accepted it" and "a consumer will see it" yourself, and the closing mechanism is the one you should be able to name.
 
@@ -124,7 +124,7 @@ Broker memory grows when publish rate exceeds consume rate, because unconsumed m
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**The mechanism.** RabbitMQ holds a queue's messages in memory and pages them to disk under pressure, but several things resist paging: messages currently delivered-but-unacknowledged, message metadata (an index entry per message stays resident even when the body is paged), and connection and channel buffers. A consumer with a large prefetch and slow handlers can hold tens of thousands of messages in flight per channel, none of which the broker may release. When the resident total crosses `vm_memory_high_watermark` the broker raises a memory alarm and applies flow control by blocking publishing connections. Producers stall, their request threads pile up, upstream timeouts cascade, and what began as a lag problem is now an availability incident.
+**The mechanism.** RabbitMQ holds a queue's messages in memory and pages them to disk under pressure, but several things resist paging: messages currently delivered-but-unacknowledged, message metadata (an index entry per message stays resident even when the body is paged), and connection and channel buffers. A consumer with a large prefetch and slow handlers can hold tens of thousands of messages in flight per channel, none of which the broker may release. When the resident total crosses `vm_memory_high_watermark` the broker raises a memory alarm and blocks publishing connections. Producers stall, their request threads pile up, upstream timeouts cascade, and what began as a lag problem is now an availability incident.
 
 **The specific bulk-update shape.** Millions of attribute updates arriving as millions of tiny messages is close to the worst case: per-message overhead dominates the payload, the queue index alone becomes enormous, and if any consumer is doing a row-at-a-time database write it will never keep up with a publisher writing in a tight loop.
 
@@ -135,9 +135,9 @@ Broker memory grows when publish rate exceeds consume rate, because unconsumed m
 3. **Set queue limits with an explicit overflow policy.** `max-length` or `max-length-bytes` with `overflow: reject-publish` makes the producer feel backpressure directly and fail fast, instead of letting the broker absorb the problem until it takes everyone down. Choosing to reject rather than drop-head is a domain decision: dropping the oldest attribute update may be acceptable, dropping a clinical check-in is not.
 4. **Lazy or quorum queues with disk-first behaviour** for anything expected to build a long backlog, so depth costs disk rather than RAM.
 5. **Separate the estate.** A high-churn bulk pipeline should not share a broker, or at least not a virtual host and node set, with the latency-sensitive path. Colocating them means a bulk backlog blocks interactive publishing.
-6. **Alert on the leading indicator.** `rmq_queue_depth` and unacked-message count rising for fifteen minutes is the signal; memory alarm is the outcome. The dashboard in this platform alerts on depth above 10K or a sustained rise precisely so that the page arrives before flow control does.
+6. **Alert on the leading indicator.** `rmq_queue_depth` and unacked-message count rising for fifteen minutes is the signal; memory alarm is the outcome. The dashboard in this platform alerts on depth above 10K or a sustained rise precisely so that the page arrives before the alarm blocks publishers.
 
-**And the detection I would add regardless:** a load test that publishes at a multiple of peak with consumers deliberately throttled, run against the real broker in Docker Compose rather than a mock, so the flow-control behaviour is observed once in a controlled setting rather than discovered in production.
+**And the detection I would add regardless:** a load test that publishes at a multiple of peak with consumers deliberately throttled, run against the real broker in Docker Compose rather than a mock, so the memory-alarm behaviour is observed once in a controlled setting rather than discovered in production.
 
 </details>
 
@@ -248,7 +248,7 @@ Service Bus cannot terminate MQTT, so removing RabbitMQ means building a bridge 
 
 **Why each earns its place.** `rmq-core` is non-negotiable for two reasons: the MQTT plugin is the check-in ingress, and it bridges MQTT topics into the same AMQP exchange internal consumers already use, so there is one ingestion topology rather than a protocol adapter service. It is also the Celery broker. `sb-integration` earns its place at the Azure boundary: `fn-blob-ingest` triggers natively from Event Grid and `fn-notify-dispatch` from a Service Bus queue, with managed dead-lettering and replay. Making Functions consume from RabbitMQ means either self-hosting the extension and its scaling behaviour or running a polling bridge — and this is precisely the boundary where the platform hands work to third-party push, email, and SMS providers, which is where durable dead-lettering matters most.
 
-**What the cost actually is.** Two sets of credentials, two dead-letter surfaces to monitor, two mental models for retry and visibility timeout, and a trace that has to be stitched across the hop — which is why `traceparent` is propagated in Service Bus message headers, not only in AMQP ones. Also two capacity stories: Service Bus throughput is a pricing tier, RabbitMQ throughput is a cluster you operate.
+**What the cost actually is.** Two sets of credentials, two dead-letter surfaces to monitor, two mental models for retry and redelivery timing, and a trace that has to be stitched across the hop — which is why `traceparent` is propagated in Service Bus message headers, not only in AMQP ones. Also two capacity stories: Service Bus throughput is a pricing tier, RabbitMQ throughput is a cluster you operate.
 
 **The rule that keeps it memorable and therefore correct.** The seam is jurisdictional, not technical: internal domain events and platform-owned work live on `rmq-core`; anything crossing into Azure-managed compute or leaving for a third-party channel goes through `sb-integration`. A rule engineers can restate is a rule that survives; "use whichever is convenient" produces a topology nobody can draw after a year.
 
@@ -287,7 +287,7 @@ Nothing is lost — `reminder` rows stay `pending` in `pg-clinical` and the next
 ### Q3. `celery.index` needs to handle ten times the write volume without breaking the p95 freshness budget of fifteen seconds. What do you change, and what breaks first?
 
 **Brief answer**
-Scale consumers horizontally and increase bulk batch size, but the budget is a composed sum — outbox relay 2 s, bulk flush 5 s, refresh interval 5 s — so tuning one leg alone buys nothing. The first thing to break is Elasticsearch segment-merge pressure, not consumer throughput.
+Scale consumers horizontally and increase bulk batch size, but the budget is a composed sum — outbox relay 2 s, bulk flush 5 s, refresh interval 5 s — so tuning one leg alone cannot bring the total below the sum of the other two legs. The first thing to break is Elasticsearch segment-merge pressure, not consumer throughput.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -359,18 +359,18 @@ The one thing typing does not give you is query *plan* safety. A perfectly typed
 ### Q1. What is declarative range partitioning, and why are `wellbeing_checkin` and `audit_event` partitioned by month while the other tables are not?
 
 **Brief answer**
-Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query. Those two tables are partitioned because they are append-only, read by recent time window, and enormous — 110 million and 1.8 billion rows over five years.
+Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query bounded on that key. Those two tables are partitioned because they are written in time order (audit append-only, check-ins insert-mostly), read by recent time window, and enormous — 110 million and 1.8 billion rows over five years.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 **How pruning pays.** A check-in query filtered on a date window touches one or two monthly partitions instead of the whole table. The planner eliminates the rest before executing, so index size, buffer pressure, and vacuum cost all scale with the window rather than with history. On a 1.8-billion-row audit table that is the difference between a viable query and an unusable one.
 
-**Archival becomes metadata.** Detaching a partition older than the thirteen-month hot retention is a catalogue operation that completes in milliseconds; the equivalent `DELETE` would rewrite hundreds of gigabytes, bloat the table, and hold locks. The audit archive path — detach, export to `blob-documents` as compressed Parquet under a seven-year legal hold, drop — exists because the table is partitioned. This is the practical answer to "why partition": not query speed alone, but that data lifecycle stops being a batch job you fear.
+**Archival becomes metadata.** Detaching a partition older than the thirteen-month hot retention is a catalogue operation that completes in milliseconds; the equivalent `DELETE` would rewrite hundreds of gigabytes, bloat the table, and hold locks. The audit archive path — detach, export to `blob-documents` as compressed Parquet under a seven-year retention policy, drop — exists because the table is partitioned. This is the practical answer to "why partition": not query speed alone, but that data lifecycle stops being a batch job you fear.
 
 **Why not partition everything.** Partitioning costs you: a unique constraint must include the partition key, cross-partition queries pay planning overhead, foreign keys pointing *into* a partitioned table are constrained, and you need automation to create next month's partition before it is needed — a missing partition is an insert failure at midnight on the first. `appointment`, `prescription`, and `visit_note` are millions of rows, not hundreds of millions, and are queried by patient rather than by time window. They get composite B-tree indexes instead. Partitioning them would buy pruning that patient-scoped queries do not need and impose constraints on the tables most involved in joins.
 
-**The detail that connects to security.** RLS policies on the partitioned tables must be written so the `patient_id` predicate still reaches the planner. A policy that wraps the check in an opaque subquery defeats pruning and turns an index scan into a full sweep across every partition — which is why the design guards the plan shape with an `EXPLAIN` assertion in the test suite rather than trusting review.
+**The detail that connects to security.** RLS policies on the partitioned tables must be written so the patient scope can use the index. A policy written as a plain `IN` subquery or a function the planner cannot inline runs as a filter, so a query that relies on it reads every row of the partitions it touches instead of using the patient index. Pruning is unaffected, because it comes from the time bound, but the lost index is silent — which is why the design guards the plan shape with an `EXPLAIN` assertion in the test suite rather than trusting review.
 
 </details>
 
@@ -386,11 +386,11 @@ A [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index �
 
 A B-tree on `recorded_at` across 110 million check-ins is several gigabytes and has to be maintained on every insert. A BRIN on the same column stores, per 128-page range, the minimum and maximum timestamp in that range — a few hundred kilobytes total. A range query consults the summary, discards ranges whose bounds cannot match, and scans the survivors.
 
-The correlation requirement is the whole story. Check-ins and audit events are inserted in time order and never updated, so block N contains timestamps strictly after block N−1 and the summary is tight. If rows were updated or inserted out of order the min/max per range would widen until nearly every range matched every query, and the index would degenerate into a sequential scan with extra steps. That is the failure mode to name in an interview: a BRIN never returns wrong results when correlation is poor, it just silently stops helping.
+The correlation requirement is the whole story. Audit events are inserted in time order and never updated, so block N contains timestamps strictly after block N−1 and the summary is tight. Check-ins are inserted in time order too; the only update is the idempotent upsert on `(patient_id, recorded_for)`, which is rare enough that the summary stays close to tight. If rows were updated or inserted out of order the min/max per range would widen until nearly every range matched every query, and the index would degenerate into a sequential scan with extra steps. That is the failure mode to name in an interview: a BRIN never returns wrong results when correlation is poor, it just silently stops helping.
 
 In this design the two indexes are complementary rather than competing. BRIN on the time column serves the range scan cheaply; the composite B-tree `(patient_id, timeline_at DESC)` serves the patient-scoped access pattern where selectivity comes from the patient, not the time. Both exist because both access patterns are named in the API contract, and the design is explicit that an index with no query behind it is write amplification on a 110-million-row table — which is a real cost, not a stylistic preference.
 
-You can check correlation directly with `pg_stats.correlation` for the column, and if it has drifted, `CLUSTER` or a repack restores it. On an append-only partitioned table it does not drift, which is precisely why BRIN is the right tool here and would be the wrong tool on a table with heavy updates.
+You can check correlation directly with `pg_stats.correlation` for the column, and if it has drifted, `CLUSTER` or a repack restores it. On an append-only partitioned table it does not drift, and on an insert-mostly one it drifts only as far as its rare updates move rows, which is precisely why BRIN is the right tool here and would be the wrong tool on a table with heavy updates.
 
 </details>
 
@@ -493,7 +493,7 @@ The row stores the encrypted value plus a blind index — a keyed Hash-based Mes
 ### Q2. The clinician timeline query has become slow in production. Walk me through diagnosing it.
 
 **Brief answer**
-Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE, BUFFERS)` on a representative patient, and compare estimated against actual rows to find where the planner is wrong. On this query the usual answers are a lost keyset cursor, an RLS policy defeating partition pruning, or plan drift from stale statistics.
+Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE, BUFFERS)` on a representative patient, and compare estimated against actual rows to find where the planner is wrong. On this query the usual answers are a lost keyset cursor, an RLS policy that stops the patient index being used, or plan drift from stale statistics.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -505,7 +505,7 @@ Confirm it from the metric first, then get the real plan with `EXPLAIN (ANALYZE,
 **Step 3 — the specific suspects on this query.**
 
 - *Offset pagination has crept back in.* Somebody added a page-number parameter for a report and the branch `LIMIT` push-down is gone. The tell is a `Sort` node above the union with a row count far larger than the page size.
-- *Partition pruning is not happening.* The plan lists every monthly partition of `wellbeing_checkin` instead of one or two. The usual cause is an RLS policy that buries `patient_id` in a form the planner cannot use, which is why the design asserts plan shape in a test rather than trusting that it stayed correct.
+- *Partition pruning is not happening.* The plan lists every monthly partition of `wellbeing_checkin` instead of one or two. The usual cause is a query without a bound on the partition key, or a generic plan that cannot prune (the pooling pair in Q3). An RLS policy does not stop pruning; its shape decides whether the patient index is used, which is why the design asserts plan shape in a test rather than trusting that it stayed correct.
 - *The composite index is not being used on one branch.* Often because a new column was added to the sort, or a branch filters on `encounter_date` instead of `timeline_at` and so cannot use `(patient_id, timeline_at DESC)`.
 - *Statistics are stale* after a bulk backfill; `ANALYZE` on the affected tables is the cheap first thing to try and takes seconds.
 - *Not the query at all.* `pg_stat_activity` for lock waits, and check whether an audit write is contending — remembering that every patient-facing read here is also a write, so the read path is subject to write-path contention in a way that surprises people.
@@ -586,7 +586,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 
 **Why `audit_event` moves cheaply.** It has three properties that make extraction almost free. It is append-only, so there is no update or delete path to keep consistent. No foreign key points at it, so no join breaks. Nothing on the request path reads it — it is queried for compliance and Data Subject Access Requests ([DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them")), which tolerate a different instance and a different latency profile. The one genuine coupling is that the audit row is written in the same transaction as the access, and moving the table to another instance breaks that atomicity. That is the real cost of this step and I would want it on the table: either accept a two-phase write with a reconciliation sweep, or keep a small local staging table that is drained. The design should be honest that step one is not free, only *cheapest*.
 
-**Why `wellbeing_checkin` is second.** Same append-only shape, 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
+**Why `wellbeing_checkin` is second.** Nearly the same shape — insert-mostly rather than append-only — 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
 
 **Why sharding is last.** Sharding the record by `patient_id` touches every query, every migration, and the RLS model; it breaks cross-patient queries like a clinician's patient list; it makes the timeline union a scatter-gather; and it is close to irreversible. Reaching the point where it is necessary means roughly twenty times the modelled load. Doing it earlier buys operational complexity against a number the system does not have — which is the same reasoning that rejected a microservice fleet at 200 queries per second.
 
@@ -599,14 +599,14 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 ### Q3. Row-level security, monthly partitioning, and connection pooling all interact on the same query. Describe the failure that arises from each pair.
 
 **Brief answer**
-RLS with pooling can leak identity across requests if the session variable is not transaction-scoped; RLS with partitioning can defeat pruning if the policy hides the partition key from the planner; pooling with partitioning affects plan caching. All three are silent — none produces an error.
+RLS with pooling can leak identity across requests if the session variable is not transaction-scoped; RLS with partitioning can stop the patient index being used if the policy is written as a filter rather than an index condition; pooling with partitioning affects plan caching. All three are silent — none produces an error.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 **RLS × pooling — the dangerous one.** Each request sets a session parameter (`app.actor_id`, `app.actor_kind`) that the policies read. Azure Flexible Server fronted by a transaction-mode pooler reuses a backend connection across requests, so a plain `SET` persists past the request that issued it and the next caller inherits the previous caller's identity. The strongest control in the design becomes its exact opposite: a clinician sees a patient they have no relationship with, and every layer reports success. The fix is `SET LOCAL` inside the request transaction, so the value dies with the transaction. Because the failure is invisible, this is asserted by a pooled-connection leakage test rather than left to review — the test runs two requests as different actors over the same pooled backend and asserts the second sees nothing of the first.
 
-**RLS × partitioning.** The policy on `wellbeing_checkin` must express the patient constraint in a form the planner can push down. Written as a direct predicate, pruning survives and a windowed query touches one or two partitions. Written as an opaque subquery or a function the planner cannot inline, the predicate is applied after the scan — so every monthly partition is read, and a query that should touch 2 million rows touches 110 million. It returns correct results, just slowly, which is why it survives testing on a small dataset and appears in production three months later. The guard is an `EXPLAIN` assertion on plan shape.
+**RLS × partitioning.** The policy on `wellbeing_checkin` must express the patient constraint in a form that becomes an index condition, such as `patient_id = ANY (ARRAY(SELECT …))`. Written as a plain `IN` subquery or a function the planner cannot inline, the check is applied as a filter after the scan — so a query that relies on the policy for its patient scope reads every row of the monthly partitions in its window instead of the reachable patients' rows. Pruning itself survives, because it comes from the time bound on the partition key. It returns correct results, just slowly, which is why it survives testing on a small dataset and appears in production three months later. The guard is an `EXPLAIN` assertion on plan shape.
 
 **Pooling × partitioning.** With many partitions and a pooled backend, PostgreSQL's generic plan caching can choose a plan that does not prune, because a generic plan cannot know the parameter value. The symptom is a query that is fast the first five times and slow on the sixth — the point where the planner switches from custom to generic plans. It is diagnosable, and the mitigations are ensuring the partition key is a directly-bound parameter or forcing custom plans for that statement.
 
@@ -624,7 +624,7 @@ For a bounded per-row document that is read whole and rarely updated in place, y
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Why the current call is right.** A check-in's `symptom_scores` is written once, read whole, and never updated. PostgreSQL's MVCC rewrites the entire row on any update, so document size only matters if you update — and here you do not. The document is small, the protocol owns its shape, and a GIN index serves the trend query. Correct choice for this workload.
+**Why the current call is right.** A check-in's `symptom_scores` is written once per day, read whole, and rewritten only when the idempotent upsert on `(patient_id, recorded_for)` fires. PostgreSQL's MVCC rewrites the entire row on any update, so document size only matters if you update often — and here you rarely do. The document is small, the protocol owns its shape, and a GIN index serves the trend query. Correct choice for this workload.
 
 **Why high-churn attributes break it.** If each of a million entities has fifty attributes and individual attributes change constantly, every single-key update rewrites the whole document, produces a dead tuple, and drives autovacuum load proportional to churn × document size. Add a GIN index and it gets worse: GIN maintenance on update is expensive, and the pending-list behaviour means index updates arrive in bursts. You end up with table bloat, vacuum falling behind, and index maintenance dominating the write path.
 
@@ -1249,7 +1249,7 @@ With `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and a policy, PostgreSQL rewrit
 
 - The session variable is set with **`SET LOCAL`** inside the transaction. A plain `SET` persists on a pooled backend and leaks one caller's identity into the next caller's query — turning the strongest control into its exact inverse. A pooled-connection leakage test asserts it.
 - The application role is `NOSUPERUSER` and lacks `BYPASSRLS`; migrations run as a separate owning role that never serves a request. A privilege that quietly grew would disable every policy without changing a line of application code, so a role-privilege assertion runs in the pipeline.
-- Policies keep the `patient_id` predicate reachable by the planner, so partition pruning survives on the monthly-partitioned tables. An `EXPLAIN` assertion guards the plan shape.
+- Policies keep the `patient_id` scope in a form the index can use; partition pruning comes from the time bound and does not depend on the policy. An `EXPLAIN` assertion guards the plan shape.
 
 **And the boundary of the control.** Row-level security protects PostgreSQL. It does nothing for Elasticsearch, which is why search carries mandatory scope fields and a filter injected from the same `care_relationship` table — one definition of reach, projected into the second store, rather than a second definition that can drift.
 
@@ -1419,7 +1419,7 @@ The strongest argument is that it is invisible: it protects perfectly right up u
 2. **The pooled-connection leakage test**, run against a real pooler in transaction mode — proof the `SET LOCAL` discipline holds under connection reuse.
 3. **A role-privilege assertion**: the application role is `NOSUPERUSER`, lacks `BYPASSRLS`, and is not the owner of any policied table.
 4. **A schema conformance check**: every table containing `patient_id` has row-level security enabled and forced, and at least one policy. This is the one that catches the *new* table added next quarter without a policy — the most likely real-world failure, and the one no existing test would cover.
-5. **An `EXPLAIN` assertion** on plan shape, showing the security predicate reaches the planner and pruning survives.
+5. **An `EXPLAIN` assertion** on plan shape, showing the security predicate is used as an index condition rather than a filter.
 6. **Detection rules over the audit stream** for out-of-team access and direct database queries from non-application principals — evidence that the control is monitored in production, not only tested in the pipeline.
 7. **Mutation evidence.** The most persuasive artefact of all: deliberately break each control in a scratch environment and show the corresponding test failing. A test suite that has only ever passed proves that it runs, not that it detects anything.
 
@@ -1704,7 +1704,7 @@ Because the defects that matter here only exist in the interaction: row-level se
 
 **What mocks cannot reproduce, concretely.** A mocked PostgreSQL does not enforce row-level security, so the single most important control in the design would be untested. It does not enforce a unique constraint, so the idempotency of the check-in projection would be an assumption. It does not exhibit transaction-mode pooling, so the `SET LOCAL` leakage test — which is the difference between the control working and inverting — cannot exist. A mocked RabbitMQ does not redeliver, does not apply flow control, and does not translate MQTT topic separators into AMQP routing keys, so three of the four things that make the check-in path lose data silently are invisible. A mocked Elasticsearch accepts any document, so a mapping mismatch ships.
 
-**And the ones that are genuinely subtle.** Driver behaviour under a real connection pool. Migration application against a table that already has data. Whether the query planner still prunes partitions with the security policy applied. None of those is expressible as an assertion about a mock, because the thing being asserted is the real component's behaviour.
+**And the ones that are genuinely subtle.** Driver behaviour under a real connection pool. Migration application against a table that already has data. Whether the query planner still uses the patient index with the security policy applied. None of those is expressible as an assertion about a mock, because the thing being asserted is the real component's behaviour.
 
 **The developer-experience argument, which matters as much.** The same Docker Compose stack developers run locally is what the pipeline tests against, so "works on my machine" and "works in the pipeline" converge. Developers running the real brokers and the real search engine rather than fakes is a stated design property, not an accident.
 
@@ -1892,7 +1892,7 @@ GitOps means the desired state of the cluster lives in a Git repository and an i
 
 - *Credential blast radius.* A pipeline is a large attack surface: every dependency, every runner, every merge request that can execute a job. If it holds cluster credentials, compromising it means compromising production. With pull-based reconciliation the credential lives in the cluster and points *outward* at the repository, so the worst a compromised pipeline can do is propose a manifest change — which is a reviewable commit, not a silent deploy.
 - *One rollback mechanism.* Reverting the manifest commit is the rollback for every service, so there is no per-service imperative procedure to remember at three in the morning.
-- *Drift detection.* Anything changed by hand in the cluster diverges from the declared state and ArgoCD reports it. The same principle applies to Terraform for the Azure and cluster infrastructure: a resource created by hand is drift and is reported as a failure, so console history stops being a hidden part of the system.
+- *Drift detection.* Anything changed by hand in the cluster diverges from the declared state and ArgoCD reports it. The same principle applies to Terraform for the Azure and cluster infrastructure: a change made by hand to a resource Terraform manages is drift and is reported as a failure, so console changes to those resources stop being a hidden part of the system.
 - *An audit trail that is a by-product.* Every change to production is a commit with an author and a review. For a regulated system that is the record an auditor asks for, produced without anyone maintaining it.
 
 **What it costs.** A second repository and the discipline to keep it authoritative. Deployment becomes asynchronous — the pipeline goes green before the change is live, so "deployed" and "merged" are different events and the pipeline cannot report deployment success on its own. That is why the sync ends with a PostSync smoke and objective check: something has to close the loop, and it belongs on the cluster side rather than in the pipeline.
@@ -2143,7 +2143,7 @@ Terraform owns cloud and cluster infrastructure, ArgoCD owns everything inside t
 - *Namespaces and cluster-level policy.* I would put these in Terraform if they are part of the cluster's construction and in ArgoCD if they are part of the workload's definition — and, more importantly, write down which, because this is the exact place where a resource ends up declared twice and the two systems fight, each reverting the other on its own reconciliation cycle. That failure presents as intermittent, self-healing weirdness and is genuinely unpleasant to diagnose.
 - *Database schema.* Owned by neither. Alembic owns it, applied through the ArgoCD PreSync hook. Terraform creates the server; it does not create tables.
 
-**The enforcement.** Drift is a failure in both systems: a hand-made Azure resource is reported by `terraform plan` in the pipeline, and a hand-edited Kubernetes object is reported by ArgoCD as out of sync. Production Terraform applies go through a plan-review gate. The combination means the declared state and reality cannot silently diverge — which is the property that makes "the repository describes production" a fact rather than a hope.
+**The enforcement.** Drift is a failure in both systems: a hand-made change to a Terraform-managed Azure resource is reported by `terraform plan` in the pipeline, and a hand-edited Kubernetes object is reported by ArgoCD as out of sync. Production Terraform applies go through a plan-review gate. The combination means the declared state and reality cannot silently diverge for anything Terraform or ArgoCD manages — which is the property that makes "the repository describes production" a fact rather than a hope.
 
 **The rule I would state in a review.** Every resource has exactly one system that creates it, and the others reference it. When two could, pick one and write down why — because the cost of ambiguity here is not confusion, it is two controllers reconciling in opposite directions.
 

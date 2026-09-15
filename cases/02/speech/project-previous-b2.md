@@ -31,7 +31,7 @@
 5. One denormalised table, partial indexes and keyset pagination. The hot query joins nothing. → **107 ms**
 6. The cache is cache-aside, keyed by revision, and expendable. It uses single-flight and early expiry, never a bare [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires"). → **85% hit**
 7. There are three checks: account type, role and tenant scope. Tenant scope lives in one layer, not in each endpoint.
-8. I rejected row-level security on purpose. A pooled connection is where it silently stops working.
+8. I rejected row-level security on purpose. Through a pooled connection, it works only if every read sets the tenant inside its own transaction.
 9. We use an outbox, not a dual write. [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") is for work we own. Service Bus is for work that crosses a boundary.
 10. Two problems that cost us: the publish that looked lost, and the cache that made the spike worse.
 
@@ -233,7 +233,7 @@ Redis sits in front of all of it, as a cache-aside cache. It holds nothing durab
 **Rules I put in the schema, not in code.**
 
 - `UNIQUE (retail_group_id, idempotency_key)` on `connection_request`. The database, not the cache, is what finally prevents a duplicate thread.
-- `UNIQUE (connection_request_id) WHERE kind = 'connection'` on `billing_charge`. A connection bills at most once. A constraint enforces that, not retry logic.
+- A partial unique index on `(connection_request_id)` `WHERE kind = 'connection'` on `billing_charge`. A connection bills at most once. The schema enforces that, not retry logic.
 - `PRIMARY KEY (shortlist_id, product_id)` on shortlist items.
 - `UNIQUE (retail_group_id, external_ref)` on stores.
 
@@ -336,7 +336,7 @@ The third check is the one that matters. I enforced it in exactly one place: a s
 
 Platform admins skip the filter explicitly. Every time they skip it, the system writes an audit row.
 
-I want to state one decision plainly, because it's the opposite of what I'd normally choose. Postgres row-level security is the stronger mechanism. But I chose not to use it as the main control here. The read path runs on a replica, through a pooled connection with a shared role. We would have to set a session variable for each request through a transaction-mode pooler. That is exactly where row-level security silently does nothing. Or worse, the setting leaks into the next caller's query.
+I want to state one decision plainly, because it's the opposite of what I'd normally choose. Postgres row-level security is the stronger mechanism. But I chose not to use it as the main control here. The read path runs on a replica, through a pooled connection with a shared role. Row-level security can work there. But each request would have to set its session variable with `SET LOCAL`, inside its own transaction. If one path gets that wrong, a `SET LOCAL` outside the transaction silently does nothing. And a plain `SET` leaks into the next caller's query.
 
 > **"A security control that quietly stops working is worse than no control at all. If I can't guarantee it under real connection handling, it can't be the main control."**
 
@@ -366,7 +366,7 @@ The compensating control is this. The filter lives in one layer that we can audi
 
 **What revocation actually costs.** Nothing calls the identity service on each request. So the fifteen-minute access-token lifetime limits how fast revocation works. The refresh chain is revoked immediately. In one case, fifteen minutes is not good enough: a suspended vendor. For that case, the identity service publishes a deactivation event. Then services check a small Redis denylist of revoked `jti` values.
 
-**The honest limit, and it's the decision I'd start with.** Postgres row-level security is the stronger mechanism, and I chose not to use it as the main control. The read path runs on a replica, through a pooled connection with a shared role. We would have to set a session variable for each request through a transaction-mode pooler. That is exactly where [RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html "Row Level Security — Restricts which rows a database query can see or modify based on the current user") silently does nothing. Or worse, the setting leaks into the next caller's query. A security control that quietly stops working is worse than no control at all. The compensating control is that the filter lives in one layer we can audit. A test checks every repository method that touches a table owned by an organisation. It asserts that a cross-tenant read returns nothing.
+**The honest limit, and it's the decision I'd start with.** Postgres row-level security is the stronger mechanism, and I chose not to use it as the main control. The read path runs on a replica, through a pooled connection with a shared role. [RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html "Row Level Security — Restricts which rows a database query can see or modify based on the current user") can work there. But each request would have to set its session variable with `SET LOCAL`, inside its own transaction. If one path gets that wrong, a `SET LOCAL` outside the transaction silently does nothing. And a plain `SET` leaks into the next caller's query. A security control that quietly stops working is worse than no control at all. The compensating control is that the filter lives in one layer we can audit. A test checks every repository method that touches a table owned by an organisation. It asserts that a cross-tenant read returns nothing.
 
 **The second limit is operational.** The gateway caches the JWKS on its own schedule. That schedule is separate from the `authz:jwks` key in Redis. So during a signing-key rotation, the two caches can disagree. Then the edge may reject tokens signed with the new key while the cluster accepts them. The key-overlap window must be strictly longer than the gateway's [OpenID](https://openid.net/ "OpenID — Federated identity standard letting a user authenticate once and reuse that identity across sites") configuration refresh interval. And we have to confirm that interval on the target tier before the first rotation. We must not find it out during a rotation.
 
@@ -403,7 +403,7 @@ I spent most of my design time on keeping two stores and a projection in agreeme
 
   > **"At-least-once delivery should land on a constraint. It should not depend on a code path that hopes it never runs twice."**
 
-- **Third**, there is a reconciliation job, because an event can still be lost. It runs every night. It re-projects any listing whose projection timestamp is more than five minutes behind its update timestamp. It also cleans up leftover revisions. And the lag itself is a metric with an alert on it. This is because a dead indexer fails silently, and nothing else would show it. New listings just stop appearing, and no error appears anywhere.
+- **Third**, there is a reconciliation job, because an event can still be lost. It runs every night. It re-projects any listing whose projection timestamp is more than five minutes behind its update timestamp. It also cleans up leftover revisions that are more than a day old and have no newer revision. And the lag itself is a metric with an alert on it. This is because a dead indexer fails silently, and nothing else would show it. New listings just stop appearing, and no error appears anywhere.
 
 **On the security side:** We use [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere. Every data store has a private endpoint, and none of them has a public IP. Inside the cluster, the network policy denies by default, with an explicit allow for each pair of services. Egress is also denied by default. And we use workload identity. So there are no connection strings and no static credentials anywhere in the cluster or in CI.
 

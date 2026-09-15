@@ -74,7 +74,7 @@ Every table carries `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at
 Indexes on `product_listing_facets`, which every access pattern in `05-reliability.md` refers to:
 
 - `idx_plf_search` — `GIN (search_vector)`, free-text over name, summary and vendor name.
-- `idx_plf_facets` — `GIN (facets jsonb_path_ops)`, arbitrary category-specific predicates.
+- `idx_plf_facets` — `GIN (facets jsonb_path_ops)`, containment predicates on category-specific attributes.
 - `idx_plf_arrays` — `GIN (country_coverage)` and `GIN (integrations)`, array containment.
 - `idx_plf_browse` — `BTREE (category_slug, published_at DESC, product_id)` `WHERE status = 'published'`, the partial index serving the default browse ordering and keyset pagination.
 - `idx_plf_price` — `BTREE (category_slug, price_from_minor)` `WHERE status = 'published' AND price_from_minor IS NOT NULL`, the price-sorted variant.
@@ -94,7 +94,7 @@ Indexes on `product_listing_facets`, which every access pattern in `05-reliabili
 | `connection_thread` | `connection_request_id FK UNIQUE`, `subject`, `state` (`active`,`archived`), `last_message_at` | |
 | `connection_message` | `thread_id FK`, `sender_subject`, `sender_side` (`vendor`,`retailer`,`system`), `body text`, `attachments jsonb`, `created_at` | **Partitioned monthly by `created_at`**; `BTREE (thread_id, created_at DESC)` per partition |
 | `billing_account` | `vendor_id FK UNIQUE`, `plan_code`, `status`, `psp_customer_ref`, `current_period_end` | `psp_customer_ref` is an opaque external reference; no payment instrument is stored (`06-security.md`) |
-| `billing_charge` | `billing_account_id FK`, `kind` (`subscription`,`connection`), `connection_request_id FK NULL`, `amount_minor`, `currency`, `status`, `psp_invoice_ref` | `UNIQUE (connection_request_id) WHERE kind = 'connection'` — a connection bills at most once, enforced in the schema rather than in retry logic |
+| `billing_charge` | `billing_account_id FK`, `kind` (`subscription`,`connection`), `connection_request_id FK NULL`, `amount_minor`, `currency`, `status`, `psp_invoice_ref` | Partial unique index on `(connection_request_id)` `WHERE kind = 'connection'` — a connection bills at most once, enforced in the schema rather than in retry logic |
 
 Secondary indexes on the tables above, all referenced by the access patterns in `05-reliability.md`:
 

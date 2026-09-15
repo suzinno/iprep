@@ -72,7 +72,7 @@ The stampede protections that make this survivable under concentrated traffic �
 | `celery_queue_depth{queue}` | `imports` < 500, others < 100 | Also the [HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ "Horizontal Pod Autoscaler — Automatically adjusts the number of Kubernetes pod replicas to match load") signal |
 | `celery_task_failures_total{task}` | Alert on any sustained rate | The brief's "job failures" |
 | `redis_cache_hit_ratio{keyspace}` | > 0.85 for `cat:search` | The latency budget assumes it |
-| `postgres_replica_lag_seconds` | < 5 s | Above 30 s, `catalog-service` fails back to the primary |
+| `postgres_replica_lag_seconds` | < 5 s | Above 30 s, `catalog-service` falls back to the primary |
 | `connection_first_response_hours` (p50) | Tracked, not targeted | Whether the platform actually shortens sourcing — the liquidity metric flagged in `01-requirements.md` |
 
 **Structured logging.** [JSON](https://www.json.org/json-en.html "JavaScript Object Notation — Lightweight text format for structured data exchange") to stdout, collected by Azure Monitor. Every line carries `request_id`, `trace_id`, `service`, `actor_side`, `org_id`, `route` and `status`. Two standing rules: **no log line contains a `connection_message.body`, a token, or a client secret**, and `org_id` is always present so a support query can be scoped to one tenant without a full-text sweep. Application logs are diagnostic and are not the audit trail — `audit_event` in `03-data-modeling.md` is, and it is written from the outbox rather than from a log pipeline.

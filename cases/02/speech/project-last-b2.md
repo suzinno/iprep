@@ -27,7 +27,7 @@
 2. The traffic is low, but the rules are strict. That is why it isn't twenty services.
 3. The core is a modular monolith with four modules. Two services moved out, and each one has its own release cadence.
 4. Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
-5. Every index serves a named query. The big tables are partitioned. The timeline uses keyset pagination, not offset. → **35%**
+5. Every index serves a named query. The big tables are partitioned. The timeline uses keyset pagination, not offset. Search runs on Elasticsearch indexes. → **35%** (search)
 6. There are two identity planes. The gateway checks the token audience. [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") provisions clinicians and revokes their access.
 7. Row-level security in the database decides which patients each user can reach. If I forget to scope a query, it returns nothing. Every read is audited, so reads run on the primary.
 8. Facts go on the exchange. Jobs go on [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle"). Check-ins come over [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks"). Delivery goes over Service Bus.
@@ -143,9 +143,9 @@ I designed the Postgres schemas and the Elasticsearch indexes. Four patterns are
 - Each module has its own schema, so a module boundary is also a database boundary.
 - The big tables are check-ins and audit, and they are partitioned by month. The check-ins table has around a hundred and ten million rows.
 - Every index exists for one named query in the [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data"). If I can't name the endpoint, we don't create the index.
-- The patient timeline is a union across five tables. Each table orders on a different natural column. One of those columns is a date, not a timestamp. You can't order that union deterministically. You also can't serve it from one index shape. So every timeline table has a normalised ordering column. The cursor has three parts: that column, the source table and the row ID. When rows from different sources tie, the tie breaks the same way every time. That is what makes it keyset pagination, not offset pagination. Offset pagination looks fine in staging, but it fails in production.
+- The patient timeline is a union across five tables. Each table orders on a different natural column. One of those columns is a date, not a timestamp. You can't order that union deterministically. You also can't serve it from one index shape. So every timeline table has a normalised ordering column. The cursor has three parts: that column, the source table and the row ID. When rows from different sources tie, the tie breaks the same way every time. That is what makes it keyset pagination, not offset pagination. Offset pagination gets slower the deeper you page. On a 110-million-row table, it degrades badly.
 
-> **"That work cut query latency by about thirty-five percent. On the Postgres side, that was the timeline and record queries. On the Elasticsearch side, it was search."**
+> **"That work cut search latency by about thirty-five percent. The number is for clinical content search. I don't have a measured number for the timeline or the record queries."**
 
 <details>
 <summary><strong>Responsibilities</strong></summary>
@@ -205,11 +205,11 @@ Each index has three primary shards and one replica. In total, they hold around 
 
 **The timeline query.** It is the clinician query that runs most often in the system. It is a union across five tables. Each table orders on a different natural column: `starts_at`, `prescribed_on`, `encounter_date`, `uploaded_at` and `recorded_at`. `encounter_date` is a `date`, not a timestamp. A `UNION ALL` that mixes a `date` with a `timestamptz` cannot be ordered deterministically. It also cannot be served from one index shape. So every table that feeds the timeline has a `timeline_at timestamptz` column. Each table fills that column from its own natural column. The query orders only on `timeline_at`. The natural columns stay, because `encounter_date` is the clinical fact. `timeline_at` is only a presentation key.
 
-**Keyset pagination, with the `LIMIT` in each branch.** The cursor is the tuple `(timeline_at, source_table, id)`. So ties across sources break the same way every time. Each branch of the union has its own window and its own `LIMIT`. So Postgres reads at most `limit` rows from each source. It does not materialise and sort the entire union and then discard most of it. Offset pagination on this query is not allowed at all. The composite indexes exist exactly to avoid it. And offset pagination is the version that looks fine in staging.
+**Keyset pagination, with the `LIMIT` in each branch.** The cursor is the tuple `(timeline_at, source_table, id)`. So ties across sources break the same way every time. Each branch of the union has its own window and its own `LIMIT`. So Postgres reads at most `limit` rows from each source. It does not materialise and sort the entire union and then discard most of it. Offset pagination on this query is not allowed at all. The composite indexes exist exactly to avoid it.
 
 **The care-team views.** A clinician's patient list comes from the partial index over open `care_relationship` rows. So the query touches only the currently active rows. It does not touch the full history that the temporal table keeps. The query author does not have to remember a `WHERE` clause for which patients are reachable. Row-level security handles that, and the authorization section covers it.
 
-**One constraint that row-level security puts on the [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database").** We write the policies so that the `patient_id` predicate still reaches the planner. Suppose a policy hides `patient_id` behind an opaque subquery. Then a pruned index scan silently becomes a scan of every monthly partition of `wellbeing_checkin` and `audit_event`. The query is still correct, but it quietly becomes unusable. An `EXPLAIN` assertion in CI guards the plan shape. We don't rely on code review to notice the problem.
+**One constraint that row-level security puts on the [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database").** We write the policies so that the patient scope can use the index. Suppose a policy is written the wrong way, as a plain `IN` subquery or hidden in a function. Then the policy becomes a filter. A query that relies on it reads every row of the monthly partitions it touches in `wellbeing_checkin` and `audit_event`, not just the rows of reachable patients. Partition pruning still happens, because it comes from the time bound. The query is still correct, but it quietly becomes slow. An `EXPLAIN` assertion in CI guards the plan shape. We don't rely on code review to notice the problem.
 
 **[Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy"), and why migrations are a deploy-time step here.** Migrations run as an [ArgoCD](https://argo-cd.readthedocs.io/en/stable/ "Argo CD — GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository") PreSync hook. They run under a separate owning role that never serves a request. And they are expand-contract. That is what lets both colours of a blue-green cut-over run against one schema.
 
@@ -334,15 +334,15 @@ The third rule is what cut missed reminders by over twenty percent. Before, remi
 
 This is work the platform owns. It has owners, deadlines and retry policies. That fits Celery's model, not the model of a fire-and-forget event.
 
-**The check-in path, and the three broker settings it depends on.** The phone publishes to `care/checkin/{patient_id}` at [QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1. The broker acknowledges once the message is durable on a quorum queue. From that moment, the recovery point is zero, and the UI can honestly say "recorded". That claim depends on three settings, and none of them is a default:
+**The check-in path, and the three broker details it depends on.** The phone publishes to `care/checkin/{patient_id}` at [QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1. The broker acknowledges once the message is durable on a quorum queue. From that moment, the recovery point is zero, and the UI can honestly say "recorded". That claim depends on two settings that are not defaults, and on one fixed translation:
 
 - `mqtt.exchange` has to point at `care.events`. Otherwise, the plugin publishes to `amq.topic`.
-- MQTT's `/` separator becomes [AMQP](https://www.amqp.org/ "Advanced Message Queuing Protocol — Standardizes reliable message queueing and routing between applications")'s `.`. So the topic binds as `care.checkin.{patient_id}`.
+- MQTT's `/` separator always becomes [AMQP](https://www.amqp.org/ "Advanced Message Queuing Protocol — Standardizes reliable message queueing and routing between applications")'s `.`. So the topic binds as `care.checkin.{patient_id}`.
 - `care.events` needs an alternate exchange. This is because RabbitMQ returns a [PUBACK](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT PUBACK packet — Confirms receipt of a QoS 1 published message") for a QoS 1 publish that routes to no queue at all.
 
 Problem one at the end of this document is about that third setting.
 
-**Quorum queues, because there is no longer an alternative.** RabbitMQ 4 removed classic mirrored queues. So `care.events` and every Celery queue use quorum queues on a three-node cluster. Publisher confirms are mandatory. The broker acknowledges a message only after it is replicated.
+**Quorum queues, because there is no longer an alternative.** RabbitMQ 4 removed classic mirrored queues. So every queue bound to `care.events`, and every Celery queue, is a quorum queue on a three-node cluster. Publisher confirms are mandatory. The broker acknowledges a message routed to a quorum queue only after a majority of its replicas has it.
 
 **Where the 22% comes from. It is not the queue.** The state machine is in `pg-clinical`, not in the transport. The 22% comes from that.
 
@@ -371,7 +371,7 @@ A terminal failure escalates to the care team instead of ending as a log line. "
 
 - `documents` uses the path `{patient_id}/{document_id}/{sha256}`. Files stay hot for 90 days, then cool for a year, then move to archive.
 - `ingest-quarantine` uses the path `{upload_id}`. A file is deleted on promotion or after 24 hours, whichever comes first.
-- `audit-archive` uses the path `{yyyy}/{mm}/audit-{partition}.parquet.zst`. It has a write-once policy and a seven-year legal hold. We keep `audit_event` partitions hot for 13 months. After that, the monthly partitions move to `audit-archive`.
+- `audit-archive` uses the path `{yyyy}/{mm}/audit-{partition}.parquet.zst`. It has a write-once policy with a seven-year retention period. We keep `audit_event` partitions hot for 13 months. After that, the monthly partitions move to `audit-archive`.
 
 **The notification edge.** `sb.notify` carries the dispatch command. The `reminder_delivery_id` is its idempotency key. `fn-notify-dispatch` delivers by push, email or [SMS](https://en.wikipedia.org/wiki/SMS "Short Message Service — Delivers short text messages over a mobile network"). Then it puts the provider's receipt back on a queue. Functions fit both edges, because the work comes in bursts, is short, and is triggered by events. Paying for idle pods to wait for an upload would be the wrong fit. Service Bus adds durable dead-lettering exactly where work goes to a third party.
 
@@ -474,7 +474,7 @@ Integration tests run against the real brokers and the real search engine. This 
 - One check fails the build if a log call passes a [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") model with a field marked as sensitive.
 - A role-privilege assertion fails if the application's database role is superuser or holds `BYPASSRLS`.
 - A pooled-connection test sends two different actors through one pooled backend. It asserts that the second actor cannot see the first actor's rows.
-- An `EXPLAIN` assertion fails if a row-level security policy has stopped the `patient_id` predicate from reaching the planner. That is how partition pruning disappears while nothing looks broken.
+- An `EXPLAIN` assertion fails if a row-level security policy has stopped the patient index from being used. That is how a query starts reading every row of its partitions while nothing looks broken.
 
 **The honest limit.** Running the real broker in CI does not settle the flagged question about Celery on quorum queues. That question needs a pinned-version test of `task_acks_late`, global QoS and priority against the broker. The pipeline, as designed, does not assert that yet.
 
@@ -508,7 +508,7 @@ On these paths, a regression either removes a patient's access or gives them som
 
 **Expand-contract is what makes the rollback simple.** One release adds columns and backfills them. A later release removes what is no longer read. Every migration is backwards-compatible with the previous image. So both colours run against the same schema during a blue-green cut-over. And a rollback is reverting an ArgoCD revision. There is no down-migration to get wrong. If a migration cannot be written that way, we split it across two releases instead.
 
-**Infrastructure takes the same path.** [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files") provisions all Azure and cluster resources. Its state is in Azure Storage. CI applies it, and production has a plan-review gate. A resource created by hand is drift. Drift is reported as a failure. It is not quietly reconciled.
+**Infrastructure takes the same path.** [Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files") provisions all Azure and cluster resources. Its state is in Azure Storage. CI applies it, and production has a plan-review gate. A change made by hand to a resource Terraform manages is drift. Drift is reported as a failure. It is not quietly reconciled.
 
 **The honest limit.** Two clusters is the most expensive choice in the design. Only two things justify it: GPU node-pool management and the independent NLP release cadence. On purpose, `aks-ml` holds no state, so it is easy to merge back. So if GPU inference ever moves to a managed endpoint, the right move is to merge `aks-ml` back into `aro-primary`. We should not keep paying for `aks-ml`.
 
@@ -563,7 +563,7 @@ The check-in path promises no data loss. The phone publishes a check-in and gets
 
 We found that the broker returns that acknowledgement even when the message routes to no queue at all. So for an unbound topic, the broker acknowledges the message to the device and then silently drops it. That is exactly the loss the path existed to prevent.
 
-The fix was small. We added an alternate exchange, so an unroutable message becomes a visible dead letter instead of nothing. We also had to point the MQTT plugin at our exchange explicitly, because by default it publishes somewhere else.
+The fix was small. We added an alternate exchange, so an unroutable message goes to a queue where we can see it, instead of nowhere. We also had to point the MQTT plugin at our exchange explicitly, because by default it publishes somewhere else.
 
 > **"The lesson: an acknowledgement is a promise from one component, not from the system."**
 
