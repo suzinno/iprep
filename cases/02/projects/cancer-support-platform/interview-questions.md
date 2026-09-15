@@ -124,7 +124,7 @@ Broker memory grows when publish rate exceeds consume rate, because unconsumed m
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**The mechanism.** RabbitMQ holds a queue's messages in memory and pages them to disk under pressure, but several things resist paging: messages currently delivered-but-unacknowledged, message metadata (an index entry per message stays resident even when the body is paged), and connection and channel buffers. A consumer with a large prefetch and slow handlers can hold tens of thousands of messages in flight per channel, none of which the broker may release. When the resident total crosses `vm_memory_high_watermark` the broker raises a memory alarm and applies flow control by blocking publishing connections. Producers stall, their request threads pile up, upstream timeouts cascade, and what began as a lag problem is now an availability incident.
+**The mechanism.** RabbitMQ holds a queue's messages in memory and pages them to disk under pressure, but several things resist paging: messages currently delivered-but-unacknowledged, message metadata (an index entry per message stays resident even when the body is paged), and connection and channel buffers. A consumer with a large prefetch and slow handlers can hold tens of thousands of messages in flight per channel, none of which the broker may release. When the resident total crosses `vm_memory_high_watermark` the broker raises a memory alarm and blocks publishing connections. Producers stall, their request threads pile up, upstream timeouts cascade, and what began as a lag problem is now an availability incident.
 
 **The specific bulk-update shape.** Millions of attribute updates arriving as millions of tiny messages is close to the worst case: per-message overhead dominates the payload, the queue index alone becomes enormous, and if any consumer is doing a row-at-a-time database write it will never keep up with a publisher writing in a tight loop.
 
@@ -135,9 +135,9 @@ Broker memory grows when publish rate exceeds consume rate, because unconsumed m
 3. **Set queue limits with an explicit overflow policy.** `max-length` or `max-length-bytes` with `overflow: reject-publish` makes the producer feel backpressure directly and fail fast, instead of letting the broker absorb the problem until it takes everyone down. Choosing to reject rather than drop-head is a domain decision: dropping the oldest attribute update may be acceptable, dropping a clinical check-in is not.
 4. **Lazy or quorum queues with disk-first behaviour** for anything expected to build a long backlog, so depth costs disk rather than RAM.
 5. **Separate the estate.** A high-churn bulk pipeline should not share a broker, or at least not a virtual host and node set, with the latency-sensitive path. Colocating them means a bulk backlog blocks interactive publishing.
-6. **Alert on the leading indicator.** `rmq_queue_depth` and unacked-message count rising for fifteen minutes is the signal; memory alarm is the outcome. The dashboard in this platform alerts on depth above 10K or a sustained rise precisely so that the page arrives before flow control does.
+6. **Alert on the leading indicator.** `rmq_queue_depth` and unacked-message count rising for fifteen minutes is the signal; memory alarm is the outcome. The dashboard in this platform alerts on depth above 10K or a sustained rise precisely so that the page arrives before the alarm blocks publishers.
 
-**And the detection I would add regardless:** a load test that publishes at a multiple of peak with consumers deliberately throttled, run against the real broker in Docker Compose rather than a mock, so the flow-control behaviour is observed once in a controlled setting rather than discovered in production.
+**And the detection I would add regardless:** a load test that publishes at a multiple of peak with consumers deliberately throttled, run against the real broker in Docker Compose rather than a mock, so the memory-alarm behaviour is observed once in a controlled setting rather than discovered in production.
 
 </details>
 

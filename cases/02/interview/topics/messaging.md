@@ -338,7 +338,7 @@ Connections and channels are expensive to set up, and they are held on the serve
 **Level:** Q3 — architectural · **Project:** cancer-support-platform
 
 **Brief answer**
-It raises a memory alarm and applies flow control by blocking publishing connections. So a consumer problem shows up as a producer outage. From the application side, that is not an error: the connection simply stops accepting publishes. So request threads build up behind a socket that never returns, and upstream timeouts cascade. The application should have bounded prefetch and batched on both sides. It should also have set an explicit queue overflow policy, so that backpressure is felt as a fast failure instead of being absorbed. And it should have alerted on queue depth long before memory.
+It raises a memory alarm and blocks publishing connections. So a consumer problem shows up as a producer outage. From the application side, that is not an error: the connection simply stops accepting publishes. So request threads build up behind a socket that never returns, and upstream timeouts cascade. The application should have bounded prefetch and batched on both sides. It should also have set an explicit queue overflow policy, so that backpressure is felt as a fast failure instead of being absorbed. And it should have alerted on queue depth long before memory.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -359,9 +359,9 @@ It raises a memory alarm and applies flow control by blocking publishing connect
 6. **Queues that expect long backlogs cost disk, not RAM.** That means quorum queues with disk-first behaviour, not anything that keeps messages in memory.
 7. **Separate the estate.** A high-churn bulk pipeline should not share a broker with the latency-sensitive path. At minimum, it should not share a virtual host and node set with that path. If the two share a broker, or a virtual host and node set, a bulk backlog blocks interactive publishing, and that is how one feature's load becomes every feature's outage.
 
-**Alert on the leading indicator, not the outcome.** The signal is `rmq_queue_depth` and unacknowledged-message count rising for fifteen minutes. The memory alarm is the consequence. The dashboard here alerts on depth above 10,000 or on a sustained rise, precisely so that the page arrives before flow control does. Consumer processing latency per queue and consumer error rate are the two metrics that tell you *why* the depth is rising.
+**Alert on the leading indicator, not the outcome.** The signal is `rmq_queue_depth` and unacknowledged-message count rising for fifteen minutes. The memory alarm is the consequence. The dashboard here alerts on depth above 10,000 or on a sustained rise, precisely so that the page arrives before the memory alarm blocks publishers. Consumer processing latency per queue and consumer error rate are the two metrics that tell you *why* the depth is rising.
 
-**And the detection I would add, whatever else is in place.** A load test that publishes at a multiple of peak, with consumers deliberately throttled. It is run against a real broker in Docker Compose, not against a mock. That way the flow-control behaviour is observed once in a controlled setting, instead of being discovered in production. A mocked broker cannot block a connection, so it cannot fail the way the real one does. And that is exactly the failure worth rehearsing.
+**And the detection I would add, whatever else is in place.** A load test that publishes at a multiple of peak, with consumers deliberately throttled. It is run against a real broker in Docker Compose, not against a mock. That way the memory-alarm behaviour is observed once in a controlled setting, instead of being discovered in production. A mocked broker cannot block a connection, so it cannot fail the way the real one does. And that is exactly the failure worth rehearsing.
 
 </details>
 
