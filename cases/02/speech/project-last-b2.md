@@ -28,7 +28,7 @@
 3. The core is a modular monolith with four modules. Two services moved out, and each had its own reason to be released.
 4. The module boundary was a build gate, not a habit. An import across a boundary failed the build, and a test caught a module reading another module's schema.
 5. Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
-6. Every index serves a named query. The big tables are partitioned. Check-ins is 110 million rows. The timeline is keyset, not offset. → **35%** (search)
+6. Every index serves a named query. The big tables are partitioned. Check-ins is 46 million rows. The timeline is keyset, not offset. → **35%** (search)
 7. Two identity planes. Patients sign up. Clinicians are provisioned, and the gateway checks the token audience.
 8. Roles say what you may *do*. Which rows you may *reach* is resolved per request, below the application. For us that was row-level security.
 9. When the hospital disables a clinician, [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") closes every open care relationship in the same transaction.
@@ -54,7 +54,7 @@ What my role implied - I was a backend engineer on the core platform. I owned th
 ## The Shape of the System (~90 s)
 
 The system was designed to handle twenty-five thousand patients a day, which is about two hundred requests a second at peak.
-The request rate was low. But the tables were not small — for instance, `check-ins` is around a hundred and ten million rows.
+The request rate was low. But the tables were not small — for instance, `check-ins` is around forty-six million rows.
 
 So, what influenced the architecture most:
 > **"The rate is low, but the rules are strict. That's the whole reason this isn't twenty microservices."**
@@ -62,7 +62,7 @@ So, what influenced the architecture most:
 The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"): one deployable unit with four modules<span style="color:gray"> — patient diary, clinical records, clinical content and identity</span>. Each module has its own database schema, so the boundary in the code is also a boundary in the database.
 Modules don't import each other. They rather call a published interface. And the pipeline enforced that. An import across a module boundary failed the build. <span style="color:gray">The published interface makes the module boundaries real. They are just not network boundaries.</span>
 
-I designed that split. And also two parts moved out as separate microservies, each with its own reason:
+I designed that split. And also two parts moved out as separate microservices, each with its own reason:
 - **SCIM provisioning** <span style="color:gray">(The hospital directory calls the SCIM service to create and disable clinician accounts.)</span>, because the hospital decides when this service is released,
 - and **the clinical NLP (Natural Language Processing) service**, because it needs GPUs and it ships when a new model version is ready, not when the product ships.
 
@@ -112,7 +112,7 @@ Three seams really justify a split: a different release cadence, different hardw
 - `clinical-content`: page assignment, delivery and read-state.
 - `identity`: patient portal auth, care-relationship authorization and consent.
 
-Each module is its own Python package and has its own [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema. The schemas are `identity`, `records`, `diary`, `content` and `audit`. So the boundary in the code also exists in the database. Without that, the boundary would slowly break down until any module could use any table.
+Each module is its own Python package and has its own [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema: `identity`, `records`, `diary`, and `content` for clinical content. There is a fifth schema, `audit`, and no module owns it. Every module appends to it, so the schema test treats it as shared rather than as a boundary. So the boundary in the code also exists in the database. Without that, the boundary would slowly break down until any module could use any table.
 
 **How modules talk.** A module reads its own schema directly. It reads another module's schema only through a published in-process interface. That keeps the seam real, and the call is still just a function call. There is no serialisation and no network failure mode. And the whole request still commits in one transaction. A split would take away that single transaction.
 
@@ -143,7 +143,7 @@ I designed the Postgres schemas and the Elasticsearch indexes. Three things are 
 
 Every index exists for one named query in the [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data"). If I can't name the endpoint, we don't create the index.
 
-The two big tables are check-ins and audit, and both are partitioned by month. Check-ins is around a hundred and ten million rows.
+The two big tables are check-ins and audit, and both are partitioned by month. Check-ins is around forty-six million rows.
 
 And the patient timeline is a union across five tables, so the cursor carries a normalised ordering column plus the source table and the row ID. That is what makes it keyset pagination and not offset. Offset gets slower the deeper you page, and on a table that size it degrades badly.
 
@@ -157,7 +157,7 @@ And the patient timeline is a union across five tables, so the cursor carries a 
 - **Postgres** is the system of record: patients, care relationships, appointments, prescriptions, notes, check-ins, consent and audit.
 - **[MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents")** holds the education content, for two reasons. Every page is versioned, and the page shape changes by cancer type, treatment line and language. In a relational model, this content would need a very wide table that is mostly empty.
 - **Elasticsearch** serves search over notes and guidance. It is a projection, and we can rebuild the whole index from Postgres and Mongo.
-- **Redis** holds nothing durable: sessions, caches, rate limits and idempotency keys. If we lose Redis, the system gets slow, but NOT wrong.
+- **Redis** holds nothing durable: sessions, caches, rate limits and idempotency keys. Lose it and the record stays right. We get slow, and duplicate suppression drops from a guarantee to an optimisation. Two locks do ride on Redis, though: SCIM ordering and the beat scheduler. Those are the honest exception.
 - **Azure Blob Storage** holds the document bytes — scans, letters and the audit archive. By year five, it will hold about twelve terabytes, more than all the other stores put together.
 
 **Why the timeline cursor has three parts.** The five tables each order on a different natural column, and one of those columns is a date, not a timestamp. You can't order that union deterministically, and you can't serve it from one index shape either. So every timeline table has a normalised ordering column. The cursor carries that column, the source table and the row ID, so when rows from different sources tie, the tie breaks the same way every time.
@@ -189,9 +189,9 @@ And the patient timeline is a union across five tables, so the cursor carries a 
 **One index per named access pattern.**
 
 - Timeline, most recent first: a composite B-tree on `(patient_id, timeline_at DESC)`, on all five tables that feed the timeline.
-- Check-ins over a date window: a monthly range partition plus a [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables") index on `recorded_at`. On 110 million rows, the physical order matches the insert order. So for the same range scan, BRIN costs a fraction of a B-tree.
+- Check-ins over a date window: a monthly range partition plus a [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables") index on `recorded_at`. On 46 million rows, the physical order matches the insert order. So for the same range scan, BRIN costs a fraction of a B-tree's size.
 - Symptom trend: a GIN index on `symptom_scores`.
-- "May this clinician see this patient", checked on every clinician request: a GiST index on `care_relationship (patient_id, clinician_id, valid_period)`. The exclusion constraint and the index are the same object.
+- "May this clinician see this patient", checked on every clinician request: a GiST index on `care_relationship (patient_id, clinician_id, valid_period)`. The exclusion constraint and the index are the same object. It needs the `btree_gist` extension, because the constraint mixes scalar columns with a range.
 - A clinician's patient list: an index on `(care_team_id, patient_id)`, partial on `WHERE upper(valid_period) IS NULL`.
 - Due reminders, swept every 60 seconds: a partial B-tree on `(scheduled_for) WHERE state = 'pending'`. This keeps the hot index at the size of the pending set, not the size of all history.
 - Outbox relay: a partial B-tree on `(occurred_at) WHERE published_at IS NULL`. This is the relay's only query.
@@ -207,7 +207,7 @@ Each index has three primary shards and one replica. In total, they hold around 
 
 **Scope is a property of the index, not an application convention.** Every document in every index carries `patient_id` and `care_team_ids`. `care-core` builds every query. No client ever reaches `es-clinical` directly. If a search engine can return a document that the record layer would refuse, it is a disclosure path. So the filter is mandatory, not just a habit.
 
-**What actually produced the latency improvement.** Scope and date clauses go in `filter` context. That context is cacheable and unscored. Only the user's text goes in `must`. So the expensive scoring pass runs on a set that is already narrowed, not on the whole index. Bulk indexing flushes at 5 seconds or 1,000 documents. `refresh_interval` is 5 seconds, not the default of 1 second. The longer refresh interval roughly halves segment-merge pressure.
+**What actually produced the latency improvement.** Scope and date clauses go in `filter` context. That context is cacheable and unscored. Only the user's text goes in `must`. So the expensive scoring pass runs on a set that is already narrowed, not on the whole index. Bulk indexing flushes at 5 seconds or 1,000 documents. `refresh_interval` is 5 seconds, not the default of 1 second. That is five times fewer refreshes, and the segment churn falls with it.
 
 **The honest limit.** Search quality on oncology notes depends on a set of synonyms and abbreviations. The set covers, for example, drug brand names versus generic names, and staging notation. Building and maintaining that set is clinical work, not engineering work. The set needs a named owner before we can pair a latency number with a relevance claim. The other weak point is a scope change. Reassigning a patient to a different care team rewrites `care_team_ids` on that patient's documents. Until `celery.index` finishes that reindex, the old team can still match in search. That is exactly why reassignment also closes the `care_relationship` row. The record layer respects that closed row immediately.
 
@@ -296,7 +296,7 @@ Entra ID is the only authorized caller. Entra ID calls with its own client crede
 
 **Token mechanics.** We use the OAuth 2.0 authorization code flow with [PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Proof Key for Code Exchange — Protects an OAuth authorization code exchange for clients that cannot hold a secret"), and [OIDC](https://openid.net/developers/how-connect-works/ "OpenID Connect — Identity layer on top of OAuth 2.0 for authenticating users") for identity. Access tokens last 15 minutes. Refresh tokens are rotated and bound to the client. Patients use multi-factor authentication at enrolment and on sensitive operations. On the clinician side, the hospital's own conditional access applies. The platform uses that conditional access as it is and does not weaken it.
 
-**The JWKS cache is an availability choice, not a performance one.** Entra's signing keys stay in `redis-cache` for 12 hours. They refresh when an unknown `kid` arrives. That long [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires") is exactly why an Entra outage leaves existing sessions working. The outage only makes new sign-ins fail.
+**The JWKS cache is an availability choice, not a performance one.** Entra's signing keys stay in `redis-cache` for 12 hours. They refresh when an unknown `kid` arrives. So an Entra outage does not break token *validation*. The gateway keeps verifying signatures without reaching Entra. It does not keep sessions alive, though. Access tokens last 15 minutes, and a refresh goes back to Entra. So an outage that lasts longer than one token lifetime ends every session, not just new sign-ins. The cache buys us fifteen minutes, not immunity.
 
 **The honest limits. There are two.** First, deprovisioning closes the care relationships instantly. But a token that was already issued stays valid until it expires. So there is a 15-minute window. In that window, authentication succeeds, but every reach check returns nothing. Second, the check-in transport authenticates per *connection*, not per publish. This is because [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers")'s [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") plugin has no per-message authentication. So a long-lived mobile connection needs a maximum lifetime that is shorter than the refresh window. The connection must also be forced to re-authenticate. The design flags this gap. The gap needs a prototype against real token lifetimes before we commit to that transport. The next section covers the transport itself.
 

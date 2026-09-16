@@ -350,7 +350,7 @@ Why that matters here specifically. The most dangerous defect class in this syst
 
 The migration itself is worth talking about honestly, since the responsibility says "migrated data access to SQLAlchemy 2". The `future=True` flag in 1.4 is the bridge: you move to 2.0-style `select()` and session semantics while still on 1.4, get the test suite green, and only then bump the major version. The genuinely disruptive parts are implicit autocommit disappearing, `Query.get()` moving to `Session.get()`, and lazy-load behaviour under async — all of which surface as test failures rather than runtime surprises if the integration suite runs against a real PostgreSQL container rather than SQLite.
 
-The one thing typing does not give you is query *plan* safety. A perfectly typed query can still be a sequential scan on 110 million rows. That is what the access-pattern index table and the `EXPLAIN` assertions are for.
+The one thing typing does not give you is query *plan* safety. A perfectly typed query can still be a sequential scan on 46 million rows. That is what the access-pattern index table and the `EXPLAIN` assertions are for.
 
 </details>
 
@@ -359,7 +359,7 @@ The one thing typing does not give you is query *plan* safety. A perfectly typed
 ### Q1. What is declarative range partitioning, and why are `wellbeing_checkin` and `audit_event` partitioned by month while the other tables are not?
 
 **Brief answer**
-Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query bounded on that key. Those two tables are partitioned because they are written in time order (audit append-only, check-ins insert-mostly), read by recent time window, and enormous — 110 million and 1.8 billion rows over five years.
+Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query bounded on that key. Those two tables are partitioned because they are written in time order (audit append-only, check-ins insert-mostly), read by recent time window, and enormous — 46 million and 1.8 billion rows over five years.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -384,11 +384,11 @@ A [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index �
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-A B-tree on `recorded_at` across 110 million check-ins is several gigabytes and has to be maintained on every insert. A BRIN on the same column stores, per 128-page range, the minimum and maximum timestamp in that range — a few hundred kilobytes total. A range query consults the summary, discards ranges whose bounds cannot match, and scans the survivors.
+A B-tree on `recorded_at` across 46 million check-ins is several gigabytes and has to be maintained on every insert. A BRIN on the same column stores, per 128-page range, the minimum and maximum timestamp in that range — a few hundred kilobytes total. A range query consults the summary, discards ranges whose bounds cannot match, and scans the survivors.
 
 The correlation requirement is the whole story. Audit events are inserted in time order and never updated, so block N contains timestamps strictly after block N−1 and the summary is tight. Check-ins are inserted in time order too; the only update is the idempotent upsert on `(patient_id, recorded_for)`, which is rare enough that the summary stays close to tight. If rows were updated or inserted out of order the min/max per range would widen until nearly every range matched every query, and the index would degenerate into a sequential scan with extra steps. That is the failure mode to name in an interview: a BRIN never returns wrong results when correlation is poor, it just silently stops helping.
 
-In this design the two indexes are complementary rather than competing. BRIN on the time column serves the range scan cheaply; the composite B-tree `(patient_id, timeline_at DESC)` serves the patient-scoped access pattern where selectivity comes from the patient, not the time. Both exist because both access patterns are named in the API contract, and the design is explicit that an index with no query behind it is write amplification on a 110-million-row table — which is a real cost, not a stylistic preference.
+In this design the two indexes are complementary rather than competing. BRIN on the time column serves the range scan cheaply; the composite B-tree `(patient_id, timeline_at DESC)` serves the patient-scoped access pattern where selectivity comes from the patient, not the time. Both exist because both access patterns are named in the API contract, and the design is explicit that an index with no query behind it is write amplification on a 46-million-row table — which is a real cost, not a stylistic preference.
 
 You can check correlation directly with `pg_stats.correlation` for the column, and if it has drifted, `CLUSTER` or a repack restores it. On an append-only partitioned table it does not drift, and on an insert-mostly one it drifts only as far as its rare updates move rows, which is precisely why BRIN is the right tool here and would be the wrong tool on a table with heavy updates.
 
@@ -399,7 +399,7 @@ You can check correlation directly with `pg_stats.correlation` for the column, a
 ### Q1. `symptom_scores` is a `jsonb` column rather than a set of typed columns. Why, and what do you give up?
 
 **Brief answer**
-The symptom set differs by cancer type and changes with the clinical protocol, so columns would mean a migration on a 110-million-row table every time an oncology team revises a questionnaire. A Generalized Inverted Index ([GIN](https://www.postgresql.org/docs/current/gin.html "PostgreSQL index type suited to values containing multiple keys, such as arrays or text search")) on the document supports the trend query without that.
+The symptom set differs by cancer type and changes with the clinical protocol, so columns would mean a migration on a 46-million-row table every time an oncology team revises a questionnaire. A Generalized Inverted Index ([GIN](https://www.postgresql.org/docs/current/gin.html "PostgreSQL index type suited to values containing multiple keys, such as arrays or text search")) on the document supports the trend query without that.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -411,7 +411,7 @@ The symptom set differs by cancer type and changes with the clinical protocol, s
 - *Type safety at the database.* Nothing stops a client writing `"3"` where `3` was meant. The defence moves up into [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") validation, which means it is only as good as the single write path — acceptable here because `celery.index` is the only writer, but it would not be acceptable if several services wrote the table.
 - *Referential integrity.* A symptom code in the document cannot have a foreign key to a symptom catalogue. Validating that a code is real becomes application logic or a check constraint over the document.
 - *Statistics quality.* The planner's estimates for `jsonb` containment are far weaker than for a typed column, so a query that mixes a `jsonb` predicate with a selective one can get a bad plan. In practice you keep the selective predicate — `patient_id` — leading and let `jsonb` filter what remains.
-- *Storage.* Keys are repeated in every row. On 110 million rows that is real, and short key names are worth the ugliness.
+- *Storage.* Keys are repeated in every row. On 46 million rows that is real, and short key names are worth the ugliness.
 
 **The line I would draw.** Anything the system must join on, enforce, or index for selectivity gets a column: `patient_id`, `recorded_for`, `adherence`. Anything whose shape is owned by a clinical protocol that will change without a software release stays in the document. Putting `adherence` in the `jsonb` would have been the mistake — it is a stable, universal, queryable fact, and it belongs in a boolean column, which is where it is.
 
@@ -435,13 +435,13 @@ Each source table orders by a different natural column, one of which is a `date`
 
 **The cursor.** `(timeline_at, source_table, id)`. The timestamp alone is not unique — an appointment and a check-in can share a millisecond — so a two-column cursor would either skip or repeat rows at a page boundary. Adding the source table and the row id makes the tuple total, and the next page is `WHERE (timeline_at, source_table, id) < (:cursor_ts, :cursor_src, :cursor_id)`, which PostgreSQL evaluates as a row comparison against the composite index.
 
-**Why offset is prohibited.** `OFFSET 10000` makes the database produce and discard ten thousand rows before returning anything, so page cost grows linearly with page number — on a 110-million-row check-in table the deep pages are unusable. Worse, offset is *wrong* under concurrent writes: a new check-in inserted while a clinician pages shifts every subsequent row by one, so a record can be skipped entirely. On a clinical timeline, "the page silently omitted a prescription" is not a performance issue. Keyset pagination is stable under insertion because the cursor names a position in the data, not a count of rows already seen.
+**Why offset is prohibited.** `OFFSET 10000` makes the database produce and discard ten thousand rows before returning anything, so page cost grows linearly with page number — on a 46-million-row check-in table the deep pages are unusable. Worse, offset is *wrong* under concurrent writes: a new check-in inserted while a clinician pages shifts every subsequent row by one, so a record can be skipped entirely. On a clinical timeline, "the page silently omitted a prescription" is not a performance issue. Keyset pagination is stable under insertion because the cursor names a position in the data, not a count of rows already seen.
 
 </details>
 
 ---
 
-### Q2. Migrations are expand/contract and run as an ArgoCD PreSync hook. Walk me through adding a non-nullable column to the 110-million-row check-in table without downtime.
+### Q2. Migrations are expand/contract and run as an ArgoCD PreSync hook. Walk me through adding a non-nullable column to the 46-million-row check-in table without downtime.
 
 **Brief answer**
 Split it across two releases: the first adds the column as nullable with a default, backfills in batches, and starts writing it; the second adds the constraint and removes the old path. Both database states must be compatible with both application versions, because blue-green runs them concurrently.
@@ -453,7 +453,7 @@ Split it across two releases: the first adds the column as nullable with a defau
 
 **Release one — expand.**
 
-1. `ALTER TABLE ... ADD COLUMN adherence_source text` with no `NOT NULL` and no volatile default. On modern PostgreSQL a nullable add is a catalogue-only operation, so it does not rewrite 110 million rows or hold a long lock. This is the step people get wrong: a `NOT NULL` with a default on an older version, or any default that is not constant, forces a full table rewrite and an `ACCESS EXCLUSIVE` lock for the duration.
+1. `ALTER TABLE ... ADD COLUMN adherence_source text` with no `NOT NULL` and no volatile default. On modern PostgreSQL a nullable add is a catalogue-only operation, so it does not rewrite 46 million rows or hold a long lock. This is the step people get wrong: a `NOT NULL` with a default on an older version, or any default that is not constant, forces a full table rewrite and an `ACCESS EXCLUSIVE` lock for the duration.
 2. Deploy code that **writes both** the old representation and the new column, and reads the old one. Now the old colour and the new colour are both correct.
 3. **Backfill in batches**, partition by partition, with a bounded batch size and a pause between batches, committing each. A single `UPDATE` over the whole table would hold a transaction open for hours, block autovacuum, and bloat the table by the size of the rows it rewrites. Because the table is monthly-partitioned, the backfill is naturally chunked and progress is observable.
 4. Add a `NOT VALID` check constraint so new rows are constrained immediately, then `VALIDATE CONSTRAINT` separately — validation takes a `SHARE UPDATE EXCLUSIVE` lock rather than blocking writes.
@@ -550,7 +550,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Saying the honest thing first.** My large-table experience is PostgreSQL: a 110-million-row partitioned check-in table and a 1.8-billion-row audit table, with the query and migration discipline that goes with them. I have not worked with IRIS, and I would not claim otherwise in an interview or on the job.
+**Saying the honest thing first.** My large-table experience is PostgreSQL: a 46-million-row partitioned check-in table and a 1.8-billion-row audit table, with the query and migration discipline that goes with them. I have not worked with IRIS, and I would not claim otherwise in an interview or on the job.
 
 **What transfers, because it is not engine-specific.**
 
@@ -586,7 +586,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 
 **Why `audit_event` moves cheaply.** It has three properties that make extraction almost free. It is append-only, so there is no update or delete path to keep consistent. No foreign key points at it, so no join breaks. Nothing on the request path reads it — it is queried for compliance and Data Subject Access Requests ([DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them")), which tolerate a different instance and a different latency profile. The one genuine coupling is that the audit row is written in the same transaction as the access, and moving the table to another instance breaks that atomicity. That is the real cost of this step and I would want it on the table: either accept a two-phase write with a reconciliation sweep, or keep a small local staging table that is drained. The design should be honest that step one is not free, only *cheapest*.
 
-**Why `wellbeing_checkin` is second.** Nearly the same shape — insert-mostly rather than append-only — 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
+**Why `wellbeing_checkin` is second.** Nearly the same shape — insert-mostly rather than append-only — 46 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
 
 **Why sharding is last.** Sharding the record by `patient_id` touches every query, every migration, and the RLS model; it breaks cross-patient queries like a clinician's patient list; it makes the timeline union a scatter-gather; and it is close to irreversible. Reaching the point where it is necessary means roughly twenty times the modelled load. Doing it earlier buys operational complexity against a number the system does not have — which is the same reasoning that rejected a microservice fleet at 200 queries per second.
 

@@ -14,7 +14,7 @@
 
 ## Read/Write Optimizations
 
-Every index below exists for a named access pattern from an [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") contract in [`02-high-level-design.md`](./02-high-level-design.md). Indexes with no query behind them are write amplification on a 110M-row table, so the list is deliberately short.
+Every index below exists for a named access pattern from an [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") contract in [`02-high-level-design.md`](./02-high-level-design.md). Indexes with no query behind them are write amplification on a 46M-row table, so the list is deliberately short.
 
 **`pg-clinical`**
 
@@ -33,7 +33,7 @@ Every index below exists for a named access pattern from an [API](https://en.wik
 
 **[SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database") discipline on the timeline query.** The timeline is a union across five tables and is the single most-executed clinician query. It is a keyset-paginated `UNION ALL` over per-table windows with `LIMIT` pushed into each branch, so [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") reads at most `limit` rows per source instead of materialising and sorting the whole union. The cursor is the tuple `(timeline_at, source_table, id)`, which is why the ordering column is normalised across all five tables instead of each branch sorting on its own natural column. Offset pagination on this query is prohibited; it is what the composite indexes exist to avoid. The `wellbeing_checkin` branch cannot prune partitions, because it orders on `timeline_at` rather than the partition key `recorded_for`, so each page probes the `(patient_id, timeline_at DESC)` index once in every monthly partition — about 60 after five years. Each probe is a single index descent, so the branch's cost grows with the partition count rather than the row count.
 
-**`es-clinical`.** Bulk indexing with a 5 s / 1000-document flush; `refresh_interval` of 5 s rather than the 1 s default, which roughly halves segment-merge pressure. Searches use `filter` context for scope and date clauses (cacheable, unscored) and `must` only for the user's text, so the expensive scoring pass runs on a pre-filtered set.
+**`es-clinical`.** Bulk indexing with a 5 s / 1000-document flush; `refresh_interval` of 5 s rather than the 1 s default, which cuts the refresh rate fivefold and the segment churn with it. Searches use `filter` context for scope and date clauses (cacheable, unscored) and `must` only for the user's text, so the expensive scoring pass runs on a pre-filtered set.
 
 **The freshness budget is composed, not asserted.** Outbox relay ≤ 2 s, plus a bulk flush ≤ 5 s, plus a 5 s `refresh_interval`, puts a newly-saved note in search results at **p50 < 8 s, p95 < 15 s, p99 < 30 s** — the figures carried in [`01-requirements.md`](./01-requirements.md). Tightening any one of the three alone cannot bring the total below the sum of the other two, which is why the target is stated as a sum rather than as a single knob.
 

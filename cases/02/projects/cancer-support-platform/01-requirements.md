@@ -82,11 +82,11 @@ Back-of-the-envelope figures below are the baseline every capacity decision in `
 
 | Store | Calculation | Size |
 |---|---|---|
-| `pg-clinical` — check-ins | 60K active × 1/day × 365 × 5 ≈ 110M rows × ~1 KB | ~110 GB + ~40 GB indexes |
+| `pg-clinical` — check-ins | 25K DAU × 1/day × 365 × 5 ≈ 46M rows × ~1 KB | ~46 GB + ~17 GB indexes |
 | `pg-clinical` — visit notes | 60K × 8/yr × 5 = 2.4M × 4 KB | ~10 GB |
 | `pg-clinical` — appointments + prescriptions | 6M + 4.5M rows | ~12 GB |
 | `pg-clinical` — audit events | ~1M/day (the [PHI](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160/subpart-A/section-160.103 "Protected Health Information — Individually identifiable health data that HIPAA regulates")-touching subset of 2.0M API calls; health checks, static content and unauthenticated routes are not audited) × 1825 = 1.8B × 300 B | ~550 GB (13 months retained hot ≈ 110 GB; older archived to `blob-documents`) |
-| **`pg-clinical` hot total** | | **~1.0 TB** |
+| **`pg-clinical` hot total** | | **~0.9 TB** |
 | `mongo-content` | ~500K page versions + templates + NLP extractions | ~120 GB |
 | `es-clinical` | 2.4M notes + 500K pages, ~3× source with per-field indexing | ~150 GB |
 | `redis-cache` | working set of hot timelines, sessions, counters | ~24 GB |

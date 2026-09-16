@@ -144,7 +144,7 @@ flowchart TB
 - `clinical-nlp-svc` (cluster-internal, mTLS): `POST /internal/v1/nlp/extract` → `{entities[], codes[], summary}`; `POST /internal/v1/nlp/compose-page` → `{page_id, citations[], confidence}`.
 - Every service: `GET /healthz`, `GET /readyz`, `GET /metrics` (Prometheus text format), unauthenticated but reachable only from inside the cluster.
 
-**Conventions.** Cursor pagination everywhere (offset pagination on a 110M-row check-in table degrades badly); `Idempotency-Key` required on all `POST` mutations; [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem detail bodies; `W3C traceparent` propagated on every hop including message headers.
+**Conventions.** Cursor pagination everywhere (offset pagination on a 46M-row check-in table degrades badly); `Idempotency-Key` required on all `POST` mutations; [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem detail bodies; `W3C traceparent` propagated on every hop including message headers.
 
 ## Technology Mapping
 
