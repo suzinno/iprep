@@ -3,7 +3,6 @@
 **Table of Contents**
 
 - [Latest Project — Personalized Cancer Support Platform](#latest-project--personalized-cancer-support-platform)
-  - [The Spine — Ten Lines to Memorise](#the-spine--ten-lines-to-memorise)
   - [What the Product Is (~50 s)](#what-the-product-is-50-s)
   - [My Role, in One Line (~10 s)](#my-role-in-one-line-10-s)
   - [The Shape of the System (~90 s)](#the-shape-of-the-system-90-s)
@@ -15,24 +14,11 @@
   - [If Asked — Two Problems That Cost Us (~125 s)](#if-asked--two-problems-that-cost-us-125-s)
     - [Problem one — the acknowledgement that meant nothing](#problem-one--the-acknowledgement-that-meant-nothing)
     - [Problem two — the connection that could leak data](#problem-two--the-connection-that-could-leak-data)
-  - [Optional — The AI Part (~100 s)](#optional--the-ai-part-100-s)
-  - [Optional — How It Ships, in Full (~55 s)](#optional--how-it-ships-in-full-55-s)
-  - [Optional — Logs, Metrics and Traces, in Full (~60 s)](#optional--logs-metrics-and-traces-in-full-60-s)
+  - [The AI Part (~100 s)](#the-ai-part-100-s)
+  - [How It Ships, in Full (~55 s)](#how-it-ships-in-full-55-s)
+  - [Logs, Metrics and Traces, in Full (~60 s)](#logs-metrics-and-traces-in-full-60-s)
 
 ---
-
-## The Spine — Ten Lines to Memorise
-
-1. One record has two audiences, and their access rules are opposite.
-2. The request rate was low. The tables were not. The low rate is why this isn't twenty services.
-3. The core is a modular monolith with four modules. Two services moved out, and each had its own reason to be released.
-4. The module boundary was a build gate, not a habit. An import across a boundary failed the build, and a test caught a module reading another module's schema.
-5. Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
-6. Every index serves a named query. The big tables are partitioned. Check-ins is 46 million rows. The timeline is keyset, not offset. → **35%** (search)
-7. Two identity planes. Patients sign up. Clinicians are provisioned, and the gateway checks the token audience.
-8. Roles say what you may *do*. Which rows you may *reach* is resolved per request, below the application. For us that was row-level security.
-9. When the hospital disables a clinician, [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") closes every open care relationship in the same transaction.
-10. Facts go on the exchange. Jobs go on [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle"). Outbox, not dual write. Unique keys turn duplicates into updates. Reminder state is a row in Postgres. → **22%**
 
 ## What the Product Is (~50 s)
 
@@ -429,6 +415,9 @@ And trace context travels in message headers, not just in HTTP headers, so one t
 
 So, to sum up: a modular monolith with two services that had a real reason to move out, Postgres enforcing the access rules itself, and everything slow or unreliable on queues, off the request path.
 
+<details>
+<summary><strong>Optional</strong></summary>
+
 ## If Asked — Two Problems That Cost Us (~125 s)
 
 ### Problem one — the acknowledgement that meant nothing
@@ -453,7 +442,7 @@ The code fix is one word: scope the setting to the transaction. But the real fix
 
 > **"The lesson: a security control you haven't tested under real connection handling isn't a control. It's an intention."**
 
-## Optional — The AI Part (~100 s)
+## The AI Part (~100 s)
 
 I fine-tuned Hugging Face models with transfer learning. One model extracts clinical entities and codes from visit notes. The other model re-ranks guidance passages. LangChain builds the page.
 
@@ -497,7 +486,7 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 
 </details>
 
-## Optional — How It Ships, in Full (~55 s)
+## How It Ships, in Full (~55 s)
 
 We use GitLab CI, and every gate can really fail the build. The first gates are ruff, the import-linter contracts, pyright in strict mode, and unit and contract tests. Then integration tests run against real containers: real Postgres, real Elasticsearch and real RabbitMQ. After that, there is a SonarQube gate.
 
@@ -587,7 +576,7 @@ On these paths, a regression either removes a patient's access or gives them som
 
 </details>
 
-## Optional — Logs, Metrics and Traces, in Full (~60 s)
+## Logs, Metrics and Traces, in Full (~60 s)
 
 We use Prometheus for metrics and Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production") for traces. Kibana is the single view for all of it. We also ship Azure's own logs into the same Elasticsearch. So we don't read two separate, incomplete stories about the same incident.
 
@@ -622,5 +611,7 @@ We have two rules on logging. First, we never log clinical text. Sensitive field
 
 </details></li>
 </ul>
+
+</details>
 
 </details>
