@@ -27,7 +27,7 @@ This file is the **single source of truth for technology choice and component na
 | `fn-notify-dispatch` | Azure Function, Service Bus trigger | Delivers push/email/[SMS](https://en.wikipedia.org/wiki/SMS "Short Message Service — Delivers short text messages over a mobile network") and records receipts |
 | `celery-worker` | [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") worker pool (3 queues) | Scheduled and retryable work owned by `care-core` |
 
-**`care-core` modules** — separate packages, separate database schemas, no cross-module imports except through a published in-process interface:
+**`care-core` modules** — separate packages, separate database schemas, no cross-module imports except through a published in-process interface, which blocking `import-linter` contracts enforce in the pipeline ([`05-reliability.md`](./05-reliability.md)):
 
 - `diary` — check-in capture, schedules, adherence
 - `records` — appointments, prescriptions, visit notes, document metadata, timeline assembly
@@ -144,7 +144,7 @@ flowchart TB
 - `clinical-nlp-svc` (cluster-internal, mTLS): `POST /internal/v1/nlp/extract` → `{entities[], codes[], summary}`; `POST /internal/v1/nlp/compose-page` → `{page_id, citations[], confidence}`.
 - Every service: `GET /healthz`, `GET /readyz`, `GET /metrics` (Prometheus text format), unauthenticated but reachable only from inside the cluster.
 
-**Conventions.** Cursor pagination everywhere (offset pagination on a 110M-row check-in table degrades badly); `Idempotency-Key` required on all `POST` mutations; [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem detail bodies; `W3C traceparent` propagated on every hop including message headers.
+**Conventions.** Cursor pagination everywhere (offset pagination on a 46M-row check-in table degrades badly); `Idempotency-Key` required on all `POST` mutations; [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem detail bodies; `W3C traceparent` propagated on every hop including message headers.
 
 ## Technology Mapping
 
@@ -169,7 +169,7 @@ flowchart TB
 | **OpenShift (`aro-primary`) / [Kubernetes](https://kubernetes.io/ "Kubernetes — Automates deployment, scaling and management of containerized applications") / AKS (`aks-ml`)** | Container orchestration | OpenShift for the regulated core with its built-in policy, image-stream, and route model; AKS carries the GPU pool |
 | **ArgoCD** | GitOps delivery to both clusters | One declared desired state, one rollback mechanism, no cluster-side imperative deploys |
 | **GitLab / GitLab CI** | Source, CI, container registry, GitOps manifest repo | Single vendor across the path from commit to sync |
-| **ruff / pyright / Pytest / SonarQube** | Blocking quality gates before any deploy | Detailed in [`05-reliability.md`](./05-reliability.md) |
+| **ruff / import-linter / pyright / Pytest / SonarQube** | Blocking quality gates before any deploy, the contracts among them | Detailed in [`05-reliability.md`](./05-reliability.md) |
 | **[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")** | All Azure and cluster infrastructure, state in Azure Storage | Every environment reproducible; the ingest and messaging topology is code, not console history |
 | **Docker / Docker Compose** | Image build; local stack of `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache`, `rmq-core` | Developers run the real brokers and the real search engine, not fakes |
 | **Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production") / Prometheus / Kibana** | Tracing, metrics, and the single observability pane | Detailed in [`05-reliability.md`](./05-reliability.md) |

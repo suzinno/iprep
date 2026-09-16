@@ -350,7 +350,7 @@ Why that matters here specifically. The most dangerous defect class in this syst
 
 The migration itself is worth talking about honestly, since the responsibility says "migrated data access to SQLAlchemy 2". The `future=True` flag in 1.4 is the bridge: you move to 2.0-style `select()` and session semantics while still on 1.4, get the test suite green, and only then bump the major version. The genuinely disruptive parts are implicit autocommit disappearing, `Query.get()` moving to `Session.get()`, and lazy-load behaviour under async — all of which surface as test failures rather than runtime surprises if the integration suite runs against a real PostgreSQL container rather than SQLite.
 
-The one thing typing does not give you is query *plan* safety. A perfectly typed query can still be a sequential scan on 110 million rows. That is what the access-pattern index table and the `EXPLAIN` assertions are for.
+The one thing typing does not give you is query *plan* safety. A perfectly typed query can still be a sequential scan on 46 million rows. That is what the access-pattern index table and the `EXPLAIN` assertions are for.
 
 </details>
 
@@ -359,7 +359,7 @@ The one thing typing does not give you is query *plan* safety. A perfectly typed
 ### Q1. What is declarative range partitioning, and why are `wellbeing_checkin` and `audit_event` partitioned by month while the other tables are not?
 
 **Brief answer**
-Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query bounded on that key. Those two tables are partitioned because they are written in time order (audit append-only, check-ins insert-mostly), read by recent time window, and enormous — 110 million and 1.8 billion rows over five years.
+Range partitioning splits one logical table into physical child tables by a key range, so the planner can prune irrelevant partitions from every query bounded on that key. Those two tables are partitioned because they are written in time order (audit append-only, check-ins insert-mostly), read by recent time window, and enormous — 46 million and 1.8 billion rows over five years.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -384,11 +384,11 @@ A [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index �
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-A B-tree on `recorded_at` across 110 million check-ins is several gigabytes and has to be maintained on every insert. A BRIN on the same column stores, per 128-page range, the minimum and maximum timestamp in that range — a few hundred kilobytes total. A range query consults the summary, discards ranges whose bounds cannot match, and scans the survivors.
+A B-tree on `recorded_at` across 46 million check-ins is several gigabytes and has to be maintained on every insert. A BRIN on the same column stores, per 128-page range, the minimum and maximum timestamp in that range — a few hundred kilobytes total. A range query consults the summary, discards ranges whose bounds cannot match, and scans the survivors.
 
 The correlation requirement is the whole story. Audit events are inserted in time order and never updated, so block N contains timestamps strictly after block N−1 and the summary is tight. Check-ins are inserted in time order too; the only update is the idempotent upsert on `(patient_id, recorded_for)`, which is rare enough that the summary stays close to tight. If rows were updated or inserted out of order the min/max per range would widen until nearly every range matched every query, and the index would degenerate into a sequential scan with extra steps. That is the failure mode to name in an interview: a BRIN never returns wrong results when correlation is poor, it just silently stops helping.
 
-In this design the two indexes are complementary rather than competing. BRIN on the time column serves the range scan cheaply; the composite B-tree `(patient_id, timeline_at DESC)` serves the patient-scoped access pattern where selectivity comes from the patient, not the time. Both exist because both access patterns are named in the API contract, and the design is explicit that an index with no query behind it is write amplification on a 110-million-row table — which is a real cost, not a stylistic preference.
+In this design the two indexes are complementary rather than competing. BRIN on the time column serves the range scan cheaply; the composite B-tree `(patient_id, timeline_at DESC)` serves the patient-scoped access pattern where selectivity comes from the patient, not the time. Both exist because both access patterns are named in the API contract, and the design is explicit that an index with no query behind it is write amplification on a 46-million-row table — which is a real cost, not a stylistic preference.
 
 You can check correlation directly with `pg_stats.correlation` for the column, and if it has drifted, `CLUSTER` or a repack restores it. On an append-only partitioned table it does not drift, and on an insert-mostly one it drifts only as far as its rare updates move rows, which is precisely why BRIN is the right tool here and would be the wrong tool on a table with heavy updates.
 
@@ -399,7 +399,7 @@ You can check correlation directly with `pg_stats.correlation` for the column, a
 ### Q1. `symptom_scores` is a `jsonb` column rather than a set of typed columns. Why, and what do you give up?
 
 **Brief answer**
-The symptom set differs by cancer type and changes with the clinical protocol, so columns would mean a migration on a 110-million-row table every time an oncology team revises a questionnaire. A Generalized Inverted Index ([GIN](https://www.postgresql.org/docs/current/gin.html "PostgreSQL index type suited to values containing multiple keys, such as arrays or text search")) on the document supports the trend query without that.
+The symptom set differs by cancer type and changes with the clinical protocol, so columns would mean a migration on a 46-million-row table every time an oncology team revises a questionnaire. A Generalized Inverted Index ([GIN](https://www.postgresql.org/docs/current/gin.html "PostgreSQL index type suited to values containing multiple keys, such as arrays or text search")) on the document supports the trend query without that.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -411,7 +411,7 @@ The symptom set differs by cancer type and changes with the clinical protocol, s
 - *Type safety at the database.* Nothing stops a client writing `"3"` where `3` was meant. The defence moves up into [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") validation, which means it is only as good as the single write path — acceptable here because `celery.index` is the only writer, but it would not be acceptable if several services wrote the table.
 - *Referential integrity.* A symptom code in the document cannot have a foreign key to a symptom catalogue. Validating that a code is real becomes application logic or a check constraint over the document.
 - *Statistics quality.* The planner's estimates for `jsonb` containment are far weaker than for a typed column, so a query that mixes a `jsonb` predicate with a selective one can get a bad plan. In practice you keep the selective predicate — `patient_id` — leading and let `jsonb` filter what remains.
-- *Storage.* Keys are repeated in every row. On 110 million rows that is real, and short key names are worth the ugliness.
+- *Storage.* Keys are repeated in every row. On 46 million rows that is real, and short key names are worth the ugliness.
 
 **The line I would draw.** Anything the system must join on, enforce, or index for selectivity gets a column: `patient_id`, `recorded_for`, `adherence`. Anything whose shape is owned by a clinical protocol that will change without a software release stays in the document. Putting `adherence` in the `jsonb` would have been the mistake — it is a stable, universal, queryable fact, and it belongs in a boolean column, which is where it is.
 
@@ -435,13 +435,13 @@ Each source table orders by a different natural column, one of which is a `date`
 
 **The cursor.** `(timeline_at, source_table, id)`. The timestamp alone is not unique — an appointment and a check-in can share a millisecond — so a two-column cursor would either skip or repeat rows at a page boundary. Adding the source table and the row id makes the tuple total, and the next page is `WHERE (timeline_at, source_table, id) < (:cursor_ts, :cursor_src, :cursor_id)`, which PostgreSQL evaluates as a row comparison against the composite index.
 
-**Why offset is prohibited.** `OFFSET 10000` makes the database produce and discard ten thousand rows before returning anything, so page cost grows linearly with page number — on a 110-million-row check-in table the deep pages are unusable. Worse, offset is *wrong* under concurrent writes: a new check-in inserted while a clinician pages shifts every subsequent row by one, so a record can be skipped entirely. On a clinical timeline, "the page silently omitted a prescription" is not a performance issue. Keyset pagination is stable under insertion because the cursor names a position in the data, not a count of rows already seen.
+**Why offset is prohibited.** `OFFSET 10000` makes the database produce and discard ten thousand rows before returning anything, so page cost grows linearly with page number — on a 46-million-row check-in table the deep pages are unusable. Worse, offset is *wrong* under concurrent writes: a new check-in inserted while a clinician pages shifts every subsequent row by one, so a record can be skipped entirely. On a clinical timeline, "the page silently omitted a prescription" is not a performance issue. Keyset pagination is stable under insertion because the cursor names a position in the data, not a count of rows already seen.
 
 </details>
 
 ---
 
-### Q2. Migrations are expand/contract and run as an ArgoCD PreSync hook. Walk me through adding a non-nullable column to the 110-million-row check-in table without downtime.
+### Q2. Migrations are expand/contract and run as an ArgoCD PreSync hook. Walk me through adding a non-nullable column to the 46-million-row check-in table without downtime.
 
 **Brief answer**
 Split it across two releases: the first adds the column as nullable with a default, backfills in batches, and starts writing it; the second adds the constraint and removes the old path. Both database states must be compatible with both application versions, because blue-green runs them concurrently.
@@ -453,7 +453,7 @@ Split it across two releases: the first adds the column as nullable with a defau
 
 **Release one — expand.**
 
-1. `ALTER TABLE ... ADD COLUMN adherence_source text` with no `NOT NULL` and no volatile default. On modern PostgreSQL a nullable add is a catalogue-only operation, so it does not rewrite 110 million rows or hold a long lock. This is the step people get wrong: a `NOT NULL` with a default on an older version, or any default that is not constant, forces a full table rewrite and an `ACCESS EXCLUSIVE` lock for the duration.
+1. `ALTER TABLE ... ADD COLUMN adherence_source text` with no `NOT NULL` and no volatile default. On modern PostgreSQL a nullable add is a catalogue-only operation, so it does not rewrite 46 million rows or hold a long lock. This is the step people get wrong: a `NOT NULL` with a default on an older version, or any default that is not constant, forces a full table rewrite and an `ACCESS EXCLUSIVE` lock for the duration.
 2. Deploy code that **writes both** the old representation and the new column, and reads the old one. Now the old colour and the new colour are both correct.
 3. **Backfill in batches**, partition by partition, with a bounded batch size and a pause between batches, committing each. A single `UPDATE` over the whole table would hold a transaction open for hours, block autovacuum, and bloat the table by the size of the rows it rewrites. Because the table is monthly-partitioned, the backfill is naturally chunked and progress is observable.
 4. Add a `NOT VALID` check constraint so new rows are constrained immediately, then `VALIDATE CONSTRAINT` separately — validation takes a `SHARE UPDATE EXCLUSIVE` lock rather than blocking writes.
@@ -550,7 +550,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-**Saying the honest thing first.** My large-table experience is PostgreSQL: a 110-million-row partitioned check-in table and a 1.8-billion-row audit table, with the query and migration discipline that goes with them. I have not worked with IRIS, and I would not claim otherwise in an interview or on the job.
+**Saying the honest thing first.** My large-table experience is PostgreSQL: a 46-million-row partitioned check-in table and a 1.8-billion-row audit table, with the query and migration discipline that goes with them. I have not worked with IRIS, and I would not claim otherwise in an interview or on the job.
 
 **What transfers, because it is not engine-specific.**
 
@@ -586,7 +586,7 @@ The reasoning transfers — access-pattern-driven indexing, keyset pagination, e
 
 **Why `audit_event` moves cheaply.** It has three properties that make extraction almost free. It is append-only, so there is no update or delete path to keep consistent. No foreign key points at it, so no join breaks. Nothing on the request path reads it — it is queried for compliance and Data Subject Access Requests ([DSAR](https://gdpr-info.eu/art-15-gdpr/ "Data Subject Access Request — Request by an individual to see the personal data an organization holds about them")), which tolerate a different instance and a different latency profile. The one genuine coupling is that the audit row is written in the same transaction as the access, and moving the table to another instance breaks that atomicity. That is the real cost of this step and I would want it on the table: either accept a two-phase write with a reconciliation sweep, or keep a small local staging table that is drained. The design should be honest that step one is not free, only *cheapest*.
 
-**Why `wellbeing_checkin` is second.** Nearly the same shape — insert-mostly rather than append-only — 110 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
+**Why `wellbeing_checkin` is second.** Nearly the same shape — insert-mostly rather than append-only — 46 million rows, and already partitioned — so it detaches cleanly. But it *is* read on the request path (the timeline and the trend endpoint), so extracting it means a cross-instance read for the timeline union, which is a genuine architectural change rather than a relocation.
 
 **Why sharding is last.** Sharding the record by `patient_id` touches every query, every migration, and the RLS model; it breaks cross-patient queries like a clinician's patient list; it makes the timeline union a scatter-gather; and it is close to irreversible. Reaching the point where it is necessary means roughly twenty times the modelled load. Doing it earlier buys operational complexity against a number the system does not have — which is the same reasoning that rejected a microservice fleet at 200 queries per second.
 
@@ -914,7 +914,7 @@ The other cost is subtler: over-permissive coercion. Pydantic will happily turn 
 ### Q1. What is a modular monolith, and how is it different from a monolith that simply has not been split yet?
 
 **Brief answer**
-A modular monolith enforces internal boundaries — separate packages, separate database schemas, and no cross-module imports except through a published interface — while deploying as one unit. The difference from an unsplit monolith is that the boundaries are enforced, not aspirational.
+A modular monolith enforces internal boundaries — separate packages, separate database schemas, and no cross-module imports except through a published interface — while deploying as one unit. The difference from an unsplit monolith is that the boundaries are enforced by a gate that fails the build, not aspirational.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -925,7 +925,11 @@ A modular monolith enforces internal boundaries — separate packages, separate 
 
 **What it costs.** One release blocks another's features — a change in `diary` that fails a gate holds up a `records` fix. That is a real price and the design names it. It was accepted because at around 200 requests per second peak with one team, distributed transactions across four services would buy latency and on-call load for no throughput gain.
 
-**How the boundary is actually kept.** This is the part that separates a modular monolith from a monolith with good intentions. Enforcement has to be mechanical: an import-linter rule in the pipeline that fails the build on a forbidden cross-module import, and per-schema database roles so a module physically cannot read another's tables. Without a gate, module boundaries erode at exactly the rate of deadline pressure — and then the architecture diagram describes something that stopped being true a year ago.
+**How the boundary is actually kept.** This is the part that separates a modular monolith from a monolith with good intentions. Enforcement has to be mechanical, and the complete version is two controls: an import-linter rule in the pipeline that fails the build on a forbidden cross-module import, and per-schema database roles so a module physically cannot read another's tables. Without a gate, module boundaries erode at exactly the rate of deadline pressure — and then the architecture diagram describes something that stopped being true a year ago.
+
+**This design takes the first control and declines the second, deliberately.** The `import-linter` contracts are blocking, carry no `ignore_imports` allowance, and are proven able to fail; [`05-reliability.md`](./05-reliability.md) has the mechanism. Per-module database roles were declined because they would mean per-module engines and per-module connection pools, and that gives up the single commit across modules, which is the entire reason for staying in one process in the first place. So a module is contained by the linter and the tests, not by grants, and an integration assertion on schema access covers the raw SQL an import linter cannot see.
+
+**What that leaves uncovered**, said before being asked rather than after. The gate is static: it sees imports, not dynamic access — a `getattr` on another module's package, an import assembled from a string, a shared Redis key. The schema assertion closes the SQL route; nothing closes the dynamic route, and that is accepted, because reaching it takes deliberate effort rather than carelessness. The contracts also enforce *where* you cross, not *how much* you expose: an interface module that swells into a god-object passes every contract, and keeping it thin stays a review judgement.
 
 **The two exceptions prove the rule.** `scim-provisioning-svc` and `clinical-nlp-svc` were extracted because each has a release driver outside the team's control: the hospital directory's cadence and the model release cycle. Neither left for throughput. "It has an independent reason to be deployed on a different schedule" is a much better extraction criterion than "it feels like a separate thing".
 
@@ -1651,12 +1655,14 @@ Line coverage tells you which lines executed during the suite. It does not tell 
 ### Q1. `ruff`, a strict type checker, SonarQube, and Trivy all gate the pipeline. What does each catch that the others do not?
 
 **Brief answer**
-`ruff` catches style and simple correctness patterns in milliseconds; the type checker catches contract mismatches across function and module boundaries; SonarQube catches maintainability, duplication, and coverage on new code; Trivy catches vulnerable dependencies and image layers. Their overlaps are small and their blind spots are different.
+`ruff` catches style and simple correctness patterns in milliseconds; the import-linter contracts catch a boundary violation no test will ever notice; the type checker catches contract mismatches across function and module boundaries; SonarQube catches maintainability, duplication, and coverage on new code; Trivy catches vulnerable dependencies and image layers. Their overlaps are small and their blind spots are different.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 **`ruff`** is a linter and formatter fast enough to run on save and in a pre-commit hook, and it subsumes what Black and isort do separately — formatting and import ordering — which is worth knowing when a project's tooling list names all three. Beyond formatting it catches unused imports, shadowed names, mutable default arguments, bare `except`, and a large set of bug-prone patterns — the class of defect that is obvious once pointed out and invisible during review. Its value is that it is instant, so it never becomes a reason to skip the check.
+
+**The import-linter contracts** run at the same end of the pipeline as `ruff` and catch the one class every other gate is structurally blind to. A `records` module reaching into `diary` internals is valid Python: the type checker is satisfied, the suites stay green, and the behaviour is unchanged. The defect is architectural rather than behavioural, so only a tool reading the import graph can see it — and seeing it costs seconds, which is why it belongs beside the linter rather than among the tests.
 
 **A strict type checker** — `pyright --strict` here, `mypy` in the client's stack; the distinction matters less than the strictness setting — catches what a linter cannot: a function called with the wrong argument type, an `Optional` dereferenced without a guard, a return type that does not match, a refactor that changed a signature and missed three call sites. On typed SQLAlchemy 2 models it also catches column type mismatches, which on a patient record is where a wrong join starts. Strict mode is what makes it worth having; permissive typing catches the errors you would have found anyway.
 
@@ -1710,7 +1716,7 @@ Because the defects that matter here only exist in the interaction: row-level se
 
 **What I would do to keep the cost honest**, because defending the approach is not the same as accepting any duration:
 
-- Run the fast gates first — `ruff`, then types, then unit and contract tests — so a trivial mistake fails in two minutes and never reaches the expensive stage.
+- Run the fast gates first — `ruff`, the import contracts, then types, then unit and contract tests — so a trivial mistake fails in two minutes and never reaches the expensive stage.
 - Start containers once per pipeline run and share them across tests, with per-test isolation by transaction rollback or by schema rather than by restarting the stack.
 - Parallelise integration tests across workers with isolated schemas.
 - Keep a *small* set of full end-to-end paths and push everything else down to the cheapest layer that can still detect the defect. Integration testing is a tool for interaction defects, not a default.
@@ -1808,7 +1814,7 @@ Work around it by shifting the fast feedback left — pre-commit hooks and the l
 
 **Making it faster, in the order I would try.**
 
-1. **Order gates cheapest-first.** `ruff` in seconds, types in a minute, unit and contract tests, then the container-backed integration stage. A typo fails in ninety seconds instead of twenty-five minutes. This is usually the largest perceived improvement and costs nothing.
+1. **Order gates cheapest-first.** `ruff` and the import contracts in seconds, types in a minute, unit and contract tests, then the container-backed integration stage. A typo fails in ninety seconds instead of twenty-five minutes. This is usually the largest perceived improvement and costs nothing.
 2. **Cache aggressively.** The Poetry virtual environment keyed on the lockfile hash, Docker layers, and the container images pulled once. Dependency installation is often a surprisingly large share of the total.
 3. **Parallelise the integration stage** across workers with isolated schemas, and start the containers once per run rather than per suite.
 4. **Split by change scope** where the module boundaries genuinely allow it — a change confined to `clinical-content` need not run every `identity` integration test on every push, provided the full suite runs before merge to the main branch.
