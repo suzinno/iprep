@@ -3,8 +3,8 @@
 **Table of Contents**
 
 - [Latest Project — Personalized Cancer Support Platform](#latest-project--personalized-cancer-support-platform)
-  - [What the Product Is (~50 s)](#what-the-product-is-50-s)
   - [My Role, in One Line (~10 s)](#my-role-in-one-line-10-s)
+  - [What the Product Is (~50 s)](#what-the-product-is-50-s)
   - [The Shape of the System (~90 s)](#the-shape-of-the-system-90-s)
   - [The Data Layer (~70 s)](#the-data-layer-70-s)
   - [Identity and Access (~80 s)](#identity-and-access-80-s)
@@ -20,68 +20,72 @@
 
 ---
 
+## My Role, in One Line (~10 s)
+
+What my role implied - I was a backend engineer on the core platform. I owned the data and search layer, the identity and provisioning APIs, I contributed to the event-driven paths, and the pipeline.
+
 ## What the Product Is (~50 s)
 
 Let me start with what the product does. Then I'll go through the architecture. And in each part, I'll point out which piece was mine.
 
-It's a support platform for people diagnosed with cancer and for the clinicians who look after them. A patient logs how they feel every day, reads guidance written for their exact diagnosis and treatment, and keeps appointments, prescriptions and scans in one place. The care team sees the same record.
+It's a support platform for people diagnosed with cancer and for the clinicians who look after them.<br>
+_A patient_ logs how they feel every day, reads guidance written for their exact diagnosis and treatment, and keeps appointments, prescriptions and scans in one place. _The care team_ sees the same record.<br>
 **So, the problem this platform resolves is that** before this, all of that was in paper packs, email threads and phone calls.
 
-Technically that means:
-> **"One record has two audiences, and their access rules are opposite."**
+Technically that means there is:
+> **"One record that has two audiences, and their access rules are opposite."**
 
-A patient sees everything about themselves and nothing about anyone else. A clinician sees a small part of many patients' records, and only while they are on that patient's care team.
+_A patient_ sees everything about themselves and nothing about anyone else.<br>
+_A clinician_ sees a small part of many patients' records, and only while they are on that patient's care team.<br>
 Those opposite rules shaped most of the design.
-
-## My Role, in One Line (~10 s)
-
-What my role implied - I was a backend engineer on the core platform. I owned the data and search layer, the identity and provisioning APIs, the event-driven paths, and the pipeline.
 
 ## The Shape of the System (~90 s)
 
 The system was designed to handle twenty-five thousand patients a day, which is about two hundred requests a second at peak.
-The request rate was low. But the tables were not small — for instance, `check-ins` is around forty-six million rows.
+The request rate was low. But the tables were not small — for instance, `check-ins` is over forty-five million rows.
 
 So, what influenced the architecture most:
 > **"The rate is low, but the rules are strict. That's the whole reason this isn't twenty microservices."**
 
-The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"): one deployable unit with four modules<span style="color:gray"> — patient diary, clinical records, clinical content and identity</span>. Each module has its own database schema, so the boundary in the code is also a boundary in the database.
-Modules don't import each other. They rather call a published interface. And the pipeline enforced that. An import across a module boundary failed the build. <span style="color:gray">The published interface makes the module boundaries real. They are just not network boundaries.</span>
+The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"), which is shipped as one deployable unit with four modules<span style="color:gray"> — patient diary, clinical records, clinical content and identity</span>. Each module has its own database schema, so the boundary in the code is also a boundary in the database.<br>
+For decoupling modules don't import each other, they rather call a published interface. <span style="color:gray">The published interface makes the module boundaries real. They are just not network boundaries.</span>
 
 I designed that split. And also two parts moved out as separate microservices, each with its own reason:
-- **SCIM provisioning** <span style="color:gray">(The hospital directory calls the SCIM service to create and disable clinician accounts.)</span>, because the hospital decides when this service is released,
-- and **the clinical NLP (Natural Language Processing) service**, because it needs GPUs and it ships when a new model version is ready, not when the product ships.
+- **the SCIM provisioning service** <span style="color:gray">(The hospital directory calls the SCIM service to create and disable clinician accounts.)</span>, because the hospital decides when it is released <span style="color:gray">(When the hospital changes its directory configuration, that is not a reason to ship the patient portal)</span>,
+- and **the clinical NLP service** <span style="color:gray">(Natural Language Processing service for building education pages - writes guidance for a patient's specific diagnosis, treatment line, stage and locale.)</span>, because it needs GPUs and it ships when a new model version is ready, not when the product ships.
 
 So, the rule is:
 > **"A service moves out when it has its own reason to be released. It does not move out because the diagram looks cleaner."**
 
 <details>
 <summary><strong>The trade-off we accepted</strong></summary>
-With four modules in one deployable, one person's release blocks someone else's feature. But we accepted that. At two hundred requests a second, splitting the modules would have given us distributed transactions and more on-call alerts. It would have given us no extra throughput.
+
+With four modules in one deployable, **one person's release blocks someone else's feature**. But we accepted that, because at 200 requests a second, splitting the modules would have given us _distributed transactions and more on-call alerts_. It would have given us **no extra throughput**.
 </details>
 
 <details>
-<summary><strong>Boundaries</strong></summary>
-Here is what made that boundary real. The pipeline had import-linter contracts. They declared the four modules independent of each other, and they failed the build on any import that crossed a boundary outside the published interface. There was never an ignore list, because we wrote the contracts with the first module.
+<summary><strong>What made that boundary real</strong></summary>
+
+The pipeline had import-linter contracts. They declared the four modules independent of each other, and they failed the build on any import that crossed a boundary outside the published interface. <span style="color:gray">There was never an ignore list, because we wrote the contracts with the first module.</span>
 
 An import linter can't see raw SQL. So each module's models were bound to its own schema, and an integration test failed if a module ran SQL against a schema it didn't own.
 
-If you start from a codebase that is already entangled, you do it the other way round. You record today's violations as a baseline, fail the build on every new one, and pay the baseline down. We never needed that, because we started with the gate.
+<span style="color:gray">If you start from a codebase that is already entangled, you do it the other way round. You record today's violations as a baseline, fail the build on every new one, and pay the baseline down. We never needed that, because we started with the gate.</span>
 
 > **"A gate you have never seen go red isn't a gate. So a deliberate cross-module import is one of the pipeline's own test cases."**
 </details>
-
+<br>
 <details>
 <summary><strong>If asked: "your CV says three modules"</strong></summary>
 Yes, it does: diary, clinical content and identity. Records is the fourth module, and I split it out on purpose. The clinical record has a different write model from authored content. It also has different consistency and audit obligations. If I had put records inside clinical content, a prescription and a leaflet would have gone through the same code path.
 </details>
 <details>
 <summary><strong>If asked: "how would you decompose further?"</strong></summary>
-Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern. I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
+Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern (incremental replacing of a legacy monolithic system with new services). I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
 
 > **"If you split by domain nouns, you end up with a distributed monolith."**
 </details>
-
+<br>
 <details>
 <summary><strong>Responsibilities</strong></summary>
 
@@ -89,23 +93,25 @@ Three seams really justify a split: a different release cadence, different hardw
 <li><details>
 <summary>Designed a FastAPI modular monolith with separate patient diary, clinical content, and identity modules, and extracted microservices for SCIM provisioning and clinical NLP so those releases no longer blocked the rest of the product</summary>
 
-*The "your [CV](https://en.wikipedia.org/wiki/Curriculum_vitae "Curriculum Vitae — Document summarizing a candidate's work history and qualifications") says three modules" note above explains why `records` is a fourth module. This note covers what the split gives us and what it costs.*
-
-**What a module owns.**
+**What each module owns.**
 
 - `diary`: check-in capture, schedules and adherence.
 - `records`: appointments, prescriptions, visit notes, document metadata and timeline assembly.
 - `clinical-content`: page assignment, delivery and read-state.
 - `identity`: patient portal auth, care-relationship authorization and consent.
 
-Each module is its own Python package and has its own [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema: `identity`, `records`, `diary`, and `content` for clinical content. There is a fifth schema, `audit`, and no module owns it. Every module appends to it, so the schema test treats it as shared rather than as a boundary. So the boundary in the code also exists in the database. Without that, the boundary would slowly break down until any module could use any table.
+Each module is its own Python package and has its own [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema: `identity`, `records`, `diary`, and `content` for clinical content. So the boundary in the code also exists in the database. Without that, the boundary would slowly break down until any module could use any table.<br>
+There is also a fifth schema, `audit`, and no module owns it. Every module appends to it, so the schema test treats it as shared rather than as a boundary.
 
-**How modules talk.** A module reads its own schema directly. It reads another module's schema only through a published in-process interface. That keeps the seam real, and the call is still just a function call. There is no serialisation and no network failure mode. And the whole request still commits in one transaction. A split would take away that single transaction.
+**How modules talk.** A module reads its own schema directly. It reads another module's schema only through a published in-process interface. That keeps the seam real, and the call is still just a function call.<br>
+There is no serialisation and no network failure mode. And the whole request still commits in one transaction. A split would take away that single transaction.
 
-**Why each extracted service moved out.** `scim-provisioning-svc` releases on the hospital directory's cadence, not ours. When the hospital changes its directory configuration, that is not a reason to ship the patient portal. `clinical-nlp-svc` needs a GPU node pool, and it ships when a model version is ready. It runs on the second cluster, `aks-ml`. We keep that cluster free of state on purpose. So we can merge `aks-ml` back into `aro-primary` if GPU inference ever moves to a managed endpoint.
+**Why each extracted service moved out:**
+- `scim-provisioning-svc` releases on the hospital directory's cadence, not ours. When the hospital changes its directory configuration, that is not a reason to ship the patient portal.
+- `clinical-nlp-svc` needs a GPU node pool, and it ships when a model version is ready. It runs on the second cluster, `aks-ml`. <span style="color:gray">We keep that cluster free of state on purpose. So we can merge `aks-ml` back into `aro-primary` if GPU inference ever moves to a managed endpoint.</span>
 
-**Each one releases differently. Each service's release strategy depends on the failure that service has to survive.**
-
+**Each component releases differently:**
+Each service's release strategy depends on the failure that service has to survive.
 - `care-core` uses blue-green with a single Route switch. It holds the clinical record, so it needs the cleanest rollback available.
 - `clinical-nlp-svc` uses a canary at 5% → 25% → 100%. This is because a model regression shows up statistically and never in a health check.
 - `scim-provisioning-svc` uses a rolling update. It has an external caller and idempotent operations, and it has no part that users see.
@@ -125,15 +131,12 @@ There are five stores, and each one has exactly one job.
 
 > **"Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. Redis is disposable. Blob holds the bytes."**
 
-I designed the Postgres schemas and the Elasticsearch indexes. Three things are worth naming.
+I designed the Postgres schemas and the Elasticsearch indexes. Three things are worth naming:
+- Every index exists for one named query in the API. If I can't name the endpoint, we don't create the index.
+- The two big tables are `check-ins` and `audit`, and both are partitioned by month. <span style="color:gray">Check-ins is over forty-five million rows.</span>
+- The patient timeline is a union across five tables, so the cursor carries a normalised ordering column plus the source table and the row ID. That is what makes it **keyset pagination** and not offset. <span style="color:gray">Offset gets slower the deeper you page, and on a table that size it degrades badly.</span>
 
-Every index exists for one named query in the [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data"). If I can't name the endpoint, we don't create the index.
-
-The two big tables are check-ins and audit, and both are partitioned by month. Check-ins is around forty-six million rows.
-
-And the patient timeline is a union across five tables, so the cursor carries a normalised ordering column plus the source table and the row ID. That is what makes it keyset pagination and not offset. Offset gets slower the deeper you page, and on a table that size it degrades badly.
-
-> **"That work cut search latency by about thirty-five percent. The number is for clinical content search. I don't have a measured number for the timeline or the record queries."**
+> **"That work cut latency for clinical content search by about thirty-five percent."**
 
 <details>
 <summary><strong>The five stores, and the timeline cursor in full</strong></summary>
@@ -141,8 +144,8 @@ And the patient timeline is a union across five tables, so the cursor carries a 
 **Why each store is the store it is.**
 
 - **Postgres** is the system of record: patients, care relationships, appointments, prescriptions, notes, check-ins, consent and audit.
-- **[MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents")** holds the education content, for two reasons. Every page is versioned, and the page shape changes by cancer type, treatment line and language. In a relational model, this content would need a very wide table that is mostly empty.
-- **Elasticsearch** serves search over notes and guidance. It is a projection, and we can rebuild the whole index from Postgres and Mongo.
+- **Mongo** holds the education content, for two reasons. Every page is versioned, and the page shape changes by cancer type, treatment line and language. <span style="color:gray">In a relational model, this content would need a very wide table that is mostly empty.</span>
+- **Elasticsearch** serves search over notes and guidance. It is a projection, so the whole index can be rebuilt from Postgres and Mongo.
 - **Redis** holds nothing durable: sessions, caches, rate limits and idempotency keys. Lose it and the record stays right. We get slow, and duplicate suppression drops from a guarantee to an optimisation. Two locks do ride on Redis, though: SCIM ordering and the beat scheduler. Those are the honest exception.
 - **Azure Blob Storage** holds the document bytes — scans, letters and the audit archive. By year five, it will hold about twelve terabytes, more than all the other stores put together.
 
@@ -161,19 +164,17 @@ And the patient timeline is a union across five tables, so the cursor carries a 
 
 **The table the whole authorization model depends on.** `care_relationship` is temporal. `valid_period` is a `tstzrange` with a [GiST](https://www.postgresql.org/docs/current/gist.html "Generalized Search Tree — PostgreSQL index type supporting range and exclusion constraints") exclusion constraint. So a clinician's access to a patient has a start and an end. And the history is never overwritten. There is exactly one definition of "may this clinician see this patient". The row-level security policies join through `care_relationship`.
 
-**Rules we put in the schema, not in code.**
-
+**Rules we put in the schema, not in code:**
 - `wellbeing_checkin` is unique on `(patient_id, recorded_for)`. So an at-least-once redelivery becomes an `INSERT ... ON CONFLICT DO UPDATE`. The application does not have to remove duplicates itself.
 - `outbox_event` is written in the same transaction as the business change. It is the only thing that ever writes to `es-clinical` or `sb-integration`.
 - `reminder` and `reminder_delivery` are separate tables. One reminder can have many delivery attempts. So "was it delivered" is a query.
 - `audit_event` has `UPDATE` and `DELETE` revoked from every application role. It also has a trigger that blocks them.
 - `document` holds only metadata. A client cannot see a `document` row until `scan_state = 'clean'`.
-- We do not use soft deletion on clinical rows at all, because retention law governs the record. When a patient withdraws consent, the `consent` table restricts further processing. We do not tombstone their prescriptions.
+- We do not use soft deletion on clinical rows at all, because retention law governs the record. When a patient withdraws consent, the `consent` table restricts further processing. We do not retire their prescriptions.
 
 **Where the data is deliberately not in columns.** `symptom_scores` is `jsonb` with a [GIN](https://www.postgresql.org/docs/current/gin.html "Generalized Inverted Index — PostgreSQL index type suited to values containing multiple keys, such as arrays or text search") index. The reason is that the symptom set differs by cancer type and changes with the clinical protocol. With one column per symptom, every protocol change would need a migration. `external_mrn` is encrypted. It also has an [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key")-[SHA256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm 256-bit — Produces a fixed-size digest used to verify content integrity") blind index over the normalised value. The key for that index is kept separately in Key Vault. So hospital sync can still find a patient by medical record number. And only the matched row is ever decrypted.
 
-**One index per named access pattern.**
-
+**One index per named access pattern:**
 - Timeline, most recent first: a composite B-tree on `(patient_id, timeline_at DESC)`, on all five tables that feed the timeline.
 - Check-ins over a date window: a monthly range partition plus a [BRIN](https://www.postgresql.org/docs/current/brin.html "Block Range Index — Compact PostgreSQL index type suited to large, sequentially correlated tables") index on `recorded_at`. On 46 million rows, the physical order matches the insert order. So for the same range scan, BRIN costs a fraction of a B-tree's size.
 - Symptom trend: a GIN index on `symptom_scores`.
@@ -184,7 +185,6 @@ And the patient timeline is a union across five tables, so the cursor carries a 
 - Audit by subject, for compliance and subject-access requests: a monthly partition plus an index on `(patient_id, occurred_at DESC)`.
 
 **Three Elasticsearch indexes behind one alias.** The alias `clinical-search` sits in front of three indexes:
-
 - `es-clinical-notes` holds visit notes. The extraction model enriches them with entities. The index uses the English analyser plus a clinical synonym filter.
 - `es-clinical-content` holds approved page versions only.
 - `es-clinical-history` holds appointments, prescriptions and document titles. This is the visit-history surface.
@@ -202,9 +202,7 @@ Each index has three primary shards and one replica. In total, they hold around 
 <li><details>
 <summary>Migrated data access to SQLAlchemy 2 and tightened SQL for clinical record queries used on the patient timeline and care-team views</summary>
 
-*The previous bullet covers the indexes behind these queries. This one covers the query side and the [ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping "Object Relational Mapper — Maps application objects to relational database rows and queries").*
-
-**Why the 2.x typed API mattered more than the rewrite.** `pyright --strict` can check [SQLAlchemy](https://www.sqlalchemy.org/ "SQLAlchemy — Python SQL toolkit and ORM that maps objects to relational tables and builds queries") 2's typed constructs. And `pyright --strict` is a blocking gate in the pipeline. On a clinical record, a wrong join is not a bug. It is a disclosure. So checking the query shape at build time was enough reason for the migration on its own.
+**Why the 2.x typed API mattered more than the rewrite.** `pyright --strict` can check SQLAlchemy 2's typed constructs. And `pyright --strict` is a blocking gate in the pipeline. On a clinical record, a wrong join is not a bug. It is a disclosure. So checking the query shape at build time was enough reason for the migration on its own.
 
 **The timeline query.** It is the clinician query that runs most often in the system. It is a union across five tables. Each table orders on a different natural column: `starts_at`, `prescribed_on`, `encounter_date`, `uploaded_at` and `recorded_at`. `encounter_date` is a `date`, not a timestamp. A `UNION ALL` that mixes a `date` with a `timestamptz` cannot be ordered deterministically. It also cannot be served from one index shape. So every table that feeds the timeline has a `timeline_at timestamptz` column. Each table fills that column from its own natural column. The query orders only on `timeline_at`. The natural columns stay, because `encounter_date` is the clinical fact. `timeline_at` is only a presentation key.
 
@@ -212,9 +210,9 @@ Each index has three primary shards and one replica. In total, they hold around 
 
 **The care-team views.** A clinician's patient list comes from the partial index over open `care_relationship` rows. So the query touches only the currently active rows. It does not touch the full history that the temporal table keeps. The query author does not have to remember a `WHERE` clause for which patients are reachable. Row-level security handles that, and the authorization section covers it.
 
-**One constraint that row-level security puts on the [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database").** We write the policies so that the patient scope can use the index. Suppose a policy is written the wrong way, as a plain `IN` subquery or hidden in a function. Then the policy becomes a filter. A query that relies on it reads every row of the monthly partitions it touches in `wellbeing_checkin` and `audit_event`, not just the rows of reachable patients. Partition pruning still happens, because it comes from the time bound. The query is still correct, but it quietly becomes slow. An `EXPLAIN` assertion in [CI](https://en.wikipedia.org/wiki/Continuous_integration "Continuous Integration — Automatically builds and tests code on every change") guards the plan shape. We don't rely on code review to notice the problem.
+**One constraint that RLS (row-level security) puts on the SQL.** We write the policies so that the patient scope can use the index. Suppose a policy is written the wrong way, as a plain `IN` subquery or hidden in a function. Then the policy becomes a filter. A query that relies on it reads every row of the monthly partitions it touches in `wellbeing_checkin` and `audit_event`, not just the rows of reachable patients. Partition pruning still happens, because it comes from the time bound. The query is still correct, but it quietly becomes slow. An `EXPLAIN` assertion in CI guards the plan shape. We don't rely on code review to notice the problem.
 
-**[Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy"), and why migrations are a deploy-time step here.** Migrations run as an [ArgoCD](https://argo-cd.readthedocs.io/en/stable/ "Argo CD — GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository") PreSync hook. They run under a separate owning role that never serves a request. And they are expand-contract. That is what lets both colours of a blue-green cut-over run against one schema.
+**Alembic, and why migrations are a deploy-time step here.** Migrations run as an [ArgoCD](https://argo-cd.readthedocs.io/en/stable/ "Argo CD — GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository") PreSync hook. They run under a separate owning role that never serves a request. And they are expand-contract. That is what lets both colours of a blue-green cut-over run against one schema.
 
 **The honest limit.** Every audited read is a write, so none of this runs on a replica. The primary serves the timeline, so the headroom is the primary's headroom. The design records these targets: p95 under 120 ms when cached, and under 250 ms when cold. There is a named index behind every query. But the design does not record the pre-migration baseline that those improvements were measured against.
 
@@ -227,13 +225,18 @@ Each index has three primary shards and one replica. In total, they hold around 
 
 I'd call this the most important part of the system.
 
-Two identity planes. Patients sign up by themselves. Clinicians never sign up — they are provisioned from the hospital's Entra ID directory over SCIM 2.0. The two planes get different token audiences, and the gateway checks the audience against the route.
+There are 2 identity planes:
+- Patients sign up by themselves.
+- Clinicians never sign up — they are provisioned from the hospital's Entra ID directory over SCIM 2.0.
+<br>The two planes get different token audiences, and the gateway checks the audience against the route.
 
-Then authorization, and I'd put it as a principle first. Roles say what you may *do*: write a visit note, approve content, manage a care team. But *which rows you may reach* is not a role. It is a fact that changes over time, so it is resolved per request, below the application. The mechanism in our case was Postgres row-level security.
+Then authorization:
+- Roles say what you may *do*: write a visit note, approve content, manage a care team.
+- But *which rows you may reach* is not a role. It is a fact that changes over time, so it is resolved per request, below the application. The mechanism in our case was Postgres RLS (row-level security).
 
-> **"If I forget to scope a query, it returns nothing. It doesn't return someone else's record."**
+> **"If developer forgets to scope a query, it returns nothing. It doesn't return someone else's record."**
 
-I also built the SCIM side, and that is the part I'd most want to be asked about.
+I also built the SCIM side:
 
 > **"When the hospital disables a clinician, we close every open care relationship in the same transaction."**
 
@@ -284,7 +287,7 @@ Entra ID is the only authorized caller. Entra ID calls with its own client crede
 
 **The JWKS cache is an availability choice, not a performance one.** Entra's signing keys stay in `redis-cache` for 12 hours. They refresh when an unknown `kid` arrives. So an Entra outage does not break token *validation*. The gateway keeps verifying signatures without reaching Entra. It does not keep sessions alive, though. Access tokens last 15 minutes, and a refresh goes back to Entra. So an outage that lasts longer than one token lifetime ends every session, not just new sign-ins. The cache buys us fifteen minutes, not immunity.
 
-**The honest limits. There are two.** First, deprovisioning closes the care relationships instantly. But a token that was already issued stays valid until it expires. So there is a 15-minute window. In that window, authentication succeeds, but every reach check returns nothing. Second, the check-in transport authenticates per *connection*, not per publish. This is because [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers")'s [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") plugin has no per-message authentication. So a long-lived mobile connection needs a maximum lifetime that is shorter than the refresh window. The connection must also be forced to re-authenticate. The design flags this gap. The gap needs a prototype against real token lifetimes before we commit to that transport. The next section covers the transport itself.
+**The honest limits. There are two.** First, deprovisioning closes the care relationships instantly. But a token that was already issued stays valid until it expires. So there is a 15-minute window. In that window, authentication succeeds, but every reach check returns nothing. Second, the check-in transport authenticates per *connection*, not per publish. This is because RabbitMQ's [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") plugin has no per-message authentication. So a long-lived mobile connection needs a maximum lifetime that is shorter than the refresh window. The connection must also be forced to re-authenticate.
 
 </details></li>
 </ul>
@@ -299,13 +302,11 @@ We have five transports, and each one has a stated job, so nobody has to guess w
 
 The other two are [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs"), for anything a user is waiting for, and MQTT, for check-ins from the phone.
 
-I spent most of my design time on consistency. Three rules.
-
-**Nothing writes to Elasticsearch directly.** Every write commits to Postgres with an outbox row in the same transaction, and a relay publishes that row. The honest cost is about eight seconds before a new note is searchable. A dual write can commit and then fail the index write, and nothing detects that.
-
-**The schema handles duplicates, not the code.** A redelivered check-in hits a unique key on patient and date, so it becomes an update instead of a second row.
-
-**The state machine is in the database, not in the queue.** Every reminder is a row with a state, and every attempt is its own row. A worker claims what is due with `FOR UPDATE SKIP LOCKED`, so workers scale out without dispatching the same reminder twice.
+I spent most of my design time on consistency.
+Three rules:
+- **Nothing writes to Elasticsearch directly.** Every write commits to Postgres with an outbox row in the same transaction, and a relay publishes that row. The honest cost is about eight seconds before a new note is searchable.
+- **The schema handles duplicates, not the code.** A redelivered check-in hits a unique key on patient and date, so it becomes an update instead of a second row.
+- **The state machine is in the database, not in the queue.** Every reminder is a row with a state, and every attempt is its own row. A worker claims what is due with `FOR UPDATE SKIP LOCKED`, so workers scale out without dispatching the same reminder twice.
 
 > **"If the queue is down, reminders are late. They are never lost."**
 
@@ -314,25 +315,24 @@ That third rule is what cut missed reminders by over twenty percent.
 <details>
 <summary><strong>The five transports in full, and the rest of the consistency detail</strong></summary>
 
-**The five transports, each with its stated job.**
-
-- **Synchronous REST** is for anything a user is waiting for. A screen that someone is looking at should not be eventually consistent.
-- **A RabbitMQ topic exchange** is for domain facts. For example: check-in recorded, note created, appointment scheduled.
-- **Celery** is for work we own and must retry. For example: reminder sweeps, page generation and indexing.
+**The five transports, each with its stated job:**
+- **Synchronous REST** is for anything a user is waiting for. <span style="color:gray">A screen that someone is looking at should not be eventually consistent.</span>
+- **A RabbitMQ topic exchange** is for domain facts. <span style="color:gray">For example: check-in recorded, note created, appointment scheduled.</span>
+- **Celery** is for work we own and must retry. <span style="color:gray">For example: reminder sweeps, page generation and indexing.</span>
 - **MQTT** is for check-ins from the phone.
 - **Azure Service Bus** is at the edge, where work goes to somebody else. At this edge, reminder delivery goes out and document ingest comes in. The Functions sit at that edge.
 
 **Why MQTT for check-ins.** A patient is often in a hospital basement or on a bad connection. With MQTT, the phone queues the check-in locally and delivers it when the phone reconnects. MQTT runs on the same RabbitMQ broker, so an MQTT check-in arrives on the same exchange that everything else consumes.
 
-**How documents get in.** I moved that path from ad-hoc folders to Azure. A scan or a letter never goes through the API. The client gets a short-lived signed [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web") and uploads straight to Blob Storage, so multi-megabyte files never touch the pods that serve a clinician's timeline. The upload goes into a quarantine container. A blob-created event triggers a Function that scans the file and extracts its text. We promote the file and make the document row visible only after that.
+**How documents get in.** I moved that path from ad-hoc folders to Azure. A scan or a letter never goes through the API. The client gets a short-lived signed URL and uploads straight to Blob Storage, so multi-megabyte files never touch the pods that serve a clinician's timeline. The upload goes into a quarantine container. A blob-created event triggers a Function that scans the file and extracts its text. We promote the file and make the document row visible only after that.
 
 > **"No record row ever points to an unscanned file."**
 
 **Transport security.** We use [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere. No data store has a public endpoint. The one cross-cluster hop carries clinical free text, and it runs on mutual TLS. And the MQTT listener lets a device publish only to the topic that matches its own token.
 
-**The outbox, in full.** A new note becomes searchable in about eight seconds, or fifteen seconds at p95. With an outbox, the backlog is a metric, and it clears by itself.
+**The outbox.** A new note becomes searchable in about eight seconds, or fifteen seconds at p95. With an outbox, the backlog is a metric, and it clears by itself.
 
-**The duplicate rule, in full.** A unique key turns at-least-once delivery into a predictable outcome instead of a bug.
+**The duplicate rule.** A unique key turns at-least-once delivery into a predictable outcome instead of a bug.
 
 **The reminder path, end to end.** The worker writes the attempt row, then hands the delivery to Service Bus, where a Function does the actual send and posts the provider's receipt back. So "was it delivered?" is a query, not a guess. And a final failure escalates to the care team, instead of ending as a log line. Before this, reminders went out inline during a request, so if the request failed the reminder failed with it, and nothing recorded that it never arrived.
 
@@ -348,20 +348,17 @@ That third rule is what cut missed reminders by over twenty percent.
 **What goes on the exchange.** `care.events` is a topic exchange that carries domain facts: `checkin.recorded`, `visitnote.created`, `appointment.scheduled` and `carerelationship.changed`. Publishing a fact does not give the publisher the right to know who consumes it. That is why these facts are not Celery tasks. A task registry couples every consumer to the publisher's deployment.
 
 **What goes on Celery.** There are three queues, and each one has its own concern:
-
 - `celery.reminders` is for the beat-driven sweep.
 - `celery.content` is for page generation.
 - `celery.index` is for the outbox projection into `es-clinical` and for reindexes.
 
 This is work the platform owns. It has owners, deadlines and retry policies. That fits Celery's model, not the model of a fire-and-forget event.
 
-**The check-in path, and the three broker details it depends on.** The phone publishes to `care/checkin/{patient_id}` at [QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1. The broker acknowledges once the message is durable on a quorum queue. From that moment, the recovery point is zero, and the UI can honestly say "recorded". That claim depends on two settings that are not defaults, and on one fixed translation:
-
+**The check-in path, and the broker details it depends on.** The phone publishes to `care/checkin/{patient_id}` at [QoS](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "Quality of Service — Delivery guarantee level, such as MQTT's at-most-once, at-least-once and exactly-once modes") 1. The broker acknowledges once the message is durable on a quorum queue. From that moment, the recovery point is zero, and the UI can honestly say "recorded".
+That claim depends on two settings that are not defaults, and on one fixed translation:
 - `mqtt.exchange` has to point at `care.events`. Otherwise, the plugin publishes to `amq.topic`.
 - MQTT's `/` separator always becomes [AMQP](https://www.amqp.org/ "Advanced Message Queuing Protocol — Standardizes reliable message queueing and routing between applications")'s `.`. So the topic binds as `care.checkin.{patient_id}`.
 - `care.events` needs an alternate exchange. This is because RabbitMQ returns a [PUBACK](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html "MQTT PUBACK packet — Confirms receipt of a QoS 1 published message") for a QoS 1 publish that routes to no queue at all.
-
-Problem one at the end of this document is about that third setting.
 
 **Quorum queues, because there is no longer an alternative.** RabbitMQ 4 removed classic mirrored queues. So every queue bound to `care.events`, and every Celery queue, is a quorum queue on a three-node cluster. Publisher confirms are mandatory. The broker acknowledges a message routed to a quorum queue only after a majority of its replicas has it.
 
@@ -388,13 +385,12 @@ A terminal failure escalates to the care team instead of ending as a log line. "
 
 **From quarantine to visible.** A `BlobCreated` event on `evtgrid-blob` triggers `fn-blob-ingest`. That Function validates the file, scans it and extracts its text. The blob is promoted into the `documents` container only if the result is clean. Then the row's `scan_state` is set to `clean`. No client can see the row before that. No record row ever points to an unscanned file.
 
-**The layout is by container, and each container has its own lifecycle rule.**
-
+**The layout is by container, and each container has its own lifecycle rule:**
 - `documents` uses the path `{patient_id}/{document_id}/{sha256}`. Files stay hot for 90 days, then cool for a year, then move to archive.
 - `ingest-quarantine` uses the path `{upload_id}`. A file is deleted on promotion or after 24 hours, whichever comes first.
 - `audit-archive` uses the path `{yyyy}/{mm}/audit-{partition}.parquet.zst`. It has a write-once policy with a seven-year retention period. We keep `audit_event` partitions hot for 13 months. After that, the monthly partitions move to `audit-archive`.
 
-**The notification edge.** `sb.notify` carries the dispatch command. The `reminder_delivery_id` is its idempotency key. `fn-notify-dispatch` delivers by push, email or [SMS](https://en.wikipedia.org/wiki/SMS "Short Message Service — Delivers short text messages over a mobile network"). Then it puts the provider's receipt back on a queue. Functions fit both edges, because the work comes in bursts, is short, and is triggered by events. Paying for idle pods to wait for an upload would be the wrong fit. Service Bus adds durable dead-lettering exactly where work goes to a third party.
+**The notification edge.** `sb.notify` carries the dispatch command. The `reminder_delivery_id` is its idempotency key. `fn-notify-dispatch` delivers by push, email or SMS. Then it puts the provider's receipt back on a queue. Functions fit both edges, because the work comes in bursts, is short, and is triggered by events. Paying for idle pods to wait for an upload would be the wrong fit. Service Bus adds durable dead-lettering exactly where work goes to a third party.
 
 **Security settings on the storage account itself.** The storage account uses a customer-managed key and [HTTPS](https://datatracker.ietf.org/doc/html/rfc9110 "HTTP Secure — HTTP encrypted with TLS to protect requests and responses in transit") only. Public access is disabled. It has zone-redundant replication and soft delete. The audit container has an immutability policy. By year five, the account will hold about twelve terabytes. That is more than all the other stores put together.
 
@@ -446,11 +442,9 @@ The code fix is one word: scope the setting to the transaction. But the real fix
 
 I fine-tuned Hugging Face models with transfer learning. One model extracts clinical entities and codes from visit notes. The other model re-ranks guidance passages. LangChain builds the page.
 
-The whole pipeline is built around two approval gates, not one.
-
-The first gate is on the input. The model can only use passages that a clinician has already approved. And every block carries a citation back to the passage it came from. The model selects and rewrites approved material. It doesn't write clinical claims of its own.
-
-The second gate is on the output. The pipeline produces a page that is pending review. A clinical reviewer approves the page before it is ever assigned to a patient. The person who wrote the source can't be the one who approves the page. That is because author and approver are separate roles, on purpose. Otherwise, the second review is not a real check, and the safety property is just a claim.
+The whole pipeline is built around two approval gates:
+- The first gate is on the input. **The model can only use passages that a clinician has already approved.** And every block carries a citation back to the passage it came from. The model selects and rewrites approved material. It doesn't write clinical claims of its own.
+- The second gate is on the output. **The pipeline produces a page that is pending review.** A clinical reviewer approves the page before it is ever assigned to a patient. The person who wrote the source can't be the one who approves the page. That is because author and approver are separate roles, on purpose. Otherwise, the second review is not a real check, and the safety property is just a claim.
 
 That makes the pages less fluent. A model that generates freely writes nicer pages. We accepted that cost on purpose.
 
@@ -492,7 +486,7 @@ We use GitLab CI, and every gate can really fail the build. The first gates are 
 
 CI never touches the cluster. The last thing CI does is commit to the GitOps repo. ArgoCD then syncs that commit onto OpenShift and [AKS](https://learn.microsoft.com/en-us/azure/aks/ "Azure Kubernetes Service — Managed Kubernetes hosting on Azure").
 
-I want to point out one thing, because it's the part people skip. Every migration is expand-contract. One release adds columns and backfills them. A later release removes what is no longer read.
+Every migration is expand-contract. One release adds columns and backfills them. A later release removes what is no longer read.
 
 > **"That's what makes blue-green possible. Both versions run against the same schema. So a rollback is reverting a revision. There's no down-migration to get wrong."**
 
@@ -503,19 +497,18 @@ I want to point out one thing, because it's the part people skip. Every migratio
 <li><details>
 <summary>Moved core FastAPI services to Python 3.14 with Poetry-managed dependencies so runtime and packages stayed consistent across modules</summary>
 
-**What the lock actually covers.** Each service has one [Poetry](https://python-poetry.org/docs/ "Poetry — Python dependency and packaging tool that manages, builds and publishes projects") lockfile: `care-core`, `scim-provisioning-svc` and `clinical-nlp-svc`. Each lockfile is resolved once. It is installed the same way in CI and in the image. The interpreter version is pinned the same way across all three services. This removes a drift that surprised us at deploy time. A dependency resolved one way in the pipeline and another way on a developer's machine. We found the difference in the cluster.
+**What the lock actually covers.** Each service has one [Poetry](https://python-poetry.org/docs/ "Poetry — Python dependency and packaging tool that manages, builds and publishes projects") lockfile: `care-core`, `scim-provisioning-svc` and `clinical-nlp-svc`. Each lockfile is resolved once. It is installed the same way in CI and in the image. The interpreter version is pinned the same way across all three services.
 
 **The pinning does not stop at Python.** Images are built from pinned digests and scanned at build time. ArgoCD deploys only digest-pinned images from the registry. So nobody can swap a mutable tag under a running cluster between one sync and the next.
 
-**The honest limit.** Three lockfiles means three things that can become different. The design says versions are pinned the same way across services. But it names no check that fails the build when they stop being the same. So today, that consistency is a convention that code review enforces, not a gate.
+**The honest limit.** Three lockfiles means three things that can become different. That consistency is a convention that code review enforces, not a gate.
 
 </details></li>
 
 <li><details>
 <summary>Configured GitLab CI with ruff, pyright, and SonarQube gates, automating lint, type checks, and test runs before OpenShift deploys, and fixed failing pipeline and deploy jobs</summary>
 
-**The gates, in order. Every gate can really fail the build.**
-
+**The gates, in order. Every gate can really fail the build:**
 1. `ruff` for lint.
 2. `import-linter` contracts on the `care-core` module boundary.
 3. `pyright --strict` for types.
@@ -528,14 +521,11 @@ Integration tests run against the real brokers and the real search engine. This 
 
 **CI never touches the cluster.** No pipeline job holds cluster credentials. The last thing the pipeline does is commit the image digest to the GitOps manifest repository. ArgoCD reconciles from there. That is also why a rollback is a Git operation, not a deploy.
 
-**Four of the gates look like quality gates, but they are really security controls.**
-
+**Four of the gates look like quality gates, but they are really security controls:**
 - One check fails the build if a log call passes a [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") model with a field marked as sensitive.
 - A role-privilege assertion fails if the application's database role is superuser or holds `BYPASSRLS`.
 - A pooled-connection test sends two different actors through one pooled backend. It asserts that the second actor cannot see the first actor's rows.
 - An `EXPLAIN` assertion fails if a row-level security policy has stopped the patient index from being used. That is how a query starts reading every row of its partitions while nothing looks broken.
-
-**The honest limit.** Running the real broker in CI does not settle the flagged question about Celery on quorum queues. That question needs a pinned-version test of `task_acks_late`, global QoS and priority against the broker. The pipeline, as designed, does not assert that yet.
 
 </details></li>
 
@@ -544,8 +534,7 @@ Integration tests run against the real brokers and the real search engine. This 
 
 **The contract is an artifact, not a document.** Pydantic models define every request and response body. FastAPI emits the [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") document from those models. The contract suite tests against that document. A breaking change to a response shape fails the pipeline, not a client.
 
-**What the suites cover, chosen by the consequence of a failure.**
-
+**What the suites cover, chosen by the consequence of a failure:**
 - The identity flows: audience separation between the two planes, SCIM create and update, and `active: false` closing the care relationships it has to close.
 - The clinical content services: `review_state` transitions, and the rule that only an approved version can ever be assigned to a patient.
 - The record paths: the timeline union, its cursor and the scoping behaviour.
@@ -554,14 +543,14 @@ On these paths, a regression either removes a patient's access or gives them som
 
 **Integration means the real dependencies.** Developers run a Compose stack locally. The integration stage runs against the same stack. That is what makes the database-level assertions possible at all. Row-level security behaviour cannot be tested against a fake.
 
-**The honest limit.** The pooled-connection leakage test is only meaningful against the transaction-mode pooler that production runs behind. But the Compose stack in the design names Postgres, not the pooler. That is exactly the gap that makes a control look tested when it is not. It is the part of the test suite I would want proven before I trust it. Apart from SonarQube's gate on new code, we claim no coverage figure. The useful statement is which paths are covered and why, not a percentage.
-
 </details></li>
 
 <li><details>
 <summary>Deployed releases with ArgoCD to OpenShift and Kubernetes so diary, content, and identity services rolled out on the same GitOps path</summary>
 
-**One declared desired state, two clusters.** ArgoCD syncs two clusters. `aro-primary` runs `care-core`, `scim-provisioning-svc`, `celery-worker`, `rmq-core`, `mongo-content` and `es-clinical`. `aks-ml` runs `clinical-nlp-svc` and nothing else. There are no imperative deploys on the cluster side. So you ask the Git history what is running, not the cluster.
+**One declared desired state, two clusters.** ArgoCD syncs two clusters:
+- `aro-primary` runs `care-core`, `scim-provisioning-svc`, `celery-worker`, `rmq-core`, `mongo-content` and `es-clinical`.
+- `aks-ml` runs `clinical-nlp-svc` and nothing else. There are no imperative deploys on the cluster side. So you ask the Git history what is running, not the cluster.
 
 **Migrations run as a PreSync hook.** `alembic upgrade head` runs before the pods of the new revision appear. It runs under an owning role that is separate from the role that serves requests.
 
@@ -582,9 +571,9 @@ We use Prometheus for metrics and Elastic [APM](https://en.wikipedia.org/wiki/Ap
 
 What makes this really work is that trace context travels in message headers, not just in [HTTP](https://datatracker.ietf.org/doc/html/rfc9110 "Hypertext Transfer Protocol — Application protocol used to request and transfer web resources") headers. So one trace covers the HTTP request, the broker hop, the Celery task and the index write. It goes end to end across the async boundary.
 
-We have two rules on logging. First, we never log clinical text. Sensitive fields are marked on the Pydantic model, and a formatter drops them. CI fails the build if a log call passes a sensitive field.
-
-> **"Second, audit is a database table, never a log stream. If you mix them, your log retention quietly becomes your audit policy."**
+We have two rules on logging:
+- First, we never log clinical text. Sensitive fields are marked on the Pydantic model, and a formatter drops them. CI fails the build if a log call passes a sensitive field.
+- Second, audit is a database table, never a log stream. If you mix them, your log retention quietly becomes your audit policy.
 
 <details>
 <summary><strong>Responsibilities</strong></summary>
@@ -595,8 +584,7 @@ We have two rules on logging. First, we never log clinical text. Sensitive field
 
 **Joining the two planes is what makes it work.** There are two telemetry planes: the clusters and the Azure-native services. We join them instead of leaving them separate. `traceparent` propagates on every hop, including AMQP, MQTT and Service Bus message headers. Azure Monitor's diagnostic logs from the gateway, Functions, Service Bus and Blob are shipped into the same Elasticsearch. So one trace covers the HTTP request, the broker hop, the Celery task and the index write. And Kibana is the single view. Without that join, a reminder that fails between `celery.reminders` and `fn-notify-dispatch` leaves two separate, incomplete stories.
 
-**The consumer-side indicators. This bullet is really about these.**
-
+**The consumer-side indicators:**
 - `consumer_task_duration_seconds` p95 by queue. It alerts above 5 seconds on `celery.reminders` or `celery.index`.
 - `consumer_task_failed_total` over `consumer_task_total`, by queue. It alerts above 1% over 15 minutes.
 - Broker queue depth and unacked counts.
@@ -606,8 +594,6 @@ We have two rules on logging. First, we never log clinical text. Sensitive field
 **Sampling depends on what is worth reconstructing.** We sample all errors and all reminder and NLP traffic. We sample 10% of routine reads.
 
 **Two rules about logs.** We never log clinical free text, symptom values or document contents. A Pydantic-driven redaction filter drops fields marked as sensitive at the formatter. CI fails the build if a log call passes a sensitive field. Audit is a database table, never a log stream. Logs are for operators, and audit is for the regulator. If you mix them, log retention policy quietly becomes audit policy.
-
-**The honest limit.** Trace continuity through MQTT is still unresolved. MQTT 3.1.1 has no user-property header to carry `traceparent`. So there are two options. Either the check-in clients move to MQTT 5, or the context travels inside the payload envelope. We have to decide that before instrumenting. This is because adding trace context later breaks every published client.
 
 </details></li>
 </ul>
