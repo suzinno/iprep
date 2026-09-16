@@ -6,18 +6,18 @@
   - [The Spine — Ten Lines to Memorise](#the-spine--ten-lines-to-memorise)
   - [What the Product Is (~50 s)](#what-the-product-is-50-s)
   - [My Role, in One Line (~10 s)](#my-role-in-one-line-10-s)
-  - [The Shape of the System (~80 s)](#the-shape-of-the-system-80-s)
-  - [The Data Layer (~75 s)](#the-data-layer-75-s)
+  - [The Shape of the System (~85 s)](#the-shape-of-the-system-85-s)
+  - [The Data Layer (~70 s)](#the-data-layer-70-s)
   - [Identity and Access (~80 s)](#identity-and-access-80-s)
   - [How Services Talk, and How They Stay Consistent (~100 s)](#how-services-talk-and-how-they-stay-consistent-100-s)
   - [How It Ships, and How We See It (~25 s)](#how-it-ships-and-how-we-see-it-25-s)
   - [Close (~35 s)](#close-35-s)
-  - [If Asked — Two Problems That Cost Us (~120 s)](#if-asked--two-problems-that-cost-us-120-s)
+  - [If Asked — Two Problems That Cost Us (~125 s)](#if-asked--two-problems-that-cost-us-125-s)
     - [Problem one — the acknowledgement that meant nothing](#problem-one--the-acknowledgement-that-meant-nothing)
     - [Problem two — the connection that could leak data](#problem-two--the-connection-that-could-leak-data)
   - [Optional — The AI Part (~100 s)](#optional--the-ai-part-100-s)
-  - [Optional — How It Ships, in Full (~60 s)](#optional--how-it-ships-in-full-60-s)
-  - [Optional — Logs, Metrics and Traces, in Full (~75 s)](#optional--logs-metrics-and-traces-in-full-75-s)
+  - [Optional — How It Ships, in Full (~55 s)](#optional--how-it-ships-in-full-55-s)
+  - [Optional — Logs, Metrics and Traces, in Full (~60 s)](#optional--logs-metrics-and-traces-in-full-60-s)
 
 ---
 
@@ -36,46 +36,60 @@
 
 ## What the Product Is (~50 s)
 
-It's a support platform for people diagnosed with cancer and for the clinicians who look after them. A patient logs how they feel every day, reads guidance written for their exact diagnosis and treatment, and keeps appointments, prescriptions and scans in one place. The care team sees the same record. Before this, all of that was in paper packs, email threads and phone calls.
+Let me start with what the product does. Then I'll go through the architecture. And in each part, I'll point out which piece was mine.
 
+It's a support platform for people diagnosed with cancer and for the clinicians who look after them. A patient logs how they feel every day, reads guidance written for their exact diagnosis and treatment, and keeps appointments, prescriptions and scans in one place. The care team sees the same record.
+**So, the problem this platform resolves is that** before this, all of that was in paper packs, email threads and phone calls.
+
+Technically that means:
 > **"One record has two audiences, and their access rules are opposite."**
 
-A patient sees everything about themselves and nothing about anyone else. A clinician sees a small part of many patients' records, and only while they are on that patient's care team. Those opposite rules shaped most of the design.
+A patient sees everything about themselves and nothing about anyone else. A clinician sees a small part of many patients' records, and only while they are on that patient's care team.
+Those opposite rules shaped most of the design.
 
 ## My Role, in One Line (~10 s)
 
-I was a backend engineer on the core platform. I owned the data and search layer, the event-driven paths, the identity and provisioning APIs, and the pipeline.
+What my role implied - I was a backend engineer on the core platform. I owned the data and search layer, the identity and provisioning APIs, the event-driven paths, and the pipeline.
 
-## The Shape of the System (~80 s)
+## The Shape of the System (~85 s)
 
-Twenty-five thousand patients a day, about two hundred requests a second at peak. The request rate was low. The tables were not — check-ins is around a hundred and ten million rows.
+The system was designed to handle twenty-five thousand patients a day, which is about two hundred requests a second at peak.
+The request rate was low. But the tables were not small — for instance, `check-ins` is around a hundred and ten million rows.
 
+So, what influenced the architecture most:
 > **"The rate is low, but the rules are strict. That's the whole reason this isn't twenty microservices."**
 
-The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"): one deployable unit with four modules — patient diary, clinical records, clinical content and identity. Each module has its own database schema, so the boundary in the code is also a boundary in the database.
+The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"): one deployable unit with four modules<span style="color:gray"> — patient diary, clinical records, clinical content and identity</span>. Each module has its own database schema, so the boundary in the code is also a boundary in the database.
+Modules don't import each other. They rather call a published interface. <span style="color:gray">The published interface makes the module boundaries real. They are just not network boundaries.</span>
+
+I designed that split. And also two parts moved out as separate microservies, each with its own reason:
+- **SCIM provisioning** <span style="color:gray">(The hospital directory calls the SCIM service to create and disable clinician accounts.)</span>, because the hospital decides when this service is released,
+- and **the clinical NLP (Natural Language Processing) service**, because it needs GPUs and it ships when a new model version is ready, not when the product ships.
+
+So, the rule is:
+> **"A service moves out when it has its own reason to be released. It does not move out because the diagram looks cleaner."**
 
 <details>
-<summary><strong>If asked: "your CV says three modules"</strong></summary>
-
-Yes, it does: diary, clinical content and identity. Records is the fourth module, and I split it out on purpose. The clinical record has a different write model from authored content. It also has different consistency and audit obligations. If I had put records inside clinical content, a prescription and a leaflet would have gone through the same code path.
-
+<summary><strong>The trade-off we accepted</strong></summary>
+With four modules in one deployable, one person's release blocks someone else's feature. But we accepted that. At two hundred requests a second, splitting the modules would have given us distributed transactions and more on-call alerts. It would have given us no extra throughput.
 </details>
 
-I designed that split. Two parts moved out, each with its own reason to be released: SCIM provisioning, because the hospital decides when it ships, and the clinical [NLP](https://en.wikipedia.org/wiki/Natural_language_processing "Natural Language Processing — Computational techniques for analyzing and generating human language") service, because it needs GPUs.
-
+<details>
+<summary><strong>Boundaries</strong></summary>
 Now the honest part, and it's the thing I'd change first. Nothing automatic enforced that module boundary. The pipeline had no import check that fails the build on a cross-module import, so schema ownership and code review were what held it.
 
 > **"On a codebase of that size, that is weaker than it sounds. Before I split anything further, I would add that check."**
+</details>
 
 <details>
+<summary><strong>If asked: "your CV says three modules"</strong></summary>
+Yes, it does: diary, clinical content and identity. Records is the fourth module, and I split it out on purpose. The clinical record has a different write model from authored content. It also has different consistency and audit obligations. If I had put records inside clinical content, a prescription and a leaflet would have gone through the same code path.
+</details>
+<details>
 <summary><strong>If asked: "how would you decompose further?"</strong></summary>
-
-**The trade-off we accepted.** With four modules in one deployable, one person's release blocks someone else's feature. At two hundred requests a second, splitting the modules would have given us distributed transactions and more on-call alerts, and no extra throughput.
-
-**How I would decompose further.** Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern. I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
+Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern. I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
 
 > **"If you split by domain nouns, you end up with a distributed monolith."**
-
 </details>
 
 <details>
@@ -115,7 +129,7 @@ Each module is its own Python package and has its own [PostgreSQL](https://www.p
 
 </details>
 
-## The Data Layer (~75 s)
+## The Data Layer (~70 s)
 
 There are five stores, and each one has exactly one job.
 
@@ -132,13 +146,17 @@ And the patient timeline is a union across five tables, so the cursor carries a 
 > **"That work cut search latency by about thirty-five percent. The number is for clinical content search. I don't have a measured number for the timeline or the record queries."**
 
 <details>
-<summary><strong>Optional — why each store is the store it is</strong></summary>
+<summary><strong>The five stores, and the timeline cursor in full</strong></summary>
+
+**Why each store is the store it is.**
 
 - **Postgres** is the system of record: patients, care relationships, appointments, prescriptions, notes, check-ins, consent and audit.
 - **[MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents")** holds the education content, for two reasons. Every page is versioned, and the page shape changes by cancer type, treatment line and language. In a relational model, this content would need a very wide table that is mostly empty.
 - **Elasticsearch** serves search over notes and guidance. It is a projection, and we can rebuild the whole index from Postgres and Mongo.
 - **Redis** holds nothing durable: sessions, caches, rate limits and idempotency keys. If we lose Redis, the system gets slow, but NOT wrong.
 - **Azure Blob Storage** holds the document bytes — scans, letters and the audit archive. By year five, it will hold about twelve terabytes, more than all the other stores put together.
+
+**Why the timeline cursor has three parts.** The five tables each order on a different natural column, and one of those columns is a date, not a timestamp. You can't order that union deterministically, and you can't serve it from one index shape either. So every timeline table has a normalised ordering column. The cursor carries that column, the source table and the row ID, so when rows from different sources tie, the tie breaks the same way every time.
 
 </details>
 
@@ -232,18 +250,17 @@ I also built the SCIM side, and that is the part I'd most want to be asked about
 Access ends when employment ends, and there is no step on our side that anyone could forget.
 
 <details>
-<summary><strong>Optional — how the reach check is wired, and why a failed sync is paged</strong></summary>
+<summary><strong>Token mechanics, how the reach check is wired, and audited reads</strong></summary>
+
+**Token mechanics.** Both planes use the OAuth 2.0 authorization code flow with PKCE. Access tokens are short-lived.
+
+> **"The gateway rejects a patient token on a clinician endpoint. The token never reaches the code."**
 
 **How the check is wired.** Every request sets the actor inside the transaction, and the policies join through the care relationship, which is stored as a time range with a start and an end. Resolving reach below the application is what turns the most common application bug into an empty result rather than a data breach. The application checks still exist. They are just a second layer.
 
 **Why a failed sync is paged.** A SCIM sync failure is a security event, not a background-job failure. It is the one alert where the *absence* of a change is the incident: some access should have ended and has not.
 
-</details>
-
-<details>
-<summary><strong>Optional — why an audited read can't be served from a replica</strong></summary>
-
-Every read of patient data writes an audit row. This includes a read served from cache, because a cache hit is still an access. So an audited read is a write. That means it can't be served from a read replica, and it fails when the primary fails.
+**Why an audited read can't be served from a replica.** Every read of patient data writes an audit row. This includes a read served from cache, because a cache hit is still an access. So an audited read is a write. That means it can't be served from a read replica, and it fails when the primary fails.
 
 > **"Read availability is limited by write availability, and we chose that."**
 
@@ -305,9 +322,15 @@ I spent most of my design time on consistency. Three rules.
 That third rule is what cut missed reminders by over twenty percent.
 
 <details>
-<summary><strong>Optional — why MQTT, how documents get in, and the transport security</strong></summary>
+<summary><strong>The five transports in full, and the rest of the consistency detail</strong></summary>
 
-**Why REST for anything a user waits for.** A screen someone is looking at should not be eventually consistent.
+**The five transports, each with its stated job.**
+
+- **Synchronous REST** is for anything a user is waiting for. A screen that someone is looking at should not be eventually consistent.
+- **A RabbitMQ topic exchange** is for domain facts. For example: check-in recorded, note created, appointment scheduled.
+- **Celery** is for work we own and must retry. For example: reminder sweeps, page generation and indexing.
+- **MQTT** is for check-ins from the phone.
+- **Azure Service Bus** is at the edge, where work goes to somebody else. At this edge, reminder delivery goes out and document ingest comes in. The Functions sit at that edge.
 
 **Why MQTT for check-ins.** A patient is often in a hospital basement or on a bad connection. With MQTT, the phone queues the check-in locally and delivers it when the phone reconnects. MQTT runs on the same RabbitMQ broker, so an MQTT check-in arrives on the same exchange that everything else consumes.
 
@@ -316,6 +339,12 @@ That third rule is what cut missed reminders by over twenty percent.
 > **"No record row ever points to an unscanned file."**
 
 **Transport security.** We use [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere. No data store has a public endpoint. The one cross-cluster hop carries clinical free text, and it runs on mutual TLS. And the MQTT listener lets a device publish only to the topic that matches its own token.
+
+**The outbox, in full.** A new note becomes searchable in about eight seconds, or fifteen seconds at p95. With an outbox, the backlog is a metric, and it clears by itself.
+
+**The duplicate rule, in full.** A unique key turns at-least-once delivery into a predictable outcome instead of a bug.
+
+**The reminder path, end to end.** The worker writes the attempt row, then hands the delivery to Service Bus, where a Function does the actual send and posts the provider's receipt back. So "was it delivered?" is a query, not a guess. And a final failure escalates to the care team, instead of ending as a log line. Before this, reminders went out inline during a request, so if the request failed the reminder failed with it, and nothing recorded that it never arrived.
 
 </details>
 
@@ -398,7 +427,7 @@ So, to sum up: a modular monolith with two services that had a real reason to mo
 
 Three things I'd be glad to be asked about: the pooled connection that could have leaked one patient's rows into the next query, the acknowledgement that meant nothing, and the module boundary that nothing enforced. And if the [AI](https://en.wikipedia.org/wiki/Artificial_intelligence "Artificial Intelligence — Software that generates or assists with tasks such as writing code") side is interesting, I can go into that too.
 
-## If Asked — Two Problems That Cost Us (~120 s)
+## If Asked — Two Problems That Cost Us (~125 s)
 
 ### Problem one — the acknowledgement that meant nothing
 
@@ -466,7 +495,7 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 
 </details>
 
-## Optional — How It Ships, in Full (~60 s)
+## Optional — How It Ships, in Full (~55 s)
 
 We use GitLab CI, and every gate can really fail the build. The first gates are ruff, pyright in strict mode, and unit and contract tests. Then integration tests run against real containers: real Postgres, real Elasticsearch and real RabbitMQ. After that, there is a SonarQube gate.
 
@@ -555,7 +584,7 @@ On these paths, a regression either removes a patient's access or gives them som
 
 </details>
 
-## Optional — Logs, Metrics and Traces, in Full (~75 s)
+## Optional — Logs, Metrics and Traces, in Full (~60 s)
 
 We use Prometheus for metrics and Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production") for traces. Kibana is the single view for all of it. We also ship Azure's own logs into the same Elasticsearch. So we don't read two separate, incomplete stories about the same incident.
 
