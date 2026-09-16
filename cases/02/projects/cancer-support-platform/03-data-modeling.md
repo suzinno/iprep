@@ -116,7 +116,7 @@ erDiagram
 
 ## PostgreSQL Schema Design
 
-One database, one [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema per `care-core` module — `identity`, `records`, `diary`, `content`, `audit`. Modules read their own schema directly and each other's only through the in-process interface, so the module boundary that exists in code also exists in the database and does not decay into a shared-table free-for-all.
+One database, one [PostgreSQL](https://www.postgresql.org/docs/current/ "PostgreSQL — Relational database storing and querying structured data with strong transactional guarantees") schema per `care-core` module — `identity`, `records`, `diary`, `content`, `audit`. Modules read their own schema directly and each other's only through the in-process interface, so the module boundary that exists in code also exists in the database and does not decay into a shared-table free-for-all. What holds it there is an assertion in the integration suite — each module's metadata is bound to its own schema, and a module that emits [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database") against a schema it does not own fails the suite — rather than per-module database grants, which this design deliberately does not use ([`05-reliability.md`](./05-reliability.md)).
 
 **Design decisions worth stating**
 

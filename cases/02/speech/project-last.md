@@ -108,7 +108,7 @@ Three seams that actually justify a split: a different release cadence, differen
 
 **What the extraction did not buy.** `scim-provisioning-svc` writes `pg-clinical` as well — the `identity` schema only, the `clinician` and `care_team_member` rows and the `care_relationship` rows a deprovisioning closes. So the separation is deployment-level, not data-level: it releases on its own cadence, but it cannot evolve those tables without regard for `care-core`. Schema ownership is what keeps that honest, and a second proposed cross-schema writer is the point at which it stops being tolerable.
 
-**The honest limit.** Nothing mechanical enforces the module boundary. Python has no visibility modifier, and there is no import check in the pipeline that fails the build on a cross-module import — schema ownership plus code review is what holds it. On a codebase this size that is weaker than it sounds, and adding that check is what I would do before splitting anything further.
+**The honest limit.** The boundary is enforced statically and in the test suite, not by the database. `import-linter` contracts in the pipeline fail the build on a cross-module import, and an integration assertion fails a module that emits SQL against a schema it does not own. What that misses is dynamic access — a `getattr` on another module's package, an import assembled from a string — and it polices where you cross rather than how much you expose, so a swollen interface module passes every contract. Per-module database roles would go further; they would also mean per-module engines and pools, which gives up the single commit across modules that is the reason for one process at all.
 
 </details></li>
 </ul>
@@ -375,7 +375,7 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 
 ## Optional — How It Ships (~40 s)
 
-GitLab CI, and every gate can genuinely fail the build: ruff, pyright in strict mode, unit and contract tests, integration tests against real containers — real Postgres, real Elasticsearch, real RabbitMQ — then a SonarQube gate.
+GitLab CI, and every gate can genuinely fail the build: ruff, the import-linter contracts, pyright in strict mode, unit and contract tests, integration tests against real containers — real Postgres, real Elasticsearch, real RabbitMQ — then a SonarQube gate.
 
 CI never touches the cluster. Its last act is a commit to the GitOps repo, and ArgoCD syncs that onto OpenShift and [AKS](https://learn.microsoft.com/en-us/azure/aks/ "Azure Kubernetes Service — Managed Kubernetes hosting on Azure").
 
@@ -401,7 +401,7 @@ One thing I'd call out, because it's the piece people skip: every migration is e
 <li><details>
 <summary>Configured GitLab CI with ruff, pyright, and SonarQube gates, automating lint, type checks, and test runs before OpenShift deploys, and fixed failing pipeline and deploy jobs</summary>
 
-**The chain, and every link can genuinely fail the build.** `ruff` on lint, then `pyright --strict` on types, then Pytest unit and contract suites, then Pytest integration against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache` and `rmq-core` containers on Docker Compose, then the SonarQube quality gate on coverage and new-code quality, then a Docker build with an image scan and a digest-pinned push. Integration runs against the real brokers and the real search engine because a mocked broker cannot fail the way a real one does.
+**The chain, and every link can genuinely fail the build.** `ruff` on lint, then the `import-linter` contracts on the `care-core` module boundary, then `pyright --strict` on types, then Pytest unit and contract suites, then Pytest integration against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache` and `rmq-core` containers on Docker Compose, then the SonarQube quality gate on coverage and new-code quality, then a Docker build with an image scan and a digest-pinned push. Integration runs against the real brokers and the real search engine because a mocked broker cannot fail the way a real one does.
 
 **CI never touches the cluster.** No pipeline job holds cluster credentials. The pipeline's last act is committing the image digest to the GitOps manifest repository, and ArgoCD reconciles from there — which is also why a rollback is a Git operation rather than a deploy.
 

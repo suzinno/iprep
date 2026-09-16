@@ -914,7 +914,7 @@ The other cost is subtler: over-permissive coercion. Pydantic will happily turn 
 ### Q1. What is a modular monolith, and how is it different from a monolith that simply has not been split yet?
 
 **Brief answer**
-A modular monolith enforces internal boundaries — separate packages, separate database schemas, and no cross-module imports except through a published interface — while deploying as one unit. The difference from an unsplit monolith is that the boundaries are enforced, not aspirational.
+A modular monolith enforces internal boundaries — separate packages, separate database schemas, and no cross-module imports except through a published interface — while deploying as one unit. The difference from an unsplit monolith is that the boundaries are enforced by a gate that fails the build, not aspirational.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
@@ -925,7 +925,11 @@ A modular monolith enforces internal boundaries — separate packages, separate 
 
 **What it costs.** One release blocks another's features — a change in `diary` that fails a gate holds up a `records` fix. That is a real price and the design names it. It was accepted because at around 200 requests per second peak with one team, distributed transactions across four services would buy latency and on-call load for no throughput gain.
 
-**How the boundary is actually kept.** This is the part that separates a modular monolith from a monolith with good intentions. Enforcement has to be mechanical: an import-linter rule in the pipeline that fails the build on a forbidden cross-module import, and per-schema database roles so a module physically cannot read another's tables. Without a gate, module boundaries erode at exactly the rate of deadline pressure — and then the architecture diagram describes something that stopped being true a year ago.
+**How the boundary is actually kept.** This is the part that separates a modular monolith from a monolith with good intentions. Enforcement has to be mechanical, and the complete version is two controls: an import-linter rule in the pipeline that fails the build on a forbidden cross-module import, and per-schema database roles so a module physically cannot read another's tables. Without a gate, module boundaries erode at exactly the rate of deadline pressure — and then the architecture diagram describes something that stopped being true a year ago.
+
+**This design takes the first control and declines the second, deliberately.** The `import-linter` contracts are blocking, carry no `ignore_imports` allowance, and are proven able to fail; [`05-reliability.md`](./05-reliability.md) has the mechanism. Per-module database roles were declined because they would mean per-module engines and per-module connection pools, and that gives up the single commit across modules, which is the entire reason for staying in one process in the first place. So a module is contained by the linter and the tests, not by grants, and an integration assertion on schema access covers the raw SQL an import linter cannot see.
+
+**What that leaves uncovered**, said before being asked rather than after. The gate is static: it sees imports, not dynamic access — a `getattr` on another module's package, an import assembled from a string, a shared Redis key. The schema assertion closes the SQL route; nothing closes the dynamic route, and that is accepted, because reaching it takes deliberate effort rather than carelessness. The contracts also enforce *where* you cross, not *how much* you expose: an interface module that swells into a god-object passes every contract, and keeping it thin stays a review judgement.
 
 **The two exceptions prove the rule.** `scim-provisioning-svc` and `clinical-nlp-svc` were extracted because each has a release driver outside the team's control: the hospital directory's cadence and the model release cycle. Neither left for throughput. "It has an independent reason to be deployed on a different schedule" is a much better extraction criterion than "it feels like a separate thing".
 
@@ -1651,12 +1655,14 @@ Line coverage tells you which lines executed during the suite. It does not tell 
 ### Q1. `ruff`, a strict type checker, SonarQube, and Trivy all gate the pipeline. What does each catch that the others do not?
 
 **Brief answer**
-`ruff` catches style and simple correctness patterns in milliseconds; the type checker catches contract mismatches across function and module boundaries; SonarQube catches maintainability, duplication, and coverage on new code; Trivy catches vulnerable dependencies and image layers. Their overlaps are small and their blind spots are different.
+`ruff` catches style and simple correctness patterns in milliseconds; the import-linter contracts catch a boundary violation no test will ever notice; the type checker catches contract mismatches across function and module boundaries; SonarQube catches maintainability, duplication, and coverage on new code; Trivy catches vulnerable dependencies and image layers. Their overlaps are small and their blind spots are different.
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
 **`ruff`** is a linter and formatter fast enough to run on save and in a pre-commit hook, and it subsumes what Black and isort do separately — formatting and import ordering — which is worth knowing when a project's tooling list names all three. Beyond formatting it catches unused imports, shadowed names, mutable default arguments, bare `except`, and a large set of bug-prone patterns — the class of defect that is obvious once pointed out and invisible during review. Its value is that it is instant, so it never becomes a reason to skip the check.
+
+**The import-linter contracts** run at the same end of the pipeline as `ruff` and catch the one class every other gate is structurally blind to. A `records` module reaching into `diary` internals is valid Python: the type checker is satisfied, the suites stay green, and the behaviour is unchanged. The defect is architectural rather than behavioural, so only a tool reading the import graph can see it — and seeing it costs seconds, which is why it belongs beside the linter rather than among the tests.
 
 **A strict type checker** — `pyright --strict` here, `mypy` in the client's stack; the distinction matters less than the strictness setting — catches what a linter cannot: a function called with the wrong argument type, an `Optional` dereferenced without a guard, a return type that does not match, a refactor that changed a signature and missed three call sites. On typed SQLAlchemy 2 models it also catches column type mismatches, which on a patient record is where a wrong join starts. Strict mode is what makes it worth having; permissive typing catches the errors you would have found anyway.
 
@@ -1710,7 +1716,7 @@ Because the defects that matter here only exist in the interaction: row-level se
 
 **What I would do to keep the cost honest**, because defending the approach is not the same as accepting any duration:
 
-- Run the fast gates first — `ruff`, then types, then unit and contract tests — so a trivial mistake fails in two minutes and never reaches the expensive stage.
+- Run the fast gates first — `ruff`, the import contracts, then types, then unit and contract tests — so a trivial mistake fails in two minutes and never reaches the expensive stage.
 - Start containers once per pipeline run and share them across tests, with per-test isolation by transaction rollback or by schema rather than by restarting the stack.
 - Parallelise integration tests across workers with isolated schemas.
 - Keep a *small* set of full end-to-end paths and push everything else down to the cheapest layer that can still detect the defect. Integration testing is a tool for interaction defects, not a default.
@@ -1808,7 +1814,7 @@ Work around it by shifting the fast feedback left — pre-commit hooks and the l
 
 **Making it faster, in the order I would try.**
 
-1. **Order gates cheapest-first.** `ruff` in seconds, types in a minute, unit and contract tests, then the container-backed integration stage. A typo fails in ninety seconds instead of twenty-five minutes. This is usually the largest perceived improvement and costs nothing.
+1. **Order gates cheapest-first.** `ruff` and the import contracts in seconds, types in a minute, unit and contract tests, then the container-backed integration stage. A typo fails in ninety seconds instead of twenty-five minutes. This is usually the largest perceived improvement and costs nothing.
 2. **Cache aggressively.** The Poetry virtual environment keyed on the lockfile hash, Docker layers, and the container images pulled once. Dependency installation is often a surprisingly large share of the total.
 3. **Parallelise the integration stage** across workers with isolated schemas, and start the containers once per run rather than per suite.
 4. **Split by change scope** where the module boundaries genuinely allow it — a change confined to `clinical-content` need not run every `identity` integration test on every push, provided the full suite runs before merge to the main branch.

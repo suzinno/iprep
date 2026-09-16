@@ -96,7 +96,8 @@ GitLab CI builds and gates; **[ArgoCD](https://argo-cd.readthedocs.io/en/stable/
 ```mermaid
 flowchart LR
     MR["Merge request"] --> LINT["ruff"]
-    LINT --> TYPE["pyright --strict"]
+    LINT --> CONTRACTS["import-linter contracts"]
+    CONTRACTS --> TYPE["pyright --strict"]
     TYPE --> UNIT["pytest unit + contract"]
     UNIT --> INTEG["pytest integration<br/>(compose: pg, mongo, es, redis, rabbitmq)"]
     INTEG --> SONAR["SonarQube quality gate"]
@@ -109,7 +110,9 @@ flowchart LR
     ROLL --> VERIFY["PostSync: smoke + SLO check"]
 ```
 
-**Gates are blocking, and each can actually fail the pipeline** — `ruff` on lint, `pyright --strict` on types, `pytest` on unit, contract, and integration suites, SonarQube on coverage and new-code quality. Integration tests run against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache`, and `rmq-core` containers via Docker Compose, because a mocked broker cannot fail the way a real one does. Test coverage targets the contracts the brief names: API schemas, identity and SCIM flows, and clinical content services — the paths where a regression removes a patient's access.
+**Gates are blocking, and each can actually fail the pipeline** — `ruff` on lint, `import-linter` on the module boundary, `pyright --strict` on types, `pytest` on unit, contract, and integration suites, SonarQube on coverage and new-code quality. Integration tests run against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache`, and `rmq-core` containers via Docker Compose, because a mocked broker cannot fail the way a real one does. Test coverage targets the contracts the brief names: API schemas, identity and SCIM flows, and clinical content services — the paths where a regression removes a patient's access.
+
+**The module boundary is a gate, not a convention.** `import-linter` contracts are checked into the repository and declare `diary`, `records`, `clinical-content`, and `identity` independent of one another: a module's published in-process interface is the only entry point across a boundary, and any other import fails the build. The stage runs beside `ruff`, in seconds, ahead of the type check, where the cheapest-first ordering puts it. There is no `ignore_imports` allowance and there never has been: `care-core` was greenfield and the contracts were written with the first module, which is the difference between this and a codebase that records today's violations as a baseline and pays them down. Two things complete it. An import linter cannot see raw SQL, so each module's SQLAlchemy metadata is bound to its own schema and an integration test fails a module that emits SQL against a schema it does not own — a check on cross-module access inside `care-core`, which does not touch migration ownership and does not claim to. And a deliberate cross-module import is a fixture in the pipeline's own check, so a contract that has quietly stopped matching anything after a package rename fails loudly instead of passing green. That is why the gate is trusted rather than merely configured.
 
 **Migrations use expand/contract, and this is what makes blue-green possible.** A release adds columns and backfills; the next removes what is no longer read. Because every migration is backwards-compatible with the previous image, both colours run against the same schema during a cut-over, and a rollback is an ArgoCD revision revert with no down-migration. A migration that cannot be written this way is split across two releases.
 

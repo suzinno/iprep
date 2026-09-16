@@ -6,7 +6,7 @@
   - [The Spine — Ten Lines to Memorise](#the-spine--ten-lines-to-memorise)
   - [What the Product Is (~50 s)](#what-the-product-is-50-s)
   - [My Role, in One Line (~10 s)](#my-role-in-one-line-10-s)
-  - [The Shape of the System (~85 s)](#the-shape-of-the-system-85-s)
+  - [The Shape of the System (~90 s)](#the-shape-of-the-system-90-s)
   - [The Data Layer (~70 s)](#the-data-layer-70-s)
   - [Identity and Access (~80 s)](#identity-and-access-80-s)
   - [How Services Talk, and How They Stay Consistent (~100 s)](#how-services-talk-and-how-they-stay-consistent-100-s)
@@ -26,7 +26,7 @@
 1. One record has two audiences, and their access rules are opposite.
 2. The request rate was low. The tables were not. The low rate is why this isn't twenty services.
 3. The core is a modular monolith with four modules. Two services moved out, and each had its own reason to be released.
-4. Nothing automatic enforced the module boundary. Schema ownership and code review held it, and that is weaker than it sounds.
+4. The module boundary was a build gate, not a habit. An import across a boundary failed the build, and a test caught a module reading another module's schema.
 5. Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
 6. Every index serves a named query. The big tables are partitioned. Check-ins is 110 million rows. The timeline is keyset, not offset. → **35%** (search)
 7. Two identity planes. Patients sign up. Clinicians are provisioned, and the gateway checks the token audience.
@@ -51,7 +51,7 @@ Those opposite rules shaped most of the design.
 
 What my role implied - I was a backend engineer on the core platform. I owned the data and search layer, the identity and provisioning APIs, the event-driven paths, and the pipeline.
 
-## The Shape of the System (~85 s)
+## The Shape of the System (~90 s)
 
 The system was designed to handle twenty-five thousand patients a day, which is about two hundred requests a second at peak.
 The request rate was low. But the tables were not small — for instance, `check-ins` is around a hundred and ten million rows.
@@ -60,7 +60,7 @@ So, what influenced the architecture most:
 > **"The rate is low, but the rules are strict. That's the whole reason this isn't twenty microservices."**
 
 The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"): one deployable unit with four modules<span style="color:gray"> — patient diary, clinical records, clinical content and identity</span>. Each module has its own database schema, so the boundary in the code is also a boundary in the database.
-Modules don't import each other. They rather call a published interface. <span style="color:gray">The published interface makes the module boundaries real. They are just not network boundaries.</span>
+Modules don't import each other. They rather call a published interface. And the pipeline enforced that. An import across a module boundary failed the build. <span style="color:gray">The published interface makes the module boundaries real. They are just not network boundaries.</span>
 
 I designed that split. And also two parts moved out as separate microservies, each with its own reason:
 - **SCIM provisioning** <span style="color:gray">(The hospital directory calls the SCIM service to create and disable clinician accounts.)</span>, because the hospital decides when this service is released,
@@ -76,9 +76,13 @@ With four modules in one deployable, one person's release blocks someone else's 
 
 <details>
 <summary><strong>Boundaries</strong></summary>
-Now the honest part, and it's the thing I'd change first. Nothing automatic enforced that module boundary. The pipeline had no import check that fails the build on a cross-module import, so schema ownership and code review were what held it.
+Here is what made that boundary real. The pipeline had import-linter contracts. They declared the four modules independent of each other, and they failed the build on any import that crossed a boundary outside the published interface. There was never an ignore list, because we wrote the contracts with the first module.
 
-> **"On a codebase of that size, that is weaker than it sounds. Before I split anything further, I would add that check."**
+An import linter can't see raw SQL. So each module's models were bound to its own schema, and an integration test failed if a module ran SQL against a schema it didn't own.
+
+If you start from a codebase that is already entangled, you do it the other way round. You record today's violations as a baseline, fail the build on every new one, and pay the baseline down. We never needed that, because we started with the gate.
+
+> **"A gate you have never seen go red isn't a gate. So a deliberate cross-module import is one of the pipeline's own test cases."**
 </details>
 
 <details>
@@ -122,7 +126,7 @@ Each module is its own Python package and has its own [PostgreSQL](https://www.p
 
 **What moving the services out did not give us.** `scim-provisioning-svc` also writes to `pg-clinical`. It writes only to the `identity` schema. It writes the `clinician` and `care_team_member` rows, and the `care_relationship` rows that a deprovisioning closes. So the separation is at the deployment level, not the data level. The service releases on its own cadence. But it cannot change those tables without considering `care-core`. Schema ownership is what keeps this under control. If someone proposes a second service that writes across schemas, that is the point where this arrangement stops being acceptable.
 
-**The honest limit.** Nothing automatic enforces the module boundary. Python has no visibility modifier. The pipeline also has no import check that fails the build on a cross-module import. Schema ownership and code review are what hold the boundary. On a codebase of this size, that is weaker than it sounds. Before I split anything further, I would add that import check.
+**The honest limit.** The gate is static. It sees imports, not dynamic access — reaching into another module's package by name at run time, or an import built from a string. The schema test covers the SQL route. Nothing covers the dynamic route, and we accepted that, because it takes deliberate effort rather than carelessness. The contracts also police where you cross, not how much you expose. An interface module that grows into a god-object passes every contract, and keeping it thin is still a review judgement. And the database doesn't enforce any of it. `care-core` is one process behind one transaction-mode pooler. Per-module roles would mean per-module engines and pools, and that would give up the single commit across modules, which is the whole reason we stayed in one process.
 
 </details></li>
 </ul>
@@ -425,8 +429,6 @@ And trace context travels in message headers, not just in HTTP headers, so one t
 
 So, to sum up: a modular monolith with two services that had a real reason to move out, Postgres enforcing the access rules itself, and everything slow or unreliable on queues, off the request path.
 
-Three things I'd be glad to be asked about: the pooled connection that could have leaked one patient's rows into the next query, the acknowledgement that meant nothing, and the module boundary that nothing enforced. And if the [AI](https://en.wikipedia.org/wiki/Artificial_intelligence "Artificial Intelligence — Software that generates or assists with tasks such as writing code") side is interesting, I can go into that too.
-
 ## If Asked — Two Problems That Cost Us (~125 s)
 
 ### Problem one — the acknowledgement that meant nothing
@@ -497,7 +499,7 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 
 ## Optional — How It Ships, in Full (~55 s)
 
-We use GitLab CI, and every gate can really fail the build. The first gates are ruff, pyright in strict mode, and unit and contract tests. Then integration tests run against real containers: real Postgres, real Elasticsearch and real RabbitMQ. After that, there is a SonarQube gate.
+We use GitLab CI, and every gate can really fail the build. The first gates are ruff, the import-linter contracts, pyright in strict mode, and unit and contract tests. Then integration tests run against real containers: real Postgres, real Elasticsearch and real RabbitMQ. After that, there is a SonarQube gate.
 
 CI never touches the cluster. The last thing CI does is commit to the GitOps repo. ArgoCD then syncs that commit onto OpenShift and [AKS](https://learn.microsoft.com/en-us/azure/aks/ "Azure Kubernetes Service — Managed Kubernetes hosting on Azure").
 
@@ -526,11 +528,12 @@ I want to point out one thing, because it's the part people skip. Every migratio
 **The gates, in order. Every gate can really fail the build.**
 
 1. `ruff` for lint.
-2. `pyright --strict` for types.
-3. Pytest unit and contract suites.
-4. Pytest integration tests against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache` and `rmq-core` containers on Docker Compose.
-5. The SonarQube quality gate on coverage and new-code quality.
-6. A Docker build with an image scan and a digest-pinned push.
+2. `import-linter` contracts on the `care-core` module boundary.
+3. `pyright --strict` for types.
+4. Pytest unit and contract suites.
+5. Pytest integration tests against real `pg-clinical`, `mongo-content`, `es-clinical`, `redis-cache` and `rmq-core` containers on Docker Compose.
+6. The SonarQube quality gate on coverage and new-code quality.
+7. A Docker build with an image scan and a digest-pinned push.
 
 Integration tests run against the real brokers and the real search engine. This is because a mocked broker cannot fail the way a real broker does.
 

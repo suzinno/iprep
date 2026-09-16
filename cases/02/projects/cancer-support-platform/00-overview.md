@@ -52,7 +52,7 @@ Peak load is roughly **200 [QPS](https://en.wikipedia.org/wiki/Queries_per_secon
 | **[Kubernetes](https://kubernetes.io/ "Kubernetes — Automates deployment, scaling and management of containerized applications") / AKS — `aks-ml`** | GPU node pool for `clinical-nlp-svc` only; holds no state, so it can be collapsed back |
 | **ArgoCD** | GitOps sync to both clusters; blue-green for `care-core`, canary for `clinical-nlp-svc` |
 | **GitLab / GitLab CI** | Source, pipeline, container registry, GitOps manifest repository |
-| **ruff / pyright / Pytest / SonarQube** | Blocking pipeline gates — lint, strict types, unit/contract/integration tests, quality gate |
+| **ruff / import-linter / pyright / Pytest / SonarQube** | Blocking pipeline gates — lint, module-boundary contracts, strict types, unit/contract/integration tests, quality gate |
 | **[Terraform](https://developer.hashicorp.com/terraform/docs "Terraform — Infrastructure as code tool that declares and provisions cloud infrastructure from configuration files")** | All Azure and cluster infrastructure; state in Azure Storage; hand-made changes to managed resources are reported as drift |
 | **Docker / Docker Compose** | Image builds; local stack running the real brokers and search engine, and the same stack CI integration-tests against |
 | **Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production")** | Distributed tracing across FastAPI, SQLAlchemy, Celery, and RabbitMQ, continuous through async hops via `traceparent` |
