@@ -4,63 +4,55 @@
 
 - [Latest Project — Personalized Cancer Support Platform](#latest-project--personalized-cancer-support-platform)
   - [The Spine — Ten Lines to Memorise](#the-spine--ten-lines-to-memorise)
-  - [What the Product Is (~90 s)](#what-the-product-is-90-s)
-  - [My Role, in One Line](#my-role-in-one-line)
-  - [The Shape of the System (~90 s)](#the-shape-of-the-system-90-s)
-    - [The split, and what moved out](#the-split-and-what-moved-out)
-  - [The Data Layer (~170 s)](#the-data-layer-170-s)
-  - [Authentication and Authorization (~190 s)](#authentication-and-authorization-190-s)
-  - [How Services Talk, and How They Stay Consistent (~290 s)](#how-services-talk-and-how-they-stay-consistent-290-s)
-  - [Optional — The AI Part (~110 s)](#optional--the-ai-part-110-s)
-  - [Optional — How It Ships (~60 s)](#optional--how-it-ships-60-s)
-  - [Optional — Logs, Metrics and Traces (~70 s)](#optional--logs-metrics-and-traces-70-s)
-  - [If Asked — Two Problems That Cost Us (~130 s)](#if-asked--two-problems-that-cost-us-130-s)
+  - [What the Product Is (~50 s)](#what-the-product-is-50-s)
+  - [My Role, in One Line (~10 s)](#my-role-in-one-line-10-s)
+  - [The Shape of the System (~80 s)](#the-shape-of-the-system-80-s)
+  - [The Data Layer (~75 s)](#the-data-layer-75-s)
+  - [Identity and Access (~80 s)](#identity-and-access-80-s)
+  - [How Services Talk, and How They Stay Consistent (~100 s)](#how-services-talk-and-how-they-stay-consistent-100-s)
+  - [How It Ships, and How We See It (~25 s)](#how-it-ships-and-how-we-see-it-25-s)
+  - [Close (~35 s)](#close-35-s)
+  - [If Asked — Two Problems That Cost Us (~120 s)](#if-asked--two-problems-that-cost-us-120-s)
     - [Problem one — the acknowledgement that meant nothing](#problem-one--the-acknowledgement-that-meant-nothing)
     - [Problem two — the connection that could leak data](#problem-two--the-connection-that-could-leak-data)
-  - [Close (~40 s)](#close-40-s)
+  - [Optional — The AI Part (~100 s)](#optional--the-ai-part-100-s)
+  - [Optional — How It Ships, in Full (~60 s)](#optional--how-it-ships-in-full-60-s)
+  - [Optional — Logs, Metrics and Traces, in Full (~75 s)](#optional--logs-metrics-and-traces-in-full-75-s)
 
 ---
 
 ## The Spine — Ten Lines to Memorise
 
 1. One record has two audiences, and their access rules are opposite.
-2. The traffic is low, but the rules are strict. That is why it isn't twenty services.
-3. The core is a modular monolith with four modules. Two services moved out, and each one has its own release cadence.
-4. Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
-5. Every index serves a named query. The big tables are partitioned. The timeline uses keyset pagination, not offset. Search runs on Elasticsearch indexes. → **35%** (search)
-6. There are two identity planes. The gateway checks the token audience. [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") provisions clinicians and revokes their access.
-7. Row-level security in the database decides which patients each user can reach. If I forget to scope a query, it returns nothing. Every read is audited, so reads run on the primary.
-8. Facts go on the exchange. Jobs go on [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle"). Check-ins come over [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks"). Delivery goes over Service Bus.
-9. We use an outbox, not a dual write. Unique keys turn duplicates into updates. Reminder state is stored in Postgres. → **22%**
-10. Two problems that cost us: the acknowledgement that meant nothing, and the connection that could leak data.
+2. The request rate was low. The tables were not. The low rate is why this isn't twenty services.
+3. The core is a modular monolith with four modules. Two services moved out, and each had its own reason to be released.
+4. Nothing automatic enforced the module boundary. Schema ownership and code review held it, and that is weaker than it sounds.
+5. Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") is disposable. Blob holds the bytes.
+6. Every index serves a named query. The big tables are partitioned. Check-ins is 110 million rows. The timeline is keyset, not offset. → **35%** (search)
+7. Two identity planes. Patients sign up. Clinicians are provisioned, and the gateway checks the token audience.
+8. Roles say what you may *do*. Which rows you may *reach* is resolved per request, below the application. For us that was row-level security.
+9. When the hospital disables a clinician, [SCIM](https://scim.cloud/ "System for Cross-domain Identity Management — Standardizes automated provisioning and deprovisioning of user identities between systems") closes every open care relationship in the same transaction.
+10. Facts go on the exchange. Jobs go on [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle"). Outbox, not dual write. Unique keys turn duplicates into updates. Reminder state is a row in Postgres. → **22%**
 
-## What the Product Is (~90 s)
+## What the Product Is (~50 s)
 
-Let me start with what the product does. Then I'll go through the architecture. In each part, I'll point out which piece was mine.
-
-It's a support platform for people diagnosed with cancer and for the clinicians who look after them. A patient logs how they feel every day. They read guidance written for their exact diagnosis and treatment. They keep appointments, prescriptions, visit notes and scans in one place. The care team sees the same record.
-
-**The problem it solves:** Before this, all of that information was in paper packs, email threads and phone calls.
+It's a support platform for people diagnosed with cancer and for the clinicians who look after them. A patient logs how they feel every day, reads guidance written for their exact diagnosis and treatment, and keeps appointments, prescriptions and scans in one place. The care team sees the same record. Before this, all of that was in paper packs, email threads and phone calls.
 
 > **"One record has two audiences, and their access rules are opposite."**
 
-A patient sees everything about themselves and nothing about anyone else. A clinician sees a small part of the records of many patients. And a clinician sees a patient only while they are actually on that patient's care team.
+A patient sees everything about themselves and nothing about anyone else. A clinician sees a small part of many patients' records, and only while they are on that patient's care team. Those opposite rules shaped most of the design.
 
-Those opposite rules shaped most of the design.
+## My Role, in One Line (~10 s)
 
-**One number for scale:** The platform serves about twenty-five thousand patients a day. At peak, it handles roughly two hundred requests a second.
+I was a backend engineer on the core platform. I owned the data and search layer, the event-driven paths, the identity and provisioning APIs, and the pipeline.
 
-> **"The traffic is low, but the rules are strict. That's the whole reason this isn't twenty microservices."**
+## The Shape of the System (~80 s)
 
-## My Role, in One Line
+Twenty-five thousand patients a day, about two hundred requests a second at peak. The request rate was low. The tables were not — check-ins is around a hundred and ten million rows.
 
-I was a backend engineer on the core platform. I owned the data and search layer, the event-driven paths, and the identity and provisioning APIs. I also owned the model side of the content pipeline and the [CI](https://en.wikipedia.org/wiki/Continuous_integration "Continuous Integration — Automatically builds and tests code on every change")/[CD](https://en.wikipedia.org/wiki/Continuous_deployment "Continuous Deployment — Automatically releases every build that passes the pipeline's gates to production without a manual step") pipeline.
+> **"The rate is low, but the rules are strict. That's the whole reason this isn't twenty microservices."**
 
-## The Shape of the System (~90 s)
-
-The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"). It is one deployable unit with four modules: patient diary, clinical records, clinical content and identity.
-
-Each module is its own package with its own database schema. Modules don't import each other directly. Instead, they use a published interface. That makes the module boundaries real. They are just not network boundaries.
+The core is a modular monolith in [FastAPI](https://fastapi.tiangolo.com/ "FastAPI — Python web framework for building HTTP APIs with async support and automatic schema generation"): one deployable unit with four modules — patient diary, clinical records, clinical content and identity. Each module has its own database schema, so the boundary in the code is also a boundary in the database.
 
 <details>
 <summary><strong>If asked: "your CV says three modules"</strong></summary>
@@ -69,21 +61,18 @@ Yes, it does: diary, clinical content and identity. Records is the fourth module
 
 </details>
 
-### The split, and what moved out
+I designed that split. Two parts moved out, each with its own reason to be released: SCIM provisioning, because the hospital decides when it ships, and the clinical [NLP](https://en.wikipedia.org/wiki/Natural_language_processing "Natural Language Processing — Computational techniques for analyzing and generating human language") service, because it needs GPUs.
 
-I designed that split. Two parts moved out into their own services:
+Now the honest part, and it's the thing I'd change first. Nothing automatic enforced that module boundary. The pipeline had no import check that fails the build on a cross-module import, so schema ownership and code review were what held it.
 
-- The first is SCIM provisioning. The hospital directory calls this service to create and disable clinician accounts. It moved out because the hospital decides when this service is released, not us.
-- The second is the clinical [NLP](https://en.wikipedia.org/wiki/Natural_language_processing "Natural Language Processing — Computational techniques for analyzing and generating human language") service. It moved out for two reasons. It needs GPUs. And it ships when a new model version is ready, not when the product ships.
-
-> **"A service moves out when it has its own reason to be released. It does not move out because the diagram looks cleaner."**
-
-Here is the honest trade-off. With four modules in one deployable, one person's release blocks someone else's feature. But we accepted that. At two hundred requests a second, splitting the modules would have given us distributed transactions and more on-call alerts. It would have given us no extra throughput.
+> **"On a codebase of that size, that is weaker than it sounds. Before I split anything further, I would add that check."**
 
 <details>
 <summary><strong>If asked: "how would you decompose further?"</strong></summary>
 
-Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern. I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
+**The trade-off we accepted.** With four modules in one deployable, one person's release blocks someone else's feature. At two hundred requests a second, splitting the modules would have given us distributed transactions and more on-call alerts, and no extra throughput.
+
+**How I would decompose further.** Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern. I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
 
 > **"If you split by domain nouns, you end up with a distributed monolith."**
 
@@ -126,26 +115,32 @@ Each module is its own Python package and has its own [PostgreSQL](https://www.p
 
 </details>
 
-## The Data Layer (~170 s)
+## The Data Layer (~75 s)
 
-There are five stores, and each one has exactly one job:
-
-- **Postgres** is the system of record. It stores patients, care relationships, appointments, prescriptions, notes, check-ins, consent and audit.
-- **[MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents")** holds the education content, for two reasons. Every page is versioned. And the page shape changes by cancer type, treatment line and language. In a relational model, this content would need a very wide table that is mostly empty.
-- **Elasticsearch** serves search over notes and guidance. It is a projection. We can rebuild the whole index from Postgres and Mongo.
-- **Redis** holds nothing durable. It holds sessions, caches, rate limits and idempotency keys. If we lose Redis, the system gets slow, but NOT wrong.
-- **Azure Blob Storage** holds the document bytes: scans, letters and the audit archive. By year five, it will hold about twelve terabytes. That is more than all the other stores put together.
+There are five stores, and each one has exactly one job.
 
 > **"Postgres holds the truth. Mongo holds the content. Elasticsearch is a view. Redis is disposable. Blob holds the bytes."**
 
-I designed the Postgres schemas and the Elasticsearch indexes. Four patterns are worth mentioning:
+I designed the Postgres schemas and the Elasticsearch indexes. Three things are worth naming.
 
-- Each module has its own schema, so a module boundary is also a database boundary.
-- The big tables are check-ins and audit, and they are partitioned by month. The check-ins table has around a hundred and ten million rows.
-- Every index exists for one named query in the [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data"). If I can't name the endpoint, we don't create the index.
-- The patient timeline is a union across five tables. Each table orders on a different natural column. One of those columns is a date, not a timestamp. You can't order that union deterministically. You also can't serve it from one index shape. So every timeline table has a normalised ordering column. The cursor has three parts: that column, the source table and the row ID. When rows from different sources tie, the tie breaks the same way every time. That is what makes it keyset pagination, not offset pagination. Offset pagination gets slower the deeper you page. On a 110-million-row table, it degrades badly.
+Every index exists for one named query in the [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data"). If I can't name the endpoint, we don't create the index.
+
+The two big tables are check-ins and audit, and both are partitioned by month. Check-ins is around a hundred and ten million rows.
+
+And the patient timeline is a union across five tables, so the cursor carries a normalised ordering column plus the source table and the row ID. That is what makes it keyset pagination and not offset. Offset gets slower the deeper you page, and on a table that size it degrades badly.
 
 > **"That work cut search latency by about thirty-five percent. The number is for clinical content search. I don't have a measured number for the timeline or the record queries."**
+
+<details>
+<summary><strong>Optional — why each store is the store it is</strong></summary>
+
+- **Postgres** is the system of record: patients, care relationships, appointments, prescriptions, notes, check-ins, consent and audit.
+- **[MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents")** holds the education content, for two reasons. Every page is versioned, and the page shape changes by cancer type, treatment line and language. In a relational model, this content would need a very wide table that is mostly empty.
+- **Elasticsearch** serves search over notes and guidance. It is a projection, and we can rebuild the whole index from Postgres and Mongo.
+- **Redis** holds nothing durable: sessions, caches, rate limits and idempotency keys. If we lose Redis, the system gets slow, but NOT wrong.
+- **Azure Blob Storage** holds the document bytes — scans, letters and the audit archive. By year five, it will hold about twelve terabytes, more than all the other stores put together.
+
+</details>
 
 <details>
 <summary><strong>Responsibilities</strong></summary>
@@ -209,7 +204,7 @@ Each index has three primary shards and one replica. In total, they hold around 
 
 **The care-team views.** A clinician's patient list comes from the partial index over open `care_relationship` rows. So the query touches only the currently active rows. It does not touch the full history that the temporal table keeps. The query author does not have to remember a `WHERE` clause for which patients are reachable. Row-level security handles that, and the authorization section covers it.
 
-**One constraint that row-level security puts on the [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database").** We write the policies so that the patient scope can use the index. Suppose a policy is written the wrong way, as a plain `IN` subquery or hidden in a function. Then the policy becomes a filter. A query that relies on it reads every row of the monthly partitions it touches in `wellbeing_checkin` and `audit_event`, not just the rows of reachable patients. Partition pruning still happens, because it comes from the time bound. The query is still correct, but it quietly becomes slow. An `EXPLAIN` assertion in CI guards the plan shape. We don't rely on code review to notice the problem.
+**One constraint that row-level security puts on the [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database").** We write the policies so that the patient scope can use the index. Suppose a policy is written the wrong way, as a plain `IN` subquery or hidden in a function. Then the policy becomes a filter. A query that relies on it reads every row of the monthly partitions it touches in `wellbeing_checkin` and `audit_event`, not just the rows of reachable patients. Partition pruning still happens, because it comes from the time bound. The query is still correct, but it quietly becomes slow. An `EXPLAIN` assertion in [CI](https://en.wikipedia.org/wiki/Continuous_integration "Continuous Integration — Automatically builds and tests code on every change") guards the plan shape. We don't rely on code review to notice the problem.
 
 **[Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy"), and why migrations are a deploy-time step here.** Migrations run as an [ArgoCD](https://argo-cd.readthedocs.io/en/stable/ "Argo CD — GitOps continuous delivery tool that syncs a Kubernetes cluster to a Git repository") PreSync hook. They run under a separate owning role that never serves a request. And they are expand-contract. That is what lets both colours of a blue-green cut-over run against one schema.
 
@@ -220,39 +215,41 @@ Each index has three primary shards and one replica. In total, they hold around 
 
 </details>
 
-## Authentication and Authorization (~190 s)
+## Identity and Access (~80 s)
 
 I'd call this the most important part of the system.
 
-There are two separate identity planes:
+Two identity planes. Patients sign up by themselves. Clinicians never sign up — they are provisioned from the hospital's Entra ID directory over SCIM 2.0. The two planes get different token audiences, and the gateway checks the audience against the route.
 
-- Patients sign up by themselves, in their own tenant.
-- Clinicians never sign up. They are provisioned from the hospital's Entra ID directory over SCIM 2.0.
-
-Both planes use the [OAuth2](https://datatracker.ietf.org/doc/html/rfc6749 "OAuth 2.0 — Authorization framework that lets an application access resources on a user's behalf") authorization code flow with [PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Proof Key for Code Exchange — Protects an OAuth authorization code exchange for clients that cannot hold a secret"). Access tokens are short-lived.
-
-The two planes get different token audiences. The gateway checks the audience against the route.
-
-> **"The gateway rejects a patient token on a clinician endpoint. The token never reaches the code."**
-
-Then there is authorization. It has two parts:
-
-- Roles say what you can *do*. For example: write a visit note, approve content or manage a care team.
-- BUT *which patients you can reach* isn't a role. It's a fact that changes over time. So that check is in the database, as Postgres row-level security ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html "Row Level Security — Restricts which rows a database query can see or modify based on the current user")).
-
-Every request sets the actor inside the transaction. The policies join through the care relationship. The care relationship is stored as a time range, with a start and an end.
-
-That is the reason to put the check in the database. Row-level security turns the most common application bug into an empty result, not a data breach. The application checks still exist. They are just a second layer.
+Then authorization, and I'd put it as a principle first. Roles say what you may *do*: write a visit note, approve content, manage a care team. But *which rows you may reach* is not a role. It is a fact that changes over time, so it is resolved per request, below the application. The mechanism in our case was Postgres row-level security.
 
 > **"If I forget to scope a query, it returns nothing. It doesn't return someone else's record."**
 
-I also built the SCIM side. So when the hospital disables a clinician, we close every open care relationship in the same transaction. Access ends when employment ends. Nobody on our side has to do anything.
+I also built the SCIM side, and that is the part I'd most want to be asked about.
 
-I want to mention one more consequence of all this, because it's the least obvious thing in the design. Every read of patient data writes an audit row. This includes a read served from cache, because a cache hit is still an access. So an audited read is a write. That means an audited read can't be served from a read replica. And it fails when the primary fails.
+> **"When the hospital disables a clinician, we close every open care relationship in the same transaction."**
+
+Access ends when employment ends, and there is no step on our side that anyone could forget.
+
+<details>
+<summary><strong>Optional — how the reach check is wired, and why a failed sync is paged</strong></summary>
+
+**How the check is wired.** Every request sets the actor inside the transaction, and the policies join through the care relationship, which is stored as a time range with a start and an end. Resolving reach below the application is what turns the most common application bug into an empty result rather than a data breach. The application checks still exist. They are just a second layer.
+
+**Why a failed sync is paged.** A SCIM sync failure is a security event, not a background-job failure. It is the one alert where the *absence* of a change is the incident: some access should have ended and has not.
+
+</details>
+
+<details>
+<summary><strong>Optional — why an audited read can't be served from a replica</strong></summary>
+
+Every read of patient data writes an audit row. This includes a read served from cache, because a cache hit is still an access. So an audited read is a write. That means it can't be served from a read replica, and it fails when the primary fails.
 
 > **"Read availability is limited by write availability, and we chose that."**
 
 The alternative was to queue the audit rows, so reads survive a failover. But then we would live with an audit trail that has a gap in it. For a health record, the gap is the worse outcome. So we paid for the coupling instead. We use zone-redundant [HA](https://en.wikipedia.org/wiki/High_availability "High Availability — System design goal of remaining operational despite component failure") and a sixty-second failover, and that fits the availability budget. The replicas still exist. They just don't carry audited patient reads. They carry index rebuilds, reporting and backup verification.
+
+</details>
 
 <details>
 <summary><strong>Responsibilities</strong></summary>
@@ -276,46 +273,51 @@ Entra ID is the only authorized caller. Entra ID calls with its own client crede
 
 **Two audiences, checked before any code runs.** Patients authenticate in the patient tenant and receive `api://care-platform/patient`. Clinicians authenticate in the hospital tenant and receive `api://care-platform/clinician`. [APIM](https://learn.microsoft.com/en-us/azure/api-management/ "Azure API Management — Publishes, secures and rate limits APIs behind a managed gateway") first validates the signature against the cached [JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "JSON Web Key Set — Publishes the public keys a party needs to verify a signed token"). Then it checks the issuer, the expiry, and the audience against the route's plane. So the gateway rejects a clinician token on a diary endpoint with `403`. `care-core` validates the token again. It does not trust a header that the gateway set. So if someone bypasses APIM, they still do not bypass authentication.
 
-**Token mechanics.** We use the OAuth 2.0 authorization code flow with PKCE, and [OIDC](https://openid.net/developers/how-connect-works/ "OpenID Connect — Identity layer on top of OAuth 2.0 for authenticating users") for identity. Access tokens last 15 minutes. Refresh tokens are rotated and bound to the client. Patients use multi-factor authentication at enrolment and on sensitive operations. On the clinician side, the hospital's own conditional access applies. The platform uses that conditional access as it is and does not weaken it.
+**Token mechanics.** We use the OAuth 2.0 authorization code flow with [PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Proof Key for Code Exchange — Protects an OAuth authorization code exchange for clients that cannot hold a secret"), and [OIDC](https://openid.net/developers/how-connect-works/ "OpenID Connect — Identity layer on top of OAuth 2.0 for authenticating users") for identity. Access tokens last 15 minutes. Refresh tokens are rotated and bound to the client. Patients use multi-factor authentication at enrolment and on sensitive operations. On the clinician side, the hospital's own conditional access applies. The platform uses that conditional access as it is and does not weaken it.
 
 **The JWKS cache is an availability choice, not a performance one.** Entra's signing keys stay in `redis-cache` for 12 hours. They refresh when an unknown `kid` arrives. That long [TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires") is exactly why an Entra outage leaves existing sessions working. The outage only makes new sign-ins fail.
 
-**The honest limits. There are two.** First, deprovisioning closes the care relationships instantly. But a token that was already issued stays valid until it expires. So there is a 15-minute window. In that window, authentication succeeds, but every reach check returns nothing. Second, the check-in transport authenticates per *connection*, not per publish. This is because [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers")'s MQTT plugin has no per-message authentication. So a long-lived mobile connection needs a maximum lifetime that is shorter than the refresh window. The connection must also be forced to re-authenticate. The design flags this gap. The gap needs a prototype against real token lifetimes before we commit to that transport. The next section covers the transport itself.
+**The honest limits. There are two.** First, deprovisioning closes the care relationships instantly. But a token that was already issued stays valid until it expires. So there is a 15-minute window. In that window, authentication succeeds, but every reach check returns nothing. Second, the check-in transport authenticates per *connection*, not per publish. This is because [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers")'s [MQTT](https://mqtt.org/ "Message Queuing Telemetry Transport — Lightweight publish-subscribe protocol for constrained devices and unreliable networks") plugin has no per-message authentication. So a long-lived mobile connection needs a maximum lifetime that is shorter than the refresh window. The connection must also be forced to re-authenticate. The design flags this gap. The gap needs a prototype against real token lifetimes before we commit to that transport. The next section covers the transport itself.
 
 </details></li>
 </ul>
 
 </details>
 
-## How Services Talk, and How They Stay Consistent (~290 s)
+## How Services Talk, and How They Stay Consistent (~100 s)
 
-We have five transports. Each one has a stated job, so nobody has to guess which one to use.
-
-- **Synchronous [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs")** is for anything a user is waiting for. A screen that someone is looking at should not be eventually consistent.
-- **A RabbitMQ topic exchange** is for domain facts. For example: check-in recorded, note created, appointment scheduled.
-- **Celery** is for work we own and must retry. For example: reminder sweeps, page generation and indexing.
-- **MQTT** is for check-ins from the phone.
-- **Azure Service Bus** is at the edge, where work goes to somebody else. At this edge, reminder delivery goes out and document ingest comes in. The Functions sit at that edge.
+We have five transports, and each one has a stated job, so nobody has to guess which one to use.
 
 > **"The exchange is for facts we publish. Celery is for work we owe. Service Bus is where work leaves our platform. They're not the same thing."**
 
-MQTT is there for a specific reason. A patient is often in a hospital basement or on a bad connection. With MQTT, the phone queues the check-in locally. It delivers the check-in when the phone reconnects. MQTT runs on the same RabbitMQ broker. So an MQTT check-in arrives on the same exchange that everything else consumes.
+The other two are [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs"), for anything a user is waiting for, and MQTT, for check-ins from the phone.
 
-Documents work the same way at the other edge. I moved that path from ad-hoc folders to Azure. A scan or a letter never goes through the API. The client gets a short-lived signed [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web") and uploads straight to Blob Storage. So multi-megabyte files never touch the pods that serve a clinician's timeline. The upload goes into a quarantine container. A blob-created event triggers a Function. The Function scans the file and extracts its text. We promote the file and make the document row visible only after that.
+I spent most of my design time on consistency. Three rules.
 
-> **"No record row ever points to an unscanned file."**
+**Nothing writes to Elasticsearch directly.** Every write commits to Postgres with an outbox row in the same transaction, and a relay publishes that row. The honest cost is about eight seconds before a new note is searchable. A dual write can commit and then fail the index write, and nothing detects that.
 
-I spent most of my design time on consistency. There are three rules:
+**The schema handles duplicates, not the code.** A redelivered check-in hits a unique key on patient and date, so it becomes an update instead of a second row.
 
-- **First**, nothing writes to Elasticsearch directly. Every write commits to Postgres with an outbox row in the same transaction. Then a relay publishes that outbox row. The honest cost: a new note becomes searchable in about eight seconds, or fifteen seconds at p95. **Reason:** With a dual write, the commit can succeed while the index write fails. Then the search index stays wrong permanently, and nothing detects it. With an outbox, the backlog is a metric, and it clears by itself.
-- **Second**, the schema handles duplicates, not the code. A redelivered check-in hits a unique key on patient and date, so it becomes an update. That turns at-least-once delivery into a predictable outcome instead of a bug.
-- **Third**, the state machine is in the database, not in the queue. Every reminder is a row with a state. Every delivery attempt is its own row. A worker uses FOR UPDATE SKIP LOCKED to claim the reminders that are due. That way, workers scale without dispatching the same reminder twice. The worker writes the attempt row. Then it hands the delivery to Service Bus. There, a Function does the actual send and posts the provider's receipt back. So "was it delivered?" is a query, not a guess. And a final failure escalates to the care team, instead of ending as a log line.
+**The state machine is in the database, not in the queue.** Every reminder is a row with a state, and every attempt is its own row. A worker claims what is due with `FOR UPDATE SKIP LOCKED`, so workers scale out without dispatching the same reminder twice.
 
 > **"If the queue is down, reminders are late. They are never lost."**
 
-The third rule is what cut missed reminders by over twenty percent. Before, reminders went out inline during a request. So if the request failed, the reminder failed with it. And nothing recorded that the reminder never arrived.
+That third rule is what cut missed reminders by over twenty percent.
 
-**On the security side:** We use [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere. No data store has a public endpoint. The one cross-cluster hop carries clinical free text, and it runs on mutual TLS. And the MQTT listener lets a device publish only to the topic that matches its own token.
+<details>
+<summary><strong>Optional — why MQTT, how documents get in, and the transport security</strong></summary>
+
+**Why REST for anything a user waits for.** A screen someone is looking at should not be eventually consistent.
+
+**Why MQTT for check-ins.** A patient is often in a hospital basement or on a bad connection. With MQTT, the phone queues the check-in locally and delivers it when the phone reconnects. MQTT runs on the same RabbitMQ broker, so an MQTT check-in arrives on the same exchange that everything else consumes.
+
+**How documents get in.** I moved that path from ad-hoc folders to Azure. A scan or a letter never goes through the API. The client gets a short-lived signed [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web") and uploads straight to Blob Storage, so multi-megabyte files never touch the pods that serve a clinician's timeline. The upload goes into a quarantine container. A blob-created event triggers a Function that scans the file and extracts its text. We promote the file and make the document row visible only after that.
+
+> **"No record row ever points to an unscanned file."**
+
+**Transport security.** We use [TLS](https://datatracker.ietf.org/doc/html/rfc8446 "Transport Layer Security — Encrypts and authenticates data sent over a network connection") everywhere. No data store has a public endpoint. The one cross-cluster hop carries clinical free text, and it runs on mutual TLS. And the MQTT listener lets a device publish only to the topic that matches its own token.
+
+</details>
 
 <details>
 <summary><strong>Responsibilities</strong></summary>
@@ -344,7 +346,7 @@ Problem one at the end of this document is about that third setting.
 
 **Quorum queues, because there is no longer an alternative.** RabbitMQ 4 removed classic mirrored queues. So every queue bound to `care.events`, and every Celery queue, is a quorum queue on a three-node cluster. Publisher confirms are mandatory. The broker acknowledges a message routed to a quorum queue only after a majority of its replicas has it.
 
-**Where the 22% comes from. It is not the queue.** The state machine is in `pg-clinical`, not in the transport. The 22% comes from that.
+**Where the 22% comes from. It is not the queue.** The state machine is in `pg-clinical`, not in the transport. The 22% comes from that. The baseline it is measured against is the old path: reminders went out inline during a request, so if the request failed the reminder failed with it, and nothing recorded that it never arrived.
 
 1. Every reminder is a row with a state.
 2. Beat ticks every 60 seconds.
@@ -384,7 +386,43 @@ A terminal failure escalates to the care team instead of ending as a log line. "
 
 </details>
 
-## Optional — The AI Part (~110 s)
+## How It Ships, and How We See It (~25 s)
+
+GitLab CI, then a GitOps commit that ArgoCD syncs onto OpenShift. Every migration is expand-contract, so both versions run against one schema and a rollback is reverting a revision.
+
+And trace context travels in message headers, not just in HTTP headers, so one trace covers the HTTP request, the broker hop and the index write.
+
+## Close (~35 s)
+
+So, to sum up: a modular monolith with two services that had a real reason to move out, Postgres enforcing the access rules itself, and everything slow or unreliable on queues, off the request path.
+
+Three things I'd be glad to be asked about: the pooled connection that could have leaked one patient's rows into the next query, the acknowledgement that meant nothing, and the module boundary that nothing enforced. And if the [AI](https://en.wikipedia.org/wiki/Artificial_intelligence "Artificial Intelligence — Software that generates or assists with tasks such as writing code") side is interesting, I can go into that too.
+
+## If Asked — Two Problems That Cost Us (~120 s)
+
+### Problem one — the acknowledgement that meant nothing
+
+The check-in path promises no data loss. The phone publishes a check-in and gets an acknowledgement back. Then the screen says "recorded".
+
+We found that the broker returns that acknowledgement even when the message routes to no queue at all. So for an unbound topic, the broker acknowledges the message to the device and then silently drops it. That is exactly the loss the path existed to prevent.
+
+The fix was small. We added an alternate exchange, so an unroutable message goes to a queue where we can see it, instead of nowhere. We also had to point the MQTT plugin at our exchange explicitly, because by default it publishes somewhere else.
+
+> **"The lesson: an acknowledgement is a promise from one component, not from the system."**
+
+Now I test the unhappy path inside the transport itself, not only in the application.
+
+### Problem two — the connection that could leak data
+
+Row-level security depends on setting the current actor on the connection. But we run Postgres behind a transaction-mode pooler. The pooler reuses backend connections between requests. If you set the actor the normal way, the value survives the request. Then it leaks into the next caller's query.
+
+> **"The strongest control in the system would have become the worst bug in the system."**
+
+The code fix is one word: scope the setting to the transaction. But the real fix was the test. It pushes two different users through one pooled connection. Then it asserts that the second user can't see the first user's rows. We also added a CI check that the application's database role can't bypass row-level security at all.
+
+> **"The lesson: a security control you haven't tested under real connection handling isn't a control. It's an intention."**
+
+## Optional — The AI Part (~100 s)
 
 I fine-tuned Hugging Face models with transfer learning. One model extracts clinical entities and codes from visit notes. The other model re-ranks guidance passages. LangChain builds the page.
 
@@ -428,7 +466,7 @@ The whole pipeline runs off the request path, so nobody ever waits on a GPU.
 
 </details>
 
-## Optional — How It Ships (~60 s)
+## Optional — How It Ships, in Full (~60 s)
 
 We use GitLab CI, and every gate can really fail the build. The first gates are ruff, pyright in strict mode, and unit and contract tests. Then integration tests run against real containers: real Postgres, real Elasticsearch and real RabbitMQ. After that, there is a SonarQube gate.
 
@@ -517,7 +555,7 @@ On these paths, a regression either removes a patient's access or gives them som
 
 </details>
 
-## Optional — Logs, Metrics and Traces (~70 s)
+## Optional — Logs, Metrics and Traces, in Full (~75 s)
 
 We use Prometheus for metrics and Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production") for traces. Kibana is the single view for all of it. We also ship Azure's own logs into the same Elasticsearch. So we don't read two separate, incomplete stories about the same incident.
 
@@ -554,35 +592,3 @@ We have two rules on logging. First, we never log clinical text. Sensitive field
 </ul>
 
 </details>
-
-## If Asked — Two Problems That Cost Us (~130 s)
-
-### Problem one — the acknowledgement that meant nothing
-
-The check-in path promises no data loss. The phone publishes a check-in and gets an acknowledgement back. Then the screen says "recorded".
-
-We found that the broker returns that acknowledgement even when the message routes to no queue at all. So for an unbound topic, the broker acknowledges the message to the device and then silently drops it. That is exactly the loss the path existed to prevent.
-
-The fix was small. We added an alternate exchange, so an unroutable message goes to a queue where we can see it, instead of nowhere. We also had to point the MQTT plugin at our exchange explicitly, because by default it publishes somewhere else.
-
-> **"The lesson: an acknowledgement is a promise from one component, not from the system."**
-
-Now I test the unhappy path inside the transport itself, not only in the application.
-
-### Problem two — the connection that could leak data
-
-Row-level security depends on setting the current actor on the connection. But we run Postgres behind a transaction-mode pooler. The pooler reuses backend connections between requests. If you set the actor the normal way, the value survives the request. Then it leaks into the next caller's query.
-
-> **"The strongest control in the system would have become the worst bug in the system."**
-
-The code fix is one word: scope the setting to the transaction. But the real fix was the test. It pushes two different users through one pooled connection. Then it asserts that the second user can't see the first user's rows. We also added a CI check that the application's database role can't bypass row-level security at all.
-
-> **"The lesson: a security control you haven't tested under real connection handling isn't a control. It's an intention."**
-
-## Close (~40 s)
-
-So, to sum up. It's a modular monolith, with two services that had a real reason to move out. Postgres holds the truth, and it enforces the access rules itself. And everything slow or unreliable runs on queues, off the request path.
-
-My part was the data and search layer, the event-driven paths, and the identity and provisioning APIs. My part also covered the pipeline that ships all of it.
-
-I'm happy to go deeper into any part.
