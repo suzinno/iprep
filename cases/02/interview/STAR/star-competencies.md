@@ -7,16 +7,17 @@
 
 - [Key Competencies — STAR Stories](#key-competencies--star-stories)
   - [1. FastAPI Architecture and Module Boundaries](#1-fastapi-architecture-and-module-boundaries)
-  - [2. SQL on Big Tables and Careful Migrations](#2-sql-on-big-tables-and-careful-migrations)
-  - [3. RabbitMQ and Reliable Event-Driven Work](#3-rabbitmq-and-reliable-event-driven-work)
-  - [4. Quality over Speed: Gates and Self-Review](#4-quality-over-speed-gates-and-self-review)
-  - [5. Clarifying Vague Requirements](#5-clarifying-vague-requirements)
-  - [6. Testing That Proves Behaviour](#6-testing-that-proves-behaviour)
-  - [7. Raising Technical Concerns Constructively](#7-raising-technical-concerns-constructively)
-  - [8. Clear Estimates and Process](#8-clear-estimates-and-process)
-  - [9. GitOps Delivery](#9-gitops-delivery)
-  - [10. Observability and Elasticsearch](#10-observability-and-elasticsearch)
-  - [11. API Contracts with the Frontend](#11-api-contracts-with-the-frontend)
+  - [2. REST APIs with SCIM 2.0 and Entra ID Tokens](#2-rest-apis-with-scim-20-and-entra-id-tokens)
+  - [3. SQL on Big Tables and Careful Migrations](#3-sql-on-big-tables-and-careful-migrations)
+  - [4. RabbitMQ and Reliable Event-Driven Work](#4-rabbitmq-and-reliable-event-driven-work)
+  - [5. Quality over Speed: Gates and Self-Review](#5-quality-over-speed-gates-and-self-review)
+  - [6. Clarifying Vague Requirements](#6-clarifying-vague-requirements)
+  - [7. Testing That Proves Behaviour](#7-testing-that-proves-behaviour)
+  - [8. Raising Technical Concerns Constructively](#8-raising-technical-concerns-constructively)
+  - [9. Clear Estimates and Process](#9-clear-estimates-and-process)
+  - [10. GitOps Delivery](#10-gitops-delivery)
+  - [11. Observability and Elasticsearch](#11-observability-and-elasticsearch)
+  - [12. API Contracts with the Frontend](#12-api-contracts-with-the-frontend)
 
 ---
 
@@ -53,7 +54,48 @@ We also accepted a trade-off. The four core modules still release as one unit. S
 
 ---
 
-## 2. SQL on Big Tables and Careful Migrations
+## 2. REST APIs with SCIM 2.0 and Entra ID Tokens
+
+**The role needs:** Azure, with Entra ID as the identity provider. This need came from the second interview, not from the posting. The team is building a SCIM 2.0 interface, because a user deleted in the directory goes unnoticed. A deleted user just never logs in again, so the deletion goes undetected. The team also plans to carry endpoint-level permissions in the token.
+
+**Brief:** I implemented the Representational State Transfer ([REST](https://en.wikipedia.org/wiki/REST "Architectural style for stateless, resource-oriented HTTP APIs")) endpoints that bring clinician and care-team accounts in from the hospital directory over SCIM 2.0. They also check Entra ID tokens. A clinician token is never valid on the patient portal. When the hospital disables an account (deprovisioning), our database closes that clinician's open care relationships in the same transaction.
+
+<details>
+<summary><strong>STAR story</strong></summary>
+
+**Situation.** The platform serves two groups of users whose access rules are opposite. About 250,000 patients register themselves over five years. About 3,500 clinicians and about 400 care-team coordinators come from the hospital directory. Content authors and platform operators come from the directory too. Clinician accounts start in the hospital's Entra ID tenant. The requirement is that a clinician who leaves the hospital loses access through the directory, not through a manual step in our product.
+
+**Task.** I implemented the REST Application Programming Interfaces (APIs) for this, with SCIM 2.0 and Entra ID JSON Web Tokens ([JWT](https://datatracker.ietf.org/doc/html/rfc7519 "JSON Web Token — Compact, signed token format for carrying claims between parties")). Clinician and care-team accounts had to stay provisioned from the hospital directory. They also had to stay off the patient portal. Section 7 covers how the tests for these flows were chosen.
+
+**Action.** "Stay off the patient portal" is not a rule in the user interface. It is a check on the token audience that rejects the request by default (fails closed), before application code runs. The design has **two identity planes**. Patients register themselves through Entra External ID, in a separate patient tenant, with identity proofing at enrolment. Clinicians and care teams sign in through the hospital's Entra ID tenant. They never register themselves, and SCIM is the only way their accounts are created. For them, the hospital's conditional access enforces multi-factor authentication. The platform does not weaken it. Each plane has its own **token audience**: `api://care-platform/patient` and `api://care-platform/clinician`.
+
+Sign-in uses the OAuth 2.0 authorization code flow with Proof Key for Code Exchange ([PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Protects an OAuth authorization code exchange for clients that cannot hold a secret")). [OpenID](https://openid.net/ "OpenID — Federated identity standard letting a user authenticate once and reuse that identity across sites") Connect ([OIDC](https://openid.net/developers/how-connect-works/ "OpenID Connect — Identity layer on top of OAuth 2.0 for authenticating users")) handles identity. Access tokens are short-lived, at 15 minutes. Refresh tokens are rotated and bound to the client.
+
+The gateway is Azure [API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data") Management ([APIM](https://learn.microsoft.com/en-us/azure/api-management/ "Publishes, secures and rate limits APIs behind a managed gateway")), and it validates the JWT. It checks the signature against the cached signing keys, the JSON Web Key Set ([JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "Publishes the public keys a party needs to verify a signed token")). It also checks the issuer and the expiry. It also checks the audience against the plane of the route. So a clinician token on `/api/v1/diary/check-ins` gets a `403` at the gateway. A patient token on a clinician path gets the same answer. JWT validation failures are counted by reason, with an alert on any sustained rise.
+
+`care-core` then validates the token again. It does not trust a header that the gateway set. So a request that skips the gateway still has its token checked.
+
+The SCIM service runs on its own, and section 1 covers why. I implemented the SCIM endpoints on that service. The service implements `Users` and `Groups`, plus `ServiceProviderConfig`. Entra ID is the only caller allowed. Entra ID signs in with its own client credential. The network also limits where SCIM calls can come from. The SCIM endpoints are never exposed through the patient plane. Pydantic models define the SCIM schema, so the schema is checked in code rather than only described. A [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") lock, keyed by the Entra object ID, makes sure only one change to a directory account runs at a time. The lock expires after 30 seconds.
+
+The risk the design singles out here is deprovisioning, because a failure there can be silent. Access that should have ended has not ended, and nobody sees it. The design covers deprovisioning in three places.
+
+First, a deprovisioning closes every open care relationship for that clinician in the **same transaction**. Which patients a clinician can see (their reach) is checked in the database on every request. The check needs an active care relationship. Section 7 covers that control. So when that transaction commits, the database stops returning that clinician's patient records on the next request. The database check does not wait for the token to expire.
+
+Second, a SCIM sync failure is a **paged alert**. The design treats a deprovisioning that did not land as a security event.
+
+Third, a **detection rule** in Kibana runs over the audit events. It catches a deprovisioning that did not close its care relationships. That alert goes to the security team.
+
+There was also a design choice for when Entra ID itself is down. The signing keys are cached in Redis for 12 hours. The cache is refreshed when a token carries a key id (`kid`) that the cache does not hold. So existing tokens keep validating during an outage. Separately, SCIM sync queues and replays. New clinician sign-in fails. Active sessions keep working until their 15-minute tokens need a refresh, because a refresh also needs Entra ID. That is why the cache time is long on purpose.
+
+**Result.** There is no number for this work, and I would rather say that than invent one. What I can give you is what the design guarantees. A clinician token is rejected on a patient path before application code runs, and `care-core` checks the token again. A clinician's reach to patient records ends in the same database transaction that applies the deprovisioning. No manual step in our product is needed. A sync failure pages someone. A deprovisioning that did not close the care relationships is caught by a detection rule.
+
+**Honest limits.** First, your team plans to put endpoint permissions into the token through an Entra custom claims provider. I have not built that. In this design the token decides the plane. Roles give capability, and reach is checked per request in the database. The design has no central policy engine either. The trade-off I would raise is timing. A permission in a token stays true until the token expires. A check on every request sees a change on the next request. Second, the design does not record how roles or group memberships get into the token, so I cannot speak to that from this project. Third, I have no measured deprovisioning time. When a deprovisioning arrives depends on the directory's provisioning cycle, and the design does not state that cycle. The design also does not say whether open sessions or refresh tokens are revoked on a deprovisioning. The design also does not say what a still-valid token can reach outside patient records, such as content, before that token expires. The design caches a rendered timeline page for 60 seconds. It does not say whether the reach check runs before a cached page is served. Fourth, the design has the paged alert and the detection rule, but no periodic comparison between the directory and the `clinician` table. That comparison is what I would add first. Fifth, the design does not cover the SCIM protocol details. It does not say what `DELETE` does compared with `active: false`. It also does not say how `PATCH` operations are parsed, or how a group maps to a care team. Your case is a user who is deleted, not disabled. For that case, the design does not say whether care relationships close.
+
+</details>
+
+---
+
+## 3. SQL on Big Tables and Careful Migrations
 
 **The role needs:** Work on tables with over 100 million records in InterSystems [IRIS](https://docs.intersystems.com/ "InterSystems IRIS — Multi-model database combining a relational surface with globals-based storage"). That work needs well-optimized [SQL](https://en.wikipedia.org/wiki/SQL "Structured Query Language — Queries and manipulates data in a relational database") and extremely careful migrations.
 
@@ -72,7 +114,7 @@ The data is large, but the traffic is not. The check-ins table is sized at about
 
 The check-ins and audit tables use **monthly range partitioning**. Both tables are written in time order. The audit table only gets new rows. A check-in row is rewritten only when the same day arrives again. Queries read a recent time window. So when a query bounds the partition key, PostgreSQL skips almost all of the table (partition pruning). Archiving means detaching an old partition, which only changes metadata. It is not a 500 GB `DELETE`. Both tables also have a Block Range Index ([BRIN](https://www.postgresql.org/docs/current/brin.html "Compact PostgreSQL index type suited to large, sequentially correlated tables")) on the time column. The rows sit on disk in insert order. So a BRIN index is a fraction of a B-tree's size for the same range scan.
 
-Every index exists for a named query from an Application Programming Interface ([API](https://en.wikipedia.org/wiki/API "Defines the contract by which software components exchange requests and data")) contract. On a 46-million-row table, an index with no query behind it only makes every write more expensive (write amplification). So the list is short on purpose.
+Every index exists for a named query from an API contract. On a 46-million-row table, an index with no query behind it only makes every write more expensive (write amplification). So the list is short on purpose.
 
 The main challenge in my part was the patient timeline. It is the query clinicians run most often, and it combines five tables with `UNION ALL`. But each table sorts on its own column, and one of those columns, `encounter_date`, is a `date`. A union that mixes a plain date with a date and time (`timestamptz`) cannot be ordered in a fixed, repeatable way. It also cannot be served from one index shape.
 
@@ -94,7 +136,7 @@ Migrations run with Alembic in an [ArgoCD](https://argo-cd.readthedocs.io/en/sta
 
 ---
 
-## 3. RabbitMQ and Reliable Event-Driven Work
+## 4. RabbitMQ and Reliable Event-Driven Work
 
 **The role needs:** Deep [RabbitMQ](https://www.rabbitmq.com/docs "RabbitMQ — Message broker that routes and queues messages between producers and consumers") knowledge, together with Message Queuing Telemetry Transport ([MQTT](https://mqtt.org/ "Lightweight publish-subscribe protocol for constrained devices and unreliable networks")). The system carries a very large number of product attribute updates, so broker stability under that volume matters.
 
@@ -127,13 +169,13 @@ Keeping the state in the database is what makes the path survive an outage. If t
 
 **Result.** Missed reminders fell by 22%. I want to be precise about where that number comes from, because it is not the broker. It comes from the state machine in the database and from one row per delivery attempt. Those two things also make "how many reminders were missed" a query rather than a search through logs. On the check-in side the result is a property, not a number. The check-in is durable on the broker before the patient's phone is told it was recorded. Nothing is lost from that moment on.
 
-**Honest limits.** First, the role is sized for a much larger volume of attribute updates than this system carries, and for broker memory pressure at that volume. This system is much smaller. Its peak is about 50 messages a second on MQTT. I have not tuned a broker at that volume, and I have not handled broker memory pressure in production. What I have done here is the durability side: quorum queues, mandatory confirms, late acknowledgement, bounded retries and a dead-letter queue. Second, duplicate reminder delivery is still possible, in the race where a delivery succeeds but its receipt is lost. We accepted that on purpose, because a patient seeing a reminder twice is a much better failure than not seeing it. Third, the MQTT plugin authenticates per connection, not per publish. So a long-lived mobile connection has to be re-validated against token expiry separately. The design caps how long a connection may live. The cap is shorter than the refresh-token window. The design also says this needs a prototype against real token lifetimes. Fourth, Celery's support for quorum queues is recent, and I flagged it as a risk rather than assuming it works. That is the constructive-disagreement story in section 7. Fifth, I can say the 22% is the reduction in missed reminders, but I do not have the measurement window or the baseline rate. Sixth, this story is the broker half of that line in the posting. Search, Kibana and Elastic Application Performance Monitoring (APM) are section 10.
+**Honest limits.** First, the role is sized for a much larger volume of attribute updates than this system carries, and for broker memory pressure at that volume. This system is much smaller. Its peak is about 50 messages a second on MQTT. I have not tuned a broker at that volume, and I have not handled broker memory pressure in production. What I have done here is the durability side: quorum queues, mandatory confirms, late acknowledgement, bounded retries and a dead-letter queue. Second, duplicate reminder delivery is still possible, in the race where a delivery succeeds but its receipt is lost. We accepted that on purpose, because a patient seeing a reminder twice is a much better failure than not seeing it. Third, the MQTT plugin authenticates per connection, not per publish. So a long-lived mobile connection has to be re-validated against token expiry separately. The design caps how long a connection may live. The cap is shorter than the refresh-token window. The design also says this needs a prototype against real token lifetimes. Fourth, Celery's support for quorum queues is recent, and I flagged it as a risk rather than assuming it works. That is the constructive-disagreement story in section 8. Fifth, I can say the 22% is the reduction in missed reminders, but I do not have the measurement window or the baseline rate. Sixth, this story is the broker half of that line in the posting. Search, Kibana and Elastic Application Performance Monitoring (APM) are section 11.
 
 </details>
 
 ---
 
-## 4. Quality over Speed: Gates and Self-Review
+## 5. Quality over Speed: Gates and Self-Review
 
 **The role needs:** Quality and thoroughness valued far more than speed, with careful review of test cases and cross-checking of requirements. Artificial Intelligence ([AI](https://en.wikipedia.org/wiki/Artificial_intelligence "Software that generates or assists with tasks such as writing code")) tools are welcome. But every code quality gate still has to pass, leads review the code, and the result has to be readable.
 
@@ -146,11 +188,11 @@ Keeping the state in the database is what makes the path survive an outage. If t
 
 **Task.** I configured GitLab CI with lint, type and quality gates, so that lint, type checks and test runs all happen before anything deploys. I also moved the three services to Python 3.14 with dependencies managed by [Poetry](https://python-poetry.org/docs/ "Poetry — Python dependency and packaging tool that manages, builds and publishes projects"), so the runtime and the packages stayed the same across modules. And I fixed the pipeline and deploy jobs that were failing.
 
-**Action.** The pipeline runs in a fixed order and every step blocks the next one. `ruff` for lint. `pyright --strict` for types. Unit and contract tests. Then integration tests, which run against real data stores and a real broker rather than mocks. Then the SonarQube quality gate, on coverage and on new-code quality. Then the image is built, scanned, and pushed to the registry by digest. The last thing the pipeline does is commit that digest to the manifest repository, and section 9 covers that part.
+**Action.** The pipeline runs in a fixed order and every step blocks the next one. `ruff` for lint. `pyright --strict` for types. Unit and contract tests. Then integration tests, which run against real data stores and a real broker rather than mocks. Then the SonarQube quality gate, on coverage and on new-code quality. Then the image is built, scanned, and pushed to the registry by digest. The last thing the pipeline does is commit that digest to the manifest repository, and section 10 covers that part.
 
-The part that matters to me is not the list. It is that **each gate can genuinely fail**. A gate that cannot fail proves nothing, and it is worse than no gate, because people trust it. Section 6 covers how the tests behind those gates are chosen.
+The part that matters to me is not the list. It is that **each gate can genuinely fail**. A gate that cannot fail proves nothing, and it is worse than no gate, because people trust it. Section 7 covers how the tests behind those gates are chosen.
 
-One gate is a privacy control rather than a style check. No clinical free text, no symptom values and no document contents are ever written to a log. A redaction filter driven by Pydantic drops fields marked sensitive at the formatter. On top of that, a **CI check fails the build** if a log call passes a model that contains a field marked sensitive. That check exists because the failure it catches is silent: a log line that leaks clinical text looks exactly like a log line that does not. There is a second check of the same kind on database roles, and section 6 covers it.
+One gate is a privacy control rather than a style check. No clinical free text, no symptom values and no document contents are ever written to a log. A redaction filter driven by Pydantic drops fields marked sensitive at the formatter. On top of that, a **CI check fails the build** if a log call passes a model that contains a field marked sensitive. That check exists because the failure it catches is silent: a log line that leaks clinical text looks exactly like a log line that does not. There is a second check of the same kind on database roles, and section 7 covers it.
 
 The main challenge in my part was dependency drift. A dependency could resolve one way in the pipeline and another way on a developer's machine. The problem was not the difference itself. It was when the difference appeared. Drift like this does not show at build time. The design calls it a deploy-time surprise, and that is the worst place to learn about it, because by then the change has already been approved.
 
@@ -164,13 +206,13 @@ AI tools help me most at the two ends of a task. At the start, for finding my wa
 
 **Result.** I have no before-and-after number for this work, and I would rather say that than quote one. What I can state are properties. Every gate is blocking and each one can genuinely fail. The runtime and the packages stay consistent across the three services, which removes the drift that used to appear at deploy time. A log call that carries a sensitive field fails the build instead of reaching production. And a mutable tag cannot be swapped underneath a running cluster.
 
-**Honest limits.** First, the posting names Mypy, Black, isort, Trivy and pre-commit. This project used `pyright --strict` rather than Mypy, and I think the strictness setting matters more than which of the two you run. `ruff` covers what Black and isort do separately, so those two were not separate steps. The pipeline scans images and audits dependencies, but I cannot tell you the scanner was Trivy specifically. I run git hooks locally as a personal habit, and that is not the same as a configured pre-commit stage that everyone shares. Second, the design says the interpreter and package versions are pinned the same way across the three services. But it names no check that fails the build when they stop matching. So that consistency is a convention held by code review, not a gate. It is the first gate I would add. Third, static gates look at the artefact, not at behaviour. Lint, type checking and the quality gate cannot tell you that a clinician read a record they should not have. They cannot tell you an audit row was never written either. Those need tests, and section 6 is where that lives. Fourth, a scan proves what is in the image, not what is running. Comparing the digests actually deployed against the scan results is the step people skip, and I would want that comparison somewhere.
+**Honest limits.** First, the posting names Mypy, Black, isort, Trivy and pre-commit. This project used `pyright --strict` rather than Mypy, and I think the strictness setting matters more than which of the two you run. `ruff` covers what Black and isort do separately, so those two were not separate steps. The pipeline scans images and audits dependencies, but I cannot tell you the scanner was Trivy specifically. I run git hooks locally as a personal habit, and that is not the same as a configured pre-commit stage that everyone shares. Second, the design says the interpreter and package versions are pinned the same way across the three services. But it names no check that fails the build when they stop matching. So that consistency is a convention held by code review, not a gate. It is the first gate I would add. Third, static gates look at the artefact, not at behaviour. Lint, type checking and the quality gate cannot tell you that a clinician read a record they should not have. They cannot tell you an audit row was never written either. Those need tests, and section 7 is where that lives. Fourth, a scan proves what is in the image, not what is running. Comparing the digests actually deployed against the scan results is the step people skip, and I would want that comparison somewhere.
 
 </details>
 
 ---
 
-## 5. Clarifying Vague Requirements
+## 6. Clarifying Vague Requirements
 
 **The role needs:** Someone who can work from a short, abstract task description without waiting for a fuller one. The expectation is to book a call with the application manager and work out the business logic before coding starts.
 
@@ -199,7 +241,7 @@ I do not arrive with four questions. I arrive with a **proposal with a default**
 
 While I wait for that call, I am not blocked. I do the work that does not depend on the answer: the data access, the test scaffolding, the shape of the migration. Two days waiting is not two lost days unless I let it be. If two days turns into a week, I raise it with my own lead. A decision sitting with one person for a week is a planning problem somebody else should know about.
 
-The last step is writing the agreed criteria down. They go on **the ticket**, not into a chat thread. Anything that changes a documented boundary goes into the design file that owns it. Section 8 covers what happens to the estimate.
+The last step is writing the agreed criteria down. They go on **the ticket**, not into a chat thread. Anything that changes a documented boundary goes into the design file that owns it. Section 9 covers what happens to the estimate.
 
 **Result.** The general claim I would make for this approach is that the call takes about twenty minutes and saves a week. For this particular requirement, what the method produces is more modest and more honest. The exclusion list rules out a whole class of interpretation before anyone is asked a question. And the method isolates four business decisions, so they go to the person who can actually make them instead of being guessed at by me.
 
@@ -209,7 +251,7 @@ The last step is writing the agreed criteria down. They go on **the ticket**, no
 
 ---
 
-## 6. Testing That Proves Behaviour
+## 7. Testing That Proves Behaviour
 
 **The role needs:** Extensive unit and integration tests, expertise in Pytest and Xray, a 90% coverage target, and the patience to wait twenty to thirty minutes for a pipeline to pass.
 
@@ -224,7 +266,7 @@ The last step is writing the agreed criteria down. They go on **the ticket**, no
 
 **Action.** I pick tests by **the consequence of a failure**, not by what is cheap to cover. The design makes the same choice. Coverage targets the API schemas, the identity and SCIM flows, and the clinical content services. Those are the paths where a regression removes a patient's access. A bug there is an access-control bug, not a display bug, and that is a different category of problem.
 
-Integration tests only prove something if the dependencies are real. The integration stage runs against real containers in Docker Compose: PostgreSQL, [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents"), Elasticsearch, [Redis](https://redis.io/docs/latest/ "Redis — In-memory data store used as a cache and fast key-value store") and RabbitMQ. It is the same stack a developer runs locally. A mocked broker cannot fail the way a real one does. And a fake database cannot show you how RLS behaves. So the database-level assertions only work because the database is real.
+Integration tests only prove something if the dependencies are real. The integration stage runs against real containers in Docker Compose: PostgreSQL, [MongoDB](https://www.mongodb.com/docs/ "MongoDB — Document database that stores schema-flexible JSON-like documents"), Elasticsearch, Redis and RabbitMQ. It is the same stack a developer runs locally. A mocked broker cannot fail the way a real one does. And a fake database cannot show you how RLS behaves. So the database-level assertions only work because the database is real.
 
 The hardest part is what happens underneath all of that. In production the database is Azure Flexible Server, and it sits behind a connection pooler that works in transaction mode. A transaction-mode pooler reuses one connection across requests from different people. The application tells the database who the actor is by setting a variable. A plain `SET` is scoped to the session. So on a reused connection, one caller's actor would still be set for the next caller's query. The strongest control in the design would then become its exact opposite. Instead of returning zero rows to a query that forgot to scope itself, it would return another patient's rows.
 
@@ -234,9 +276,9 @@ The answer has three parts. First, the actor is set with **`SET LOCAL`** inside 
 
 There is a second test next to it that is easier to forget. The policy reads the actor through a function that turns an empty string into null (`nullif(current_setting('app.actor_id', true), '')`). Without that, a request with no actor behaves differently depending on which connection it lands on. A fresh connection returns null. A connection that has already served a request returns an empty string, and then the cast fails. So a second test runs a query with no actor on a connection that has already served a scoped request, and asserts zero rows. Fresh connection or reused connection, the answer has to be the same.
 
-One more thing has to hold before any of that means anything. The application's database role is `NOSUPERUSER` and does not have `BYPASSRLS`. Migrations run as a separate owning role that never serves a request. A **role-privilege assertion** runs in the pipeline, so a role that quietly grew the right to bypass the policies fails the build. That check is the sort section 4 talks about: it catches something that produces no error at all.
+One more thing has to hold before any of that means anything. The application's database role is `NOSUPERUSER` and does not have `BYPASSRLS`. Migrations run as a separate owning role that never serves a request. A **role-privilege assertion** runs in the pipeline, so a role that quietly grew the right to bypass the policies fails the build. That check is the sort section 5 talks about: it catches something that produces no error at all.
 
-You mention a twenty to thirty minute pipeline. A pipeline that slow changes how I work rather than how much I deliver, and I would rather wait for a gate that can really fail. I batch related changes into one merge request. I do not push a branch just to see whether it compiles. The rest of that habit is in section 4.
+You mention a twenty to thirty minute pipeline. A pipeline that slow changes how I work rather than how much I deliver, and I would rather wait for a gate that can really fail. I batch related changes into one merge request. I do not push a branch just to see whether it compiles. The rest of that habit is in section 5.
 
 **Result.** There is no number here, and I would rather say that than reach for one. What I can state are properties, and each one is a test rather than an intention. An actor set in one request cannot survive into the next request on the same connection. A request with no actor matches no rows, on a reused connection and on a fresh one. The application role cannot bypass RLS, and the pipeline asserts it. Integration runs against the real data stores and the real broker. The rule behind all four is that a claim which might be false gets a test before it gets trusted.
 
@@ -246,7 +288,7 @@ You mention a twenty to thirty minute pipeline. A pipeline that slow changes how
 
 ---
 
-## 7. Raising Technical Concerns Constructively
+## 8. Raising Technical Concerns Constructively
 
 **The role needs:** Someone who stays professional about the technology, raises technical issues with the people who own the decision, and does it constructively. Proactivity is welcome, but steady rather than pushy.
 
@@ -255,7 +297,7 @@ You mention a twenty to thirty minute pipeline. A pipeline that slow changes how
 <details>
 <summary><strong>STAR story</strong></summary>
 
-**Situation.** The reminder path is one of the two things this product cannot lose. It runs on Celery, on RabbitMQ **quorum queues**, which section 3 explains were not really a choice.
+**Situation.** The reminder path is one of the two things this product cannot lose. It runs on Celery, on RabbitMQ **quorum queues**, which section 4 explains were not really a choice.
 
 **Task.** My task was to decide whether the reminder path was allowed to depend on Celery running on quorum queues. It had to be done without assuming Celery works, and without holding up the rest of the design.
 
@@ -263,11 +305,11 @@ You mention a twenty to thirty minute pipeline. A pipeline that slow changes how
 
 The second thing a concern needs is a way to settle it. In this case that is a **version test**. Pin the Celery version and test it against the broker version. Do that before the reminder path depends on it. A concern with no test attached is only an opinion.
 
-The third thing is a **fallback**. Here that is raw AMQP consumers for the `celery.reminders` queue. What makes that fallback cheap is that the design had already made room for it. Celery and the topic exchange were kept separate for a completely different reason, which section 3 covers. So the design already accommodates the fallback, and that is the whole reason it is cheap.
+The third thing is a **fallback**. Here that is raw AMQP consumers for the `celery.reminders` queue. What makes that fallback cheap is that the design had already made room for it. Celery and the topic exchange were kept separate for a completely different reason, which section 4 covers. So the design already accommodates the fallback, and that is the whole reason it is cheap.
 
 I want to be straight about where this stands. It is still open. Running a real broker in the pipeline does not settle it. The question needs that pinned-version test specifically, and the pipeline as designed does not assert it yet. I would rather the status say "open" than say "fine".
 
-This is not one anecdote, and that is the part I would want a lead to notice. The same design flags the MQTT plugin's per-connection authentication as needing a prototype. It flags the missing trace-context header in MQTT 3.1.1 as a decision to take before instrumenting. It flags the audit volume, which section 2 sizes and which the design puts at roughly five times all the clinical data combined, as something to validate against a clinical pilot before build. It flags the clinical synonym set as needing an owner outside engineering. And it flags the data-protection assessment for model fine-tuning as something to complete before the first tuning run, not after it.
+This is not one anecdote, and that is the part I would want a lead to notice. The same design flags the MQTT plugin's per-connection authentication as needing a prototype. It flags the missing trace-context header in MQTT 3.1.1 as a decision to take before instrumenting. It flags the audit volume, which section 3 sizes and which the design puts at roughly five times all the clinical data combined, as something to validate against a clinical pilot before build. It flags the clinical synonym set as needing an owner outside engineering. And it flags the data-protection assessment for model fine-tuning as something to complete before the first tuning run, not after it.
 
 Running two brokers is the same idea applied to a cost rather than a risk. It is a real operational cost, and the file that takes the cost says so. It also writes down **the condition that would reverse it**: two brokers are the first thing to revisit if MQTT ingress is ever dropped. That is the house rule on this project. Where a cost is taken, the file that takes it names the price and the condition that would reverse it. So writing a concern into the document is not my personal style here. It is how the design stays accurate about its own risks.
 
@@ -283,7 +325,7 @@ When I am overruled on a trade-off, that is their call to make and I make it wor
 
 ---
 
-## 8. Clear Estimates and Process
+## 9. Clear Estimates and Process
 
 **The role needs:** A remaining estimate kept up to date in Jira every day. Time tracked in the client's own system, daily stand-ups, and blockers communicated as they appear.
 
@@ -292,17 +334,17 @@ When I am overruled on a trade-off, that is their call to make and I make it wor
 <details>
 <summary><strong>STAR story</strong></summary>
 
-**Situation.** On this platform the written record is not just tidiness. Other parts of the system depend on it. The breach-reporting path has a 72-hour clock, and the path itself is documented in the runbook. Restore is rehearsed against a scratch environment every quarter. And the three services release independently, on different strategies, which section 9 covers.
+**Situation.** On this platform the written record is not just tidiness. Other parts of the system depend on it. The breach-reporting path has a 72-hour clock, and the path itself is documented in the runbook. Restore is rehearsed against a scratch environment every quarter. And the three services release independently, on different strategies, which section 10 covers.
 
 **Task.** I kept estimates and remaining work current in Jira, and release and incident notes in Confluence, so those releases shared one runbook instead of one person's memory.
 
-**Action.** First, the estimate gets set after the scope lands, not before. Section 5 covers how the scope gets settled. Estimating an abstract ticket means guessing twice.
+**Action.** First, the estimate gets set after the scope lands, not before. Section 6 covers how the scope gets settled. Estimating an abstract ticket means guessing twice.
 
-Then the reason this work is hard to estimate, because that is the part people skip. On this platform a schema change lands across three releases, which section 2 explains. So the implementation is small and the verification is not. When I estimate that kind of task I split it up front and price the verification separately. Expand is a day. The backfill is a day plus a rehearsal of the backfill. Contract is half a day in a later release. The verification is spread across all three. And I say that out loud when I give the number: this is two days of code and three days of verifying the plan and the rollback. Work on an authorization boundary behaves the same way.
+Then the reason this work is hard to estimate, because that is the part people skip. On this platform a schema change lands across three releases, which section 3 explains. So the implementation is small and the verification is not. When I estimate that kind of task I split it up front and price the verification separately. Expand is a day. The backfill is a day plus a rehearsal of the backfill. Contract is half a day in a later release. The verification is spread across all three. And I say that out loud when I give the number: this is two days of code and three days of verifying the plan and the rollback. Work on an authorization boundary behaves the same way.
 
 There is also a risk you cannot price in advance. Anything that takes a lock on a large table can run long in a way no estimate covers. So the estimate comes with a stated plan for what happens if the backfill has to be stopped halfway. If somebody wants the whole thing faster, the thing that gets cut is the rehearsal. I want that decision made knowingly rather than by accident.
 
-Then the daily part. I revise the remaining estimate, never the original. The original is a historical artefact, and rewriting it hides exactly the information a planner needs. Next to the new number goes a specific cause. Not "taking longer than expected". Something a person can act on. The column has to be added across three releases, because of the expand/contract rule section 2 describes. So the migration is two days more than I planned. A reason lets someone decide something. A vague number just moves the surprise.
+Then the daily part. I revise the remaining estimate, never the original. The original is a historical artefact, and rewriting it hides exactly the information a planner needs. Next to the new number goes a specific cause. Not "taking longer than expected". Something a person can act on. The column has to be added across three releases, because of the expand/contract rule section 3 describes. So the migration is two days more than I planned. A reason lets someone decide something. A vague number just moves the surprise.
 
 Timing matters more than accuracy here. I would rather revise upward on day two and revise back down on day four than deliver a surprise on day five. An estimate is a forecast made with the least information anyone will ever have, so being wrong is normal. Being wrong quietly is not. If yesterday changed my view of how long something takes, the stand-up is where I say so, in one sentence, on the day I formed the view.
 
@@ -322,7 +364,7 @@ Keeping that written record costs about ten minutes a day, and I would rather sp
 
 ---
 
-## 9. GitOps Delivery
+## 10. GitOps Delivery
 
 **The role needs:** Docker, Docker Compose, GitLab CI/[CD](https://en.wikipedia.org/wiki/Continuous_deployment "Continuous Deployment — Automatically releases every build that passes the pipeline's gates to production without a manual step"), ArgoCD, GitOps, OpenShift and Prometheus.
 
@@ -341,7 +383,7 @@ That is not a preference about tools. A deploy job would need standing privilege
 
 The release strategies then differ by service, and each one is chosen against a named failure rather than by preference. The core is **blue-green**: a single instantaneous route switch, which is the cleanest rollback for the service that holds the record. The NLP service is **canary**, at 5%, then 25%, then 100%. Model quality shows up statistically. So the design treats a percentage rollout, with confidence and latency compared between the two versions, as the only way to see a regression before everyone gets it. The SCIM service is a rolling update: an external caller, idempotent operations, and no user-visible surface. The Azure Functions go out by slot swap.
 
-The sync runs two hooks. Migrations run in the PreSync hook, before the rollout, under a separate owning role that never serves a request. Section 2 covers the expand/contract rule. The delivery consequence is that a rollback is an ArgoCD **revision revert**, with no down-migration. After the rollout, a PostSync hook runs a smoke test and a Service Level Objective ([SLO](https://sre.google/sre-book/service-level-objectives/ "Target value for a service level indicator that a service commits to meet")) check.
+The sync runs two hooks. Migrations run in the PreSync hook, before the rollout, under a separate owning role that never serves a request. Section 3 covers the expand/contract rule. The delivery consequence is that a rollback is an ArgoCD **revision revert**, with no down-migration. After the rollout, a PostSync hook runs a smoke test and a Service Level Objective ([SLO](https://sre.google/sre-book/service-level-objectives/ "Target value for a service level indicator that a service commits to meet")) check.
 
 Then the expensive part, which I would rather raise myself than be asked about. There are two clusters. The OpenShift cluster (`aro-primary`) holds everything stateful and the two FastAPI services. A second cluster (`aks-ml`), with a GPU node pool, holds the NLP service and nothing else. The design itself calls this its most expensive choice. It is justified by exactly two things: managing the GPU node pool, and the independent release cadence the brief asks for on the NLP service. The alternative that was considered and rejected was one OpenShift cluster with a GPU machine set.
 
@@ -349,15 +391,15 @@ The cost is concrete, not theoretical. Network policy only governs traffic insid
 
 The cost is acceptable because the design writes down the condition that would reverse the split. If GPU inference ever moves to a managed endpoint, `aks-ml` should be collapsed into `aro-primary`. The design deliberately keeps no state on `aks-ml`, so that collapse stays cheap. The blast radius is bounded too. A partition between the clusters affects page generation only, because nothing on a user's request path lives on `aks-ml`.
 
-**Result.** There is no delivery number in this project's record. No deploy frequency, no lead time, no rollback duration, no failed-deploy rate. Here is what I can stand behind. The three services release on one GitOps path. No pipeline job holds cluster credentials. A rollback is a revision revert and needs no down-migration. Only digest-pinned images are deployed, which section 4 covers. Nothing is deployed imperatively from the cluster side.
+**Result.** There is no delivery number in this project's record. No deploy frequency, no lead time, no rollback duration, no failed-deploy rate. Here is what I can stand behind. The three services release on one GitOps path. No pipeline job holds cluster credentials. A rollback is a revision revert and needs no down-migration. Only digest-pinned images are deployed, which section 5 covers. Nothing is deployed imperatively from the cluster side.
 
-**Honest limits.** First, on OpenShift specifically. I have used it as a delivery target: a managed cluster, a GitOps controller reconciling from a manifest repository, migrations in a PreSync hook and a smoke test in a PostSync hook. I have used the platform's own build tooling much less, and I have not written security context constraints or operators. If I joined, there are four things I would want to establish early: which security context constraint is in force, how the platform networking layer is set up, the upgrade cadence, and whether the platform's build tooling or the external pipeline is authoritative. Second, the PostSync step is thin in the design. It says a smoke test and an SLO check. Nothing says what the smoke test asserts, which threshold fails a sync, or whether a failed check rolls back on its own. I would want that pinned down before relying on it. Third, I have no war story here. Nothing records a deploy that went wrong, a rollback actually executed, or a bad canary caught in the 5% window. I can tell you what the path does, not what it has survived. Fourth, collapsing the second cluster is an intention with a stated trigger, not something that has been done. Fifth, two more items from that line of the posting live elsewhere. Docker image builds and the Docker Compose integration stack are sections 4 and 6. Prometheus is section 10.
+**Honest limits.** First, on OpenShift specifically. I have used it as a delivery target: a managed cluster, a GitOps controller reconciling from a manifest repository, migrations in a PreSync hook and a smoke test in a PostSync hook. I have used the platform's own build tooling much less, and I have not written security context constraints or operators. If I joined, there are four things I would want to establish early: which security context constraint is in force, how the platform networking layer is set up, the upgrade cadence, and whether the platform's build tooling or the external pipeline is authoritative. Second, the PostSync step is thin in the design. It says a smoke test and an SLO check. Nothing says what the smoke test asserts, which threshold fails a sync, or whether a failed check rolls back on its own. I would want that pinned down before relying on it. Third, I have no war story here. Nothing records a deploy that went wrong, a rollback actually executed, or a bad canary caught in the 5% window. I can tell you what the path does, not what it has survived. Fourth, collapsing the second cluster is an intention with a stated trigger, not something that has been done. Fifth, two more items from that line of the posting live elsewhere. Docker image builds and the Docker Compose integration stack are sections 5 and 7. Prometheus is section 11.
 
 </details>
 
 ---
 
-## 10. Observability and Elasticsearch
+## 11. Observability and Elasticsearch
 
 **The role needs:** Elasticsearch and the Elastic stack, including Kibana and Elastic [APM](https://en.wikipedia.org/wiki/Application_performance_management "Application Performance Monitoring — Gives visibility into request latency, errors and traces in production"), together with Prometheus.
 
@@ -372,7 +414,7 @@ The cost is acceptable because the design writes down the condition that would r
 
 **Action.** The search side is three indexes behind one read alias. Clients never query the search cluster directly. The core builds every query and injects the scope filter itself.
 
-That scope filter is a correctness control before it is anything else. Every document in every index carries the patient id and the care-team ids. Every query is then wrapped in a filter on those two fields, derived from the caller's token and the care-relationship table. The reason is simple: a search engine that can return a document the record layer would refuse is a disclosure path. So search uses the same scope as the RLS policies in section 2, and search cannot become the way around them.
+That scope filter is a correctness control before it is anything else. Every document in every index carries the patient id and the care-team ids. Every query is then wrapped in a filter on those two fields, derived from the caller's token and the care-relationship table. The reason is simple: a search engine that can return a document the record layer would refuse is a disclosure path. So search uses the same scope as the RLS policies in section 3, and search cannot become the way around them.
 
 The same fields are also what make it fast. Scope and date clauses go in **filter context**, which is cacheable and unscored. Only the user's own text goes in the scoring clause. So the expensive scoring pass runs on an already filtered set. Two indexing settings sit next to that. Bulk indexing flushes at 5 seconds or 1000 documents. And the refresh interval is 5 seconds rather than the 1-second default, which roughly halves segment-merge pressure.
 
@@ -386,7 +428,7 @@ Tracing is Elastic APM. The Python agent auto-instruments FastAPI, SQLAlchemy, C
 
 Prometheus collects the metrics and the dashboards live in Kibana. The Service Level Indicators (SLIs) I care about most on the consumer side are three. `consumer_task_duration_seconds`, at the 95th percentile by queue, alerting above 5 seconds on `celery.reminders` or `celery.index`. The ratio of `consumer_task_failed_total` to `consumer_task_total` by queue, alerting above 1% over 15 minutes. And `outbox_unpublished_age_seconds`, which is the index-freshness signal, alerting above 30 seconds for 5 minutes. That last one is the one I would watch, because it is meant to catch a stalled index before a clinician notices a note is missing.
 
-Logging is structured, in JavaScript Object Notation ([JSON](https://www.json.org/json-en.html "Lightweight text format for structured data exchange")), written to standard output and shipped to Elasticsearch. Every line carries the trace id, the span id, the service, the module, the kind of actor, and where it applies the patient id. No clinical content is ever logged, and section 4 covers the gate that enforces that. Audit is a database table, never a log stream. Logs are for operators and audit is for the regulator. Conflating the two means the log retention policy quietly becomes the audit policy.
+Logging is structured, in JavaScript Object Notation ([JSON](https://www.json.org/json-en.html "Lightweight text format for structured data exchange")), written to standard output and shipped to Elasticsearch. Every line carries the trace id, the span id, the service, the module, the kind of actor, and where it applies the patient id. No clinical content is ever logged, and section 5 covers the gate that enforces that. Audit is a database table, never a log stream. Logs are for operators and audit is for the regulator. Conflating the two means the log retention policy quietly becomes the audit policy.
 
 The open problem is the first hop. The trace is continuous from the HTTP request, through the exchange, through the consumer, to the index write. The leg from the patient's device to the broker is not settled, because MQTT 3.1.1 has no user-property header for carrying context. Either the check-in clients move to MQTT 5, or `traceparent` gets carried inside the payload envelope. That has to be decided before instrumenting, because retrofitting it breaks every client already published. I would not tell you that leg is traced today.
 
@@ -398,7 +440,7 @@ The open problem is the first hop. The trace is continuous from the HTTP request
 
 ---
 
-## 11. API Contracts with the Frontend
+## 12. API Contracts with the Frontend
 
 **The role needs:** Close collaboration with a frontend team working in JavaScript and TypeScript, Vue, Nuxt, Pinia, VueUse, PrimeVue, Vite and Playwright. Understanding [OpenAPI](https://www.openapis.org/ "OpenAPI Specification — Describes an HTTP API's endpoints, schemas and behavior in a machine readable format") and Orval for API contracts is essential.
 
@@ -407,9 +449,9 @@ The open problem is the first hop. The trace is continuous from the HTTP request
 <details>
 <summary><strong>STAR story</strong></summary>
 
-**Situation.** One API serves two audiences whose access rules are opposite. Patients and clinicians both sit on `/api/v1`, separated at the gateway by the audience in their token. The web client consumes the same [REST](https://en.wikipedia.org/wiki/REST "Representational State Transfer — Architectural style for stateless, resource-oriented HTTP APIs") surface. And in the design's own words, the paths these contracts cover are the paths where a regression removes a patient's access.
+**Situation.** One API serves two audiences whose access rules are opposite. Patients and clinicians both sit on `/api/v1`, separated at the gateway by the audience in their token. The web client consumes the same REST surface. And in the design's own words, the paths these contracts cover are the paths where a regression removes a patient's access.
 
-**Task.** I implemented the REST APIs, including the SCIM and Entra ID side. I also wrote the Pytest suites for the API contracts, the identity flows and the clinical content services. I also configured the pipeline those suites run in, and fixed the jobs when they broke.
+**Task.** I implemented the REST APIs. Section 2 covers the SCIM and Entra ID side. I also wrote the Pytest suites for the API contracts, the identity flows and the clinical content services. I also configured the pipeline those suites run in, and fixed the jobs when they broke.
 
 **Action.** The core idea is that the contract is generated, not maintained. Pydantic models define every request and response body. FastAPI emits the OpenAPI document from those same models, and that document is **the published contract**. The property that matters is that the document cannot drift from the code. The objects that validate an incoming request are the objects that produce the schema. The contract is executable rather than documented.
 
@@ -419,9 +461,9 @@ I want to be straight about one thing here. The design documents describe the co
 
 It helps to be precise about what "breaking" means. Removing or renaming a response field. Narrowing a type. Making a request field non-nullable, or making a response field nullable, because the direction is what makes each one breaking. Adding a required request field, though adding an optional one is safe. Changing the members of an enumeration, because a client that switches exhaustively over it breaks on a new value. Changing which status codes an operation returns, or the shape of the error body. The test I use is simple. A change is safe if every request an old client can send still succeeds. And every response it gets back still parses under its old schema.
 
-Several conventions exist to keep evolution inside a version additive. The path is versioned at `/api/v1`. Pagination is a cursor everywhere, for the reason section 2 gives. An `Idempotency-Key` is required on every `POST` mutation. Error bodies follow [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem details. The reason I value that is that a client cannot branch on prose. And `traceparent` is propagated on every hop, which is section 10. The design does not say what happens when a change cannot be made additively. What I would propose is a second version served alongside the first until clients move, but that is my proposal and not something the documents record.
+Several conventions exist to keep evolution inside a version additive. The path is versioned at `/api/v1`. Pagination is a cursor everywhere, for the reason section 3 gives. An `Idempotency-Key` is required on every `POST` mutation. Error bodies follow [RFC](https://www.rfc-editor.org/ "Request For Comments — Numbered document series that defines internet standards and protocols") 9457 problem details. The reason I value that is that a client cannot branch on prose. And `traceparent` is propagated on every hop, which is section 11. The design does not say what happens when a change cannot be made additively. What I would propose is a second version served alongside the first until clients move, but that is my proposal and not something the documents record.
 
-On the synchronous side, anything a user waits for goes over REST through the gateway: the timeline, record reads and writes, search, page delivery. A user-visible read has no business being eventually consistent. Even the daily check-in has a REST endpoint next to the MQTT one that section 3 covers, returning `202` with the same meaning, because the web client needs it. Internally the design chose not to use [gRPC](https://grpc.io/docs/ "gRPC Remote Procedure Calls — Contract-first remote procedure call framework running over HTTP/2 with protocol buffer payloads"). It would be marginally faster, but across three services the shared FastAPI and Pydantic toolchain is worth more than the microseconds.
+On the synchronous side, anything a user waits for goes over REST through the gateway: the timeline, record reads and writes, search, page delivery. A user-visible read has no business being eventually consistent. Even the daily check-in has a REST endpoint next to the MQTT one that section 4 covers, returning `202` with the same meaning, because the web client needs it. Internally the design chose not to use [gRPC](https://grpc.io/docs/ "gRPC Remote Procedure Calls — Contract-first remote procedure call framework running over HTTP/2 with protocol buffer payloads"). It would be marginally faster, but across three services the shared FastAPI and Pydantic toolchain is worth more than the microseconds.
 
 The mechanism catches a break. It does not have the conversation. The thing I would add is a **schema diff gate**. It generates the OpenAPI document in the pipeline and compares it against a committed baseline. A breaking change then fails the build. That is not in this design, and I want to be clear it is something I would propose rather than something that was there. Its real value is not the gate. It is that the diff becomes the artefact I take to the frontend leads before I implement anything. Here is the change, here is what it breaks in your generated client, here is the window where both versions run. That is a better way to open the conversation than letting them find it in their build.
 
