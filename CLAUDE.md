@@ -22,6 +22,8 @@
 | How design docs are produced | `.claude/skills/system-design/SKILL.md` |
 | What an abbreviation means, and where its link points | `.claude/glossary.md` |
 | How abbreviation links are applied and verified | `.claude/scripts/link-abbreviations.py` |
+| How to write English a B2 reader follows | `.claude/b2-lang-rules.md` |
+| The spoken one-topic answers, and how one is added | `docs/common-kb/quick-check.md`, `.claude/commands/quick-check.md` |
 
 ## Don't touch without reading
 
