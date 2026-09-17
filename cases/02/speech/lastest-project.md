@@ -65,7 +65,6 @@ An import linter can't see raw SQL. So each module's models were bound to its ow
 > **"A gate you have never seen go red isn't a gate. So a deliberate cross-module import is one of the pipeline's own test cases."**
 </details>
 
-</details>
 <br>
 
 <details>
@@ -105,6 +104,8 @@ Yes, it does: diary, clinical content and identity. Records is the fourth module
 Three seams really justify a split: a different release cadence, different hardware, or a different owner. I'd take them one at a time. I'd move one module out with the strangler pattern (incremental replacing of a legacy monolithic system with new services). I'd use the schema boundary that already exists as the seam. And I'd stop as soon as there is no more reason to split.
 
 > **"If you split by domain nouns, you end up with a distributed monolith."**
+</details>
+
 </details>
 
 </details>
