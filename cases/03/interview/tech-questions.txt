@@ -1,0 +1,43 @@
+1 What were your responsibilities on the project?
+2 Which features, modules, or improvements did you design or implement?
+3 functional and non-functional requirements did you defined for this project?
+4 What edge cases you handled in the app?
+5 How many active users did the system support approximately?
+6 What was the peak load or traffic the system handled?
+7 How do you design for peak traffic events? when peaks appeared in your proj?
+8 How was sensitive data (user data, payments, etc.) handled and secured? Did the system comply with regulations (e.g., GDPR, PCI-DSS)?
+9 How did you design role-based access in a multi-actor system? Describe the authentication and authorization mechanisms of the system
+10 How do you structure CI/CD pipelines for microservices? approach
+11 How do you reduce Docker image size?
+12 How Docker cache layers work. you can tell that on an example of how to write good Dockerfile
+13 What external systems \ third-party APIs (e.g. payment system) were integrated with your platform?
+14 How do you handle failures while interacting with third-party APIs?
+15 How do you design retry policies for transient (lasting or staying only a short time) \ temporary vs permanent failures?
+16 How do you ensure backward compatibility in evolving APIs?
+17 What defines a good SLA dashboard?
+18 What types of metrics are essential in this domain?
+19 How do you avoid alert fatigue?
+20 How do you distinguish a “distributed monolith” from true microservices in practice? 
+	or What are the first warning signs that a microservices system is drifting back into a distributed monolith?
+	or What system characteristics would signal that microservices became a “distributed monolith”?
+21 How do you choose between Orchestration vs Choreography (SAGA pattern implementations)?
+22 How to prevent cascading failures in service-to-service calls?
+23 How to handle partial failures for transactions distributed across services?
+24 How do you preserve\archieve “effective ACID” across microservices?
+25 How do you achieve strong consistency in distributed systems?
+26 What trade-offs do you face between consistency and availability?
+27 How do you measure cache effectiveness?
+28 How do you manage Celery workers concurrency while interacting with DB?
+29 How do you decide on Sync vs. Async inter-service communication?
+30 How do you design retry and dead-letter strategies?
+31 How do you secure service-to-service calls behind API Gateway (without human users)?
+32 What are the limitations of relying solely on Cognito authorizer?
+33 How do you handle roles/permissions from Cognito at the app level?
+34 What are Cognito triggers used for?
+35 What are common pitfalls when using triggers?
+36 How do you secure S3 media uploads from users?
+37 How do you structure a multi-step LLM workflow?
+38 How do you structure modular LangChain workflows?
+39 How do you maintain context persistence efficiently?
+40 How do you prevent hallucinations in transaction-related prompts?
+41 What are the risks of multi-agent orchestration with LangGraph? How do you preliminary mitigate such risks?

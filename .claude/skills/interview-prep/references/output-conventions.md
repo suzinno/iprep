@@ -17,6 +17,13 @@ Every question — in every mode, in every output file — uses exactly this blo
 <1-2 sentences capturing the core idea. This is what you'd say in the first 15 seconds of your response.>
 
 <details>
+<summary><strong>Must cover</strong></summary>
+
+<The checklist for this answer. See "Must cover" below.>
+
+</details>
+
+<details>
 <summary><strong>Detailed answer</strong></summary>
 
 <Comprehensive answer: focus on edge cases, trade-offs, failure modes, and "why" decisions. Minimum 600 characters. Use paragraphs, bullet points, or short lists where they improve clarity. Reference real patterns, tools, or practices — not abstract theory.>
@@ -39,6 +46,13 @@ When a question has sub-questions (`3.1`, `3.2`), nest them under the parent hea
 <...>
 
 <details>
+<summary><strong>Must cover</strong></summary>
+
+<...>
+
+</details>
+
+<details>
 <summary><strong>Detailed answer</strong></summary>
 
 <...>
@@ -49,6 +63,51 @@ When a question has sub-questions (`3.1`, `3.2`), nest them under the parent hea
 
 ...
 ```
+
+---
+
+## Must cover
+
+A collapsed checklist of what the answer has to contain, so a reader can test their own recall before opening the answer itself. It is **derived from the finished answer, never written before it** — a list written first produces an answer that reads back as a term checklist. The answer is authoritative: where the two disagree, the list is what gets corrected.
+
+Entries are bold or plain, and the two carry different weight:
+
+- **Bold — required.** The answer sounds incomplete without this. Two to eight per question. More than eight is a signal, not a quota to trim to: it usually means the answer covers two questions and wants splitting into sub-questions, or that the test was applied loosely. Re-examine the answer; never drop a required entry to make the count fit.
+- **Plain — optional.** Carries a distinct idea the bold entries do not, and adds depth. At most seven, written as comma-separated runs rather than one bullet each.
+- **Neither.** A contrast case named only as the thing you avoid, a variant of an entry already listed, and one item of an illustrative run earn no bullet. They are in the answer and stay there. A list that transcribes every term the answer touches is not a checklist.
+
+A bold entry may carry a short clause where the bare term is ambiguous: one clause, about ten words, no "because" and no "so". Plain entries never carry one — an optional term that needs explaining is not optional. Where a term already has a footnote, its entry carries no clause: a footnote defines an unfamiliar concept, a clause says which aspect of a familiar term this answer turns on.
+
+Entries appear in the order the detailed answer raises them.
+
+**What an entry is** depends on the pack. Technical packs, and a project's own `interview-questions.md`, list **terms** — the named concepts the answer turns on:
+
+```
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **event loop** — one blocking call stalls every request
+- **connection pool** — summed across pods, under the database limit
+- **expand/contract**
+- selectinload, thread pool bound, asyncpg
+
+</details>
+```
+
+Soft-skills packs list **beats** — the parts of the story the answer has to reach. A soft-skills answer has no technical vocabulary to check against, so the checklist tracks the narrative instead:
+
+```
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **the decision** — I escalated rather than absorbed it
+- **the constraint** — two days to the release
+- **the outcome** — review latency down to one day
+
+</details>
+```
+
+The bounds, the clause rule and the derivation order are the same for both forms.
 
 ---
 
@@ -91,11 +150,15 @@ The document then opens with an index, directly under the header notes, giving t
 
    Linking and hover text for abbreviations are owned by `.claude/glossary.md` and applied by `.claude/scripts/link-abbreviations.py` after the document is written. This rule and that file do not overlap: this rule governs the prose, the glossary governs the link.
 
-2. **Tone** — Technical and precise, but conversational enough to reproduce in a live interview. Avoid academic phrasing ("it is worth noting that...", "one might argue..."). Prefer direct statements ("Use X when...", "The tradeoff is...").
+   The linker skips the `Must cover` block, so an abbreviation's first use — and the expansion that goes with it — belongs in the prose, not in a checklist entry.
 
-3. **Depth** — Go beyond definitions. Real-world seniority, not textbook. Every detailed answer covers: *why* it matters, *when* to use or avoid it, *what goes wrong* when misapplied, and *how* it connects to the broader system.
+2. **Readability** — Prose follows `.claude/b2-lang-rules.md`, which owns every readability rule; read it in full before writing and do not restate it here. It governs the wording only: simplifying never drops a fact, a condition or a number, and a technical term the interview turns on stays, expanded rather than replaced.
 
-4. **Complex concepts** — When an answer leans on a concept that needs a one-line clarifier, add a footnote block at the end of that question section:
+3. **Tone** — Technical and precise, but conversational enough to reproduce in a live interview. Avoid academic phrasing ("it is worth noting that...", "one might argue..."). Prefer direct statements ("Use X when...", "The tradeoff is...").
+
+4. **Depth** — Go beyond definitions. Real-world seniority, not textbook. Every detailed answer covers: *why* it matters, *when* to use or avoid it, *what goes wrong* when misapplied, and *how* it connects to the broader system.
+
+5. **Complex concepts** — When an answer leans on a concept that needs a one-line clarifier, add a footnote block at the end of that question section:
 
    ```
    > **Footnotes:**
@@ -105,9 +168,9 @@ The document then opens with an index, directly under the header notes, giving t
 
    Footnotes are optional — add them only when the concept genuinely benefits.
 
-5. **Reproducibility** — Write as if the reader will use this to prepare for their own interview. Prioritize clarity and memorability over exhaustiveness.
+6. **Reproducibility** — Write as if the reader will use this to prepare for their own interview. Prioritize clarity and memorability over exhaustiveness.
 
-6. **No decoration** — Don't add symbols, emoji, or badges that carry no meaning.
+7. **No decoration** — Don't add symbols, emoji, or badges that carry no meaning.
 
 ---
 
@@ -117,8 +180,11 @@ Every mode re-reads its own output and verifies:
 
 - Detailed answers meet the 600-character minimum — **all** of them, not most
 - No duplicate content between brief and detailed (brief = headline, detailed = substance)
-- Every `<details>` block is opened and closed
+- Both `<details>` blocks of every question — `Must cover` and `Detailed answer` — are opened and closed
+- Every bold `Must cover` entry appears in that question's detailed answer, in the order the list gives
+- Every `Must cover` list holds two to eight bold entries and at most seven plain ones, and no entry is an incidental mention — a contrast case, a variant of another entry, or one item of an illustrative run
 - Abbreviations expanded on first use
+- Every sentence passes `.claude/b2-lang-rules.md` — checked against that file, not from memory
 - Numbering is consistent and unbroken
 - In an attributed file: every question carries a `**Project:**` line, every value names a real project folder or `general`, and the index at the top accounts for every question exactly once
 

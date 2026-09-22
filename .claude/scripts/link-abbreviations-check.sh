@@ -253,6 +253,53 @@ check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/frontmatter-only.md"
 want_file "$FIX/frontmatter-only.md" HAS 'title: SCIM notes'
 want_file "$FIX/frontmatter-only.md" LACKS '[SCIM]('
 
+echo "--- a term that appears only in a Must cover block is never linked ---"
+cat > "$FIX/must-cover-only.md" <<'DOC'
+### Q1. A question
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **ORM** — the mapping layer, not the database
+- connection pool, retry budget
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The body of this answer names no glossary term at all.
+
+</details>
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/must-cover-only.md"
+want_file "$FIX/must-cover-only.md" HAS '- **ORM** — the mapping layer, not the database'
+want_file "$FIX/must-cover-only.md" LACKS '[ORM]('
+# A term the linker can never reach is not a finding either, or --check would
+# report it on every run of a correctly written pack.
+check 0 EMPTY --check --glossary "$FIX/glossary.md" "$FIX/must-cover-only.md"
+
+echo "--- the Must cover skip ends at that block's closing tag ---"
+cat > "$FIX/must-cover-scope.md" <<'DOC'
+### Q1. A question
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **the decision**
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The SCIM provisioning path is what this answer turns on.
+
+</details>
+DOC
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/must-cover-scope.md"
+want_file "$FIX/must-cover-scope.md" HAS 'The [SCIM](https://scim.cloud/'
+
 echo "--- self-test: the harness must be able to report a failure ---"
 before=$fail
 check 99 EMPTY --glossary "$FIX/glossary.md" "$FIX/plain.md" >/dev/null 2>&1

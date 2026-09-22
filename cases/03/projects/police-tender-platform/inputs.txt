@@ -1,0 +1,26 @@
+Title: TENDER PLATFORM FOR POLICE DEPARTMENT
+
+Description: Tenders platform with CRM functionality for MENA-based police department. Allows to conduct tenders from creating the tender requirements to gathering different tender applications rating them and choosing the executor.
+
+Environment: Python, FastAPI, SQLAlchemy, Alembic, Celery, Pydantic, LangChain, LangGraph, OpenAI, AWS(IAM, RDS, Secrets Manager, VPC, Route 53, S3, Lambda, OpenSearch, EKS, ECR, SQS, API Gateway, Cognito, etc.), ElasticSearch, Kibana, Logstash, Kafka, PostgreSQL, Redis, Docker, Docker Compose, Kubernetes(k8s), Terraform, GitHub, GitHub Actions, Bash.
+
+Responsibilities:
+●​ Built secure and efficient APIs for tender creation, vendor registration, and evaluation workflows;
+●​ Integrated LangChain pipelines for intelligent extraction and semantic analysis of tender requirements from uploaded documents;
+●​ Used OpenAI API to summarize lengthy vendor proposals and generate natural-language reports for evaluators;
+●​ Developed asynchronous background processing with Celery and Redis to handle large data imports, file parsing, and scoring computations;
+●​ Configured AWS Lambda functions to process uploaded files on S3, triggering metadata extraction and database updates automatically;
+●​ Deployed and maintained scalable microservices infrastructure on AWS EKS, with services packaged via Docker;
+●​ Used AWS SQS queues to ensure reliable message delivery between backend services;
+●​ Managed API gateway routing and access control via AWS API Gateway and IAM roles for fine-grained permissions;
+●​ Automated infrastructure provisioning with Terraform, managing VPC, RDS, ECR, EKS, Cognito, and related resources;
+●​ Implemented authentication and authorization using OAuth2, Cognito, and JWT, ensuring secure access to restricted modules;
+●​ Built internal tools for tender analytics and bid insights with OpenSearch, enabling semantic and keyword-based document retrieval;
+●​ Used AWS Secrets Manager to store API keys, database credentials, and other sensitive configurations securely;
+●​ Set up robust CI/CD workflows with GitHub Actions for automated testing, build, and deployment pipelines;
+●​ Managed multi-environment configurations with Docker Compose and Kubernetes namespaces;
+●​ Configured AWS Route 53 for domain management and SSL certificate provisioning;
+●​ Implemented performance optimization strategies, including caching frequently accessed data via Redis and indexing in PostgreSQL;
+●​ Conducted log analysis and system tracing to troubleshoot production incidents and improve fault tolerance;
+●​ Documented architectural decisions, API endpoints, and deployment processes for team onboarding and long-term maintainability;
+●​ Wrote automated integration tests and performance benchmarks to validate stability of core services.

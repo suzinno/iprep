@@ -29,7 +29,7 @@
 
 - `.claude/skills/interview-prep/scripts/preflight.sh` — read the header comment first. It is the only thing between a confident wrong answer and a correct one; its exit codes are a contract every caller dispatches on.
 - `.claude/skills/interview-prep/SKILL.md` frontmatter — a bulk text transform once joined `name:` and `description:` onto one line, silently invalidating the YAML so the skill re-registered as `interview-prep: Role`. Re-parse it after any scripted edit.
-- `.claude/skills/interview-prep/references/output-conventions.md` — sole owner of the question block, style rules, project attribution and the shared review checklist. Changing a format here changes every generated document; changing a format anywhere else creates a second owner.
+- `.claude/skills/interview-prep/references/output-conventions.md` — sole owner of the question block and its `Must cover` checklist, style rules, project attribution and the shared review checklist. Changing a format here changes every generated document; changing a format anywhere else creates a second owner.
 - `.claude/skills/interview-prep/scripts/gate-check.sh` — the only real guard in the repo. Weakening a check here silently downgrades seven invariants to conventions; add checks rather than relax them.
 - `cases/nn/` — a template, not a case. Never work in it and never write generated output into it.
 - `cases/01/interview/ss-answers.md`, `ts-answers.md`, `ss-final-pack.md` — pre-skill leftovers no mode reads and no gate checks. Near-duplicates of the canonical `soft-skills-answers.md` / `tech-answers.md` that differ from them. Leave them alone until someone decides their fate.
@@ -89,7 +89,7 @@ Case 01 is out of scope for the glossary back-fill and is not passed to `--check
 
 `gate-check.sh` builds every fixture in a temp directory and exits non-zero on any failure. It ends with a self-test that plants a wrong expectation and confirms it is reported — a suite that only ever passes confirms whatever you already expected.
 
-`link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Four mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, and dropping the title-divergence finding.
+`link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Six mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, dropping the title-divergence finding, disabling the `Must cover` skip, and leaving that skip open past its closing tag.
 
 **Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Four mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, and removing the `projects` parent-directory guard.
 
