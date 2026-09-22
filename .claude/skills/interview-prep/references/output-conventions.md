@@ -91,11 +91,13 @@ The document then opens with an index, directly under the header notes, giving t
 
    Linking and hover text for abbreviations are owned by `.claude/glossary.md` and applied by `.claude/scripts/link-abbreviations.py` after the document is written. This rule and that file do not overlap: this rule governs the prose, the glossary governs the link.
 
-2. **Tone** — Technical and precise, but conversational enough to reproduce in a live interview. Avoid academic phrasing ("it is worth noting that...", "one might argue..."). Prefer direct statements ("Use X when...", "The tradeoff is...").
+2. **Readability** — Prose follows `.claude/b2-lang-rules.md`, which owns every readability rule; read it in full before writing and do not restate it here. It governs the wording only: simplifying never drops a fact, a condition or a number, and a technical term the interview turns on stays, expanded rather than replaced.
 
-3. **Depth** — Go beyond definitions. Real-world seniority, not textbook. Every detailed answer covers: *why* it matters, *when* to use or avoid it, *what goes wrong* when misapplied, and *how* it connects to the broader system.
+3. **Tone** — Technical and precise, but conversational enough to reproduce in a live interview. Avoid academic phrasing ("it is worth noting that...", "one might argue..."). Prefer direct statements ("Use X when...", "The tradeoff is...").
 
-4. **Complex concepts** — When an answer leans on a concept that needs a one-line clarifier, add a footnote block at the end of that question section:
+4. **Depth** — Go beyond definitions. Real-world seniority, not textbook. Every detailed answer covers: *why* it matters, *when* to use or avoid it, *what goes wrong* when misapplied, and *how* it connects to the broader system.
+
+5. **Complex concepts** — When an answer leans on a concept that needs a one-line clarifier, add a footnote block at the end of that question section:
 
    ```
    > **Footnotes:**
@@ -105,9 +107,9 @@ The document then opens with an index, directly under the header notes, giving t
 
    Footnotes are optional — add them only when the concept genuinely benefits.
 
-5. **Reproducibility** — Write as if the reader will use this to prepare for their own interview. Prioritize clarity and memorability over exhaustiveness.
+6. **Reproducibility** — Write as if the reader will use this to prepare for their own interview. Prioritize clarity and memorability over exhaustiveness.
 
-6. **No decoration** — Don't add symbols, emoji, or badges that carry no meaning.
+7. **No decoration** — Don't add symbols, emoji, or badges that carry no meaning.
 
 ---
 
@@ -119,6 +121,7 @@ Every mode re-reads its own output and verifies:
 - No duplicate content between brief and detailed (brief = headline, detailed = substance)
 - Every `<details>` block is opened and closed
 - Abbreviations expanded on first use
+- Every sentence passes `.claude/b2-lang-rules.md` — checked against that file, not from memory
 - Numbering is consistent and unbroken
 - In an attributed file: every question carries a `**Project:**` line, every value names a real project folder or `general`, and the index at the top accounts for every question exactly once
 
