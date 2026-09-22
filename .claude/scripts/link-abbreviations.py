@@ -131,6 +131,8 @@ INLINE_CODE = re.compile(r"`[^`]*`")
 MD_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
 HTML_TAG = re.compile(r"<[^>]+>")
 
+MUST_COVER_LABEL = "Must cover"
+
 
 def eligible_lines(text):
     """Yield (index, line) for lines whose prose may be linked.
@@ -139,6 +141,11 @@ def eligible_lines(text):
     link changes the GitHub anchor slug and every generated document has a
     table of contents that depends on it. `<details>` bodies are *not* skipped:
     GitHub renders Markdown inside them and they hold most of an answer pack.
+
+    The one exception is a `Must cover` block, skipped from its summary line to
+    its closing tag. It is a checklist of terms the answer already uses, so
+    linking there would move an abbreviation's first use — and its expansion —
+    out of the prose that has to read as an interview answer.
     """
     lines = text.split("\n")
     start = 0
@@ -148,6 +155,7 @@ def eligible_lines(text):
                 start = index + 1
                 break
     in_fence, marker = False, None
+    in_must_cover = False
     for index in range(start, len(lines)):
         line = lines[index]
         fence = FENCE.match(line)
@@ -159,7 +167,12 @@ def eligible_lines(text):
             continue
         if in_fence or HEADING.match(line):
             continue
+        if in_must_cover:
+            if line.lstrip().startswith("</details>"):
+                in_must_cover = False
+            continue
         if line.lstrip().startswith("<summary"):
+            in_must_cover = MUST_COVER_LABEL in line
             continue
         yield index, line
 
