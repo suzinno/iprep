@@ -3,6 +3,7 @@
 **Status:** implemented on this branch
 **Scope:** `interview-prep` gains a fourth mode; `from-cv` is renamed `from-design`
 **Branch:** `feat/from-resps-mode`
+**Implementation plan:** written, executed, then removed. Recover it with `git show 0d88901:docs/superpowers/plans/2026-09-23-from-resps-mode.md`.
 
 ---
 
