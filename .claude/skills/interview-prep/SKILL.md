@@ -1,6 +1,6 @@
 ---
 name: interview-prep
-description: Build interview preparation packs — generate a question guide from a CV project, produce the base question-and-answer packs for an interview (answering a client's question set when one exists, generating one when it does not), or extend an existing pack with new questions. Three chained modes (from-cv, answer, extend) whose prerequisites are enforced against files on disk, with optional weighting toward a client's candidate brief. Use when the user wants interview questions generated from a CV or system-design project, wants soft-skills/tech question files answered, or wants an existing interview set extended with further questions.
+description: Build interview preparation packs — generate a question guide from a CV project (from its design docs, or from its responsibilities alone for an interviewer who has seen only the CV), produce the base question-and-answer packs for an interview (answering a client's question set when one exists, generating one when it does not), or extend an existing pack with new questions. Four chained modes (from-design, from-resps, answer, extend) whose prerequisites are enforced against files on disk, with optional weighting toward a client's candidate brief. Use when the user wants interview questions generated from a CV or system-design project, wants soft-skills/tech question files answered, or wants an existing interview set extended with further questions.
 ---
 
 ## Role
@@ -18,25 +18,29 @@ Each mode consumes what the previous step wrote to disk. The dependency is on **
 ```
 per project
   <project>/inputs.txt ──> /system-design ──> <project>/00-overview.md .. 06-security.md ──┐
-                                                                                           ├──> from-cv ──> <project>/interview-questions.md
-  <project>/inputs.txt ────────────────────────────────────────────────────────────────────┘
+                                                                                           ├──┬──> from-design ──> <project>/interview-questions.md
+  <project>/inputs.txt ────────────────────────────────────────────────────────────────────┘  └──> from-resps  ──> <project>/resps-questions.md
 
 per case
   <interview>/{soft-skills,tech}-questions.txt  (optional) ─┐
   <interview>/candidate-profile.txt             (optional) ─┼──> answer ──> <interview>/{soft-skills,tech}-answers.md ──┐
   every project's inputs.txt + design docs      (optional) ─┘                                                           ├──> extend ──> <interview>/{soft-skills,tech}-extra.md
-                               at least one of the three            every project's interview-questions.md ─────────────┘
+                               at least one of the three            every project's interview-questions.md ─────────────┤
+                                                                    every project's resps-questions.md    (optional) ───┘
 ```
 
 | Mode | Takes | Requires on disk | Writes |
 |---|---|---|---|
-| `from-cv` | `<project>` | `<project>/inputs.txt`, and `00-overview.md`…`06-security.md` from `/system-design` | `<project>/interview-questions.md` |
+| `from-design` | `<project>` | `<project>/inputs.txt`, and `00-overview.md`…`06-security.md` from `/system-design` | `<project>/interview-questions.md` |
+| `from-resps` | `<project>` | the same as `from-design` | `<project>/resps-questions.md` |
 | `answer` | `<case>` | at least one source: a `*-questions.txt`, a candidate profile, or a project brief — **and** the `/system-design` docs for every project that has a brief | `<interview>/soft-skills-answers.md`, `<interview>/tech-answers.md` |
 | `extend` | `<case>` | both `*-answers.md`, and `interview-questions.md` for every project that has a brief | `<interview>/soft-skills-extra.md`, `<interview>/tech-extra.md` |
 
-`interview-questions.md` holds questions **and** answers, despite its name — it is a complete per-project pack, not a question list.
+`interview-questions.md` and `resps-questions.md` hold questions **and** answers, despite their names — each is a complete per-project pack, not a question list.
 
-`extend`'s dependency on `from-cv` is **conditional**: it applies once per project that has a usable brief, and the remedy names that project. A case with no projects blocks on nothing here.
+The two project guides serve different interviewers. `from-design` writes questions that may name what only the design docs hold. `from-resps` writes questions an interviewer holding only the CV could ask, one section per responsibility; its answers still draw on the design docs, which is why it requires them.
+
+`extend`'s dependency on `from-design` is **conditional**: it applies once per project that has a usable brief, and the remedy names that project. A case with no projects blocks on nothing here. `resps-questions.md` never blocks `extend`; the gate reports it for every such project, and `extend` reads it when present.
 
 ---
 
@@ -56,14 +60,14 @@ A **case** is one engagement. It holds any number of CV projects and at most one
 
 | Path | Written by | Holds |
 |---|---|---|
-| `<case>/projects/<name>/` | `/system-design`, `from-cv` | `inputs.txt`, `00-overview.md`…`06-security.md`, `interview-questions.md` |
+| `<case>/projects/<name>/` | `/system-design`, `from-design`, `from-resps` | `inputs.txt`, `00-overview.md`…`06-security.md`, `interview-questions.md`, `resps-questions.md` |
 | `<case>/interview/` | `answer`, `extend` | `candidate-profile.txt`, `*-questions.txt`, `*-answers.md`, `*-extra.md` |
 
 Throughout this file and every mode file, `<project>` is one `<case>/projects/<name>` folder and `<interview>` is `<case>/interview`. Project folder names are free-form — the gate globs `projects/*/` and never reads the name.
 
-Every mode takes exactly one argument, but not all of them take the same kind of thing: `from-cv` takes a project, `answer` and `extend` take a case. `from-cv` is per project because a case-level verdict would have to block on the least-ready project, or invent a "partly ready" state the gate does not have. The gate tells the two kinds apart by the parent directory, so passing one where the other belongs is CANNOT-RUN, not a pile of missing files.
+Every mode takes exactly one argument, but not all of them take the same kind of thing: `from-design` and `from-resps` take a project, `answer` and `extend` take a case. The project modes are per project because a case-level verdict would have to block on the least-ready project, or invent a "partly ready" state the gate does not have. The gate tells the two kinds apart by the parent directory, so passing one where the other belongs is CANNOT-RUN, not a pile of missing files.
 
-**The interview pack is common to the whole case.** One soft-skills pack and one technical pack span every project in it. The candidate profile is case-level too, so `from-cv` derives the case from the project path and reports the profile path it resolved.
+**The interview pack is common to the whole case.** One soft-skills pack and one technical pack span every project in it. The candidate profile is case-level too, so the project modes derive the case from the project path and reports the profile path it resolved.
 
 Only the folder passed has to exist. A case with no projects, or with no interview pack yet, is an ordinary "not started yet" state, and the gate reports it BLOCKED with a runnable remedy — never as a malformed invocation. Create `<interview>/` if a mode needs to write there and it is absent.
 
@@ -75,11 +79,11 @@ Two cases are never related to each other. A new case is independent of every ex
 
 ## Step 0 — Parse the invocation
 
-`$ARGUMENTS` is `<mode> <path>` — a project folder for `from-cv`, a case folder for `answer` and `extend`.
+`$ARGUMENTS` is `<mode> <path>` — a project folder for `from-design` and `from-resps`, a case folder for `answer` and `extend`.
 
-`<mode>` is one of `from-cv`, `answer`, `extend`.
+`<mode>` is one of `from-design`, `from-resps`, `answer`, `extend`.
 
-If no mode word is present, infer the likely mode from the kind of folder given and what it already holds, state the inference, and **ask the user to confirm before doing anything else**. Never silently guess a mode — the three modes write different files to different places.
+If no mode word is present, infer the likely mode from the kind of folder given and what it already holds, state the inference, and **ask the user to confirm before doing anything else**. Never silently guess a mode — the modes write different files to different places, and a project folder fits two of them.
 
 ---
 
@@ -110,8 +114,9 @@ A BLOCKED result is not a hurdle to reason around. Generating output from missin
 Read these, in this order:
 
 1. `references/output-conventions.md` — the question block, style rules, shared review checklist
-2. the mode file — `references/mode-from-cv.md`, `references/mode-answer.md`, or `references/mode-extend.md`
-3. `references/candidate-profile.md` — **only if** the gate reported the profile FOUND. It owns how the client brief reweights generation.
+2. `references/tiers.md` — **only for** `from-design` and `from-resps`. It owns the difficulty levels of a project guide.
+3. the mode file — `references/mode-from-design.md`, `references/mode-from-resps.md`, `references/mode-answer.md`, or `references/mode-extend.md`
+4. `references/candidate-profile.md` — **only if** the gate reported the profile FOUND. It owns how the client brief reweights generation.
 
 ---
 

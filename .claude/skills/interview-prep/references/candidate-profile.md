@@ -1,6 +1,6 @@
 # Candidate profile — optional client brief
 
-Single owner for how a client's candidate brief changes what the modes generate. All three modes load this file **only when the gate reports the profile FOUND**.
+Single owner for how a client's candidate brief changes what the modes generate. All four modes load this file **only when the gate reports the profile FOUND**.
 
 ---
 
@@ -41,7 +41,7 @@ Watch for **unusual qualifiers** and target them directly, because they are the 
 
 When no client question set exists and a pack is being generated from scratch, the profile stops being a reweighting input and becomes the **primary source** for what to ask. Everything below still applies; it simply drives the whole set rather than a share of it.
 
-The profile shifts **emphasis and proportion**. It never replaces a mode's own coverage obligation: `from-cv` still covers every responsibility, `answer` still answers every source question, `extend` still covers every original topic area.
+The profile shifts **emphasis and proportion**. It never replaces a mode's own coverage obligation: `from-design` still covers every responsibility, `from-resps` still gives every responsibility its section and keeps every question within what the CV states — so a must-have the CV never mentions is left to the case-level packs — `answer` still answers every source question, `extend` still covers every original topic area.
 
 - Give the hard must-haves and pain points a **clearly larger share** of questions than untargeted topics — roughly half of the technical pack when the brief is as specific as this one.
 - Cover **every** hard must-have at least once. List them and check them off; a "must" the pack never asks about is a gap.

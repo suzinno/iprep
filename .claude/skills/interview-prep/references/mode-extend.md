@@ -13,7 +13,7 @@ Generate additional questions that read as a natural continuation of an existing
 - `<interview>/soft-skills-questions.txt`, `<interview>/tech-questions.txt` — the original set, **optional.** The gate reports each as `SOURCED`, `ABSENT` or `PRESENT BUT HOLDS NO QUESTIONS`. When a pack has no originals, the base answers below carry the questions and are the only source for Step 2.
 - `<interview>/soft-skills-answers.md`, `<interview>/tech-answers.md` — **what the base pack already covers.** A new question is a duplicate if the existing *answers* already cover its substance, even when no original question asks it in those words. Checking the question list alone is not enough.
 - `<interview>/candidate-profile.txt`, when the gate reported it FOUND — the client's brief on what they want in a candidate. Load `candidate-profile.md` and follow it; it owns the weighting.
-- `<project>/inputs.txt` and `<project>/interview-questions.md` for **every** project the gate reported as `SOURCED` — each guide holds questions *and* answers, so all of them together are a second body of covered ground to avoid re-asking, and the briefs tailor new questions toward what the candidate would realistically face.
+- `<project>/inputs.txt` and `<project>/interview-questions.md` for **every** project the gate reported as `SOURCED` — each guide holds questions *and* answers, so all of them together are a second body of covered ground to avoid re-asking, and the briefs tailor new questions toward what the candidate would realistically face. Where the gate reports a project's `resps-questions.md` as FOUND, read it too: it is further covered ground in the same way. Its absence is normal and changes nothing.
 
 ---
 
@@ -37,7 +37,7 @@ For each pack, identify:
 
 - **5-7 new questions per topic area** identified in Step 2. Not fewer.
 - They must sound like the **same interviewer** — match the phrasing, depth expectation and scenario framing of the originals.
-- **No duplicates or near-duplicates.** Cross-check every generated question against the original questions, the base answers, and every project's CV guide. Different angle, aspect or scenario each time.
+- **No duplicates or near-duplicates.** Cross-check every generated question against the original questions, the base answers, and every project's guides. Different angle, aspect or scenario each time.
 - **Complement, don't repeat** — fill gaps, go deeper into what was touched on, or explore adjacent concerns the interviewer would logically care about.
 - **When a client profile is in play,** the client gaps from Step 2 come first, and the brief's must-haves and pain points take a clearly larger share than untargeted topics. The per-topic-area minimum still holds.
 - Sub-questions are allowed where the original set uses them and they add real value. Don't force them.
@@ -67,7 +67,7 @@ Answer every generated question using the block in `output-conventions.md`. `tec
 
 ## Review — in addition to the shared checklist
 
-- No generated question duplicates or closely mirrors an original question, anything the base answers already cover, or anything in any project's CV guide.
+- No generated question duplicates or closely mirrors an original question, anything the base answers already cover, or anything in any project's guides.
 - Each topic area from the base pack — the originals, or the answers pack when there are no originals — has 5-7 new questions.
 - Numbering continues cleanly from the original set.
 - The style genuinely matches the original interviewer's approach, or, when the base questions were generated, the set adds real coverage rather than claiming a style it cannot know.

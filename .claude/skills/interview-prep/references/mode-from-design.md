@@ -1,6 +1,6 @@
-# Mode: from-cv
+# Mode: from-design
 
-Generate a full interview guide — questions *and* answers — from a CV brief and the system design docs for that project.
+Generate a full interview guide — questions *and* answers — from a CV brief and the system design docs for that project. Questions here may name what only the design docs hold; a guide for an interviewer who has seen only the CV is `from-resps`.
 
 **Persona:** Principal Software Engineer & Technical Architect, 20+ years. Expertise: backend development, monolithic and distributed systems, reliability, scalability and high-availability infrastructure, system design, data processing pipelines / ETL.
 
@@ -29,16 +29,11 @@ The design docs are not background reading. An answer that could have been writt
 
 The guide **verifies the person can back up every responsibility listed on their CV**. Questions probe whether the candidate actually did the work — not whether they know the vocabulary.
 
-Three difficulty levels per pillar:
-
-- **Q1 — Basic / filtering.** Baseline professional knowledge. Does the candidate understand the foundational concepts behind their stated responsibilities?
-- **Q2 — Deep dive.** Implementation details, failure modes, gotchas. Specific decisions, alternatives considered, problems hit — the detail only someone who did the work has.
-- **Q3 — Architectural.** Trade-offs, system-wide impact, scale. How a responsibility connects to the wider system, what changes at 10x, what they'd do differently.
+Three difficulty levels per pillar, as `tiers.md` defines them.
 
 Rules:
 
 - Every pillar has questions at every level — up to 5 per level.
-- Q3 questions should target the **intersection** of tools (e.g. how tool A behaves when database B fails), not one tool in isolation.
 - **Responsibility coverage:** every responsibility in `inputs.txt` is targeted by at least one question somewhere in the guide.
 - **When a client profile is in play,** weight pillars toward its must-haves and named pain points, and push those toward Q2 and Q3. Responsibility coverage still holds in full — the profile changes proportion, never scope.
 - **Ground the answers in this project.** Reference the actual architecture, tech choices and data models from the design docs. Answers read as the candidate describing *their* system, not reciting generic knowledge.
@@ -59,7 +54,7 @@ Header:
 ...
 ```
 
-Then one `## <Pillar Name>` section per pillar. Within a pillar, order questions by level — all Q1s, then Q2s, then Q3s. Use the Q1/Q2/Q3 labels to carry difficulty; do not also write "easy/medium/hard".
+Then one `## <Pillar Name>` section per pillar, its questions labelled and ordered as `tiers.md` sets out.
 
 Question blocks follow `output-conventions.md`.
 

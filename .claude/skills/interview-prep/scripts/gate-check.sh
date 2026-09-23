@@ -5,8 +5,8 @@
 # so it gets more scrutiny than the content it guards. This proves the invariants
 # in CLAUDE.md that are provable: the three-state exit contract, content-based
 # rejection of stub inputs, that every optional input is reported, that answer
-# needs a source, that from-cv is per project while answer and extend are per
-# case, and that a BLOCKED verdict names a runnable remedy.
+# needs a source, that from-design and from-resps are per project while answer
+# and extend are per case, and that a BLOCKED verdict names a runnable remedy.
 #
 # Every fixture is built from scratch in a temp directory. The harness must never
 # depend on the live contents of cases/ -- those change as real work is done, and
@@ -72,6 +72,7 @@ BRIEF
 
 write_design_docs() { local d; for d in $DOCS; do printf '# %s\n\nbody\n' "$d" > "$1/$d.md"; done; }
 write_guide()   { printf '# Interview Questions\n\n### Q1. A question with enough text to be real.\n' > "$1/interview-questions.md"; }
+write_resps_guide() { printf '# Responsibility Questions\n\n### Q1. A question with enough text to be real.\n' > "$1/resps-questions.md"; }
 write_answers() { printf '# Answers\n\n### Q1. A question.\n' > "$1/soft-skills-answers.md"
                   printf '# Answers\n\n### Q1. A question.\n' > "$1/tech-answers.md"; }
 write_questions() { printf '1 A question long enough to count as a real question set.\n' > "$1/tech-questions.txt"; }
@@ -96,7 +97,13 @@ printf 'The client wants deep RabbitMQ experience and careful migrations.\n' > "
 # nodocs: brief written, /system-design not yet run
 new_project "$FIX/nodocs/projects/alpha"; write_brief "$FIX/nodocs/projects/alpha"
 
-# noguide: designed but from-cv not yet run, answers present
+# resps-found / resps-empty / resps-unusable: complete, plus one state of the
+# optional resps guide each
+cp -r "$FIX/complete" "$FIX/resps-found";    write_resps_guide "$FIX/resps-found/projects/alpha"
+cp -r "$FIX/complete" "$FIX/resps-empty";    : > "$FIX/resps-empty/projects/alpha/resps-questions.md"
+cp -r "$FIX/complete" "$FIX/resps-unusable"; mkdir "$FIX/resps-unusable/projects/alpha/resps-questions.md"
+
+# noguide: designed but from-design not yet run, answers present
 new_project "$FIX/noguide/projects/alpha"; mkdir -p "$FIX/noguide/interview"
 write_brief "$FIX/noguide/projects/alpha"; write_design_docs "$FIX/noguide/projects/alpha"
 write_answers "$FIX/noguide/interview"
@@ -130,12 +137,15 @@ fi
 # --- checks -----------------------------------------------------------------
 
 echo "--- exit-code contract: READY / BLOCKED ---"
-check 0 EMPTY                                          from-cv "$FIX/complete/projects/alpha"
+check 0 EMPTY                                          from-design "$FIX/complete/projects/alpha"
+check 0 EMPTY                                          from-resps  "$FIX/complete/projects/alpha"
 check 0 EMPTY                                          answer  "$FIX/complete"
 check 0 EMPTY                                          extend  "$FIX/complete"
-check 1 "run: /system-design $FIX/nodocs/projects/alpha" from-cv "$FIX/nodocs/projects/alpha"
+check 1 "run: /system-design $FIX/nodocs/projects/alpha" from-design "$FIX/nodocs/projects/alpha"
+# from-resps keeps the design docs out of its questions, but its answers need them
+check 1 "run: /system-design $FIX/nodocs/projects/alpha" from-resps  "$FIX/nodocs/projects/alpha"
 check 1 "run: /interview-prep answer $FIX/nodocs"      extend  "$FIX/nodocs"
-check 1 "run: /interview-prep from-cv $FIX/noguide/projects/alpha" extend "$FIX/noguide"
+check 1 "run: /interview-prep from-design $FIX/noguide/projects/alpha" extend "$FIX/noguide"
 
 echo "--- CANNOT-RUN is never folded into BLOCKED ---"
 check 2 "unknown mode: frobnicate"                     frobnicate "$FIX/complete"
@@ -143,7 +153,10 @@ check 2 "no mode given"
 check 2 "takes exactly one folder; got 2"              answer  "$FIX/complete" "$FIX/bare"
 check 2 "no such folder"                               answer  "$FIX/does-not-exist"
 check 2 "not a directory"                              answer  "$FIX/complete/projects/alpha/inputs.txt"
-check 2 "not a project folder"                         from-cv "$FIX/complete"
+check 2 "not a project folder"                         from-design "$FIX/complete"
+check 2 "not a project folder"                         from-resps  "$FIX/complete"
+# the renamed mode left no alias behind
+check 2 "unknown mode: from-cv"                        from-cv "$FIX/complete/projects/alpha"
 check 2 "that is a project folder, not a case"         answer  "$FIX/complete/projects/alpha"
 
 echo "--- every optional input is reported ---"
@@ -153,6 +166,11 @@ check 0 "soft-skills questions: ABSENT"                answer "$FIX/complete"
 check 0 "project alpha: SOURCED"                       answer "$FIX/complete"
 check 0 "projects: NONE"                               answer "$FIX/noprojects"
 check 1 "project ghost: NO BRIEF"                      answer "$FIX/nobrief"
+# extend reports each project's resps guide and never blocks on it
+check 0 "project alpha resps guide: ABSENT"            extend "$FIX/complete"
+check 0 "project alpha resps guide: FOUND"             extend "$FIX/resps-found"
+check 0 "project alpha resps guide: PRESENT BUT EMPTY" extend "$FIX/resps-empty"
+check 0 "project alpha resps guide: PRESENT BUT UNUSABLE" extend "$FIX/resps-unusable"
 
 echo "--- answer is bound to the design docs, not to a brief alone ---"
 check 1 "run: /system-design $FIX/nodocs/projects/alpha"        answer "$FIX/nodocs"
@@ -168,12 +186,13 @@ echo "--- stub inputs are rejected on content, not on -s ---"
 check 1 "PRESENT BUT HOLDS NO QUESTIONS"               answer "$FIX/stub"
 if [ -d "$TEMPLATE" ]; then
     check 1 "PRESENT BUT NOT FILLED IN"                answer  "$FIX/fresh"
-    check 1 "not filled"                               from-cv "$FIX/fresh/projects/project-name"
+    check 1 "not filled"                               from-design "$FIX/fresh/projects/project-name"
+    check 1 "not filled"                               from-resps  "$FIX/fresh/projects/project-name"
     check 0 "project project-name: SOURCED"            answer  "$FIX/filled"
 fi
 
 echo "--- extend requires a guide for every project that has a brief ---"
-check 1 "run: /interview-prep from-cv $FIX/multi/projects/beta" extend "$FIX/multi"
+check 1 "run: /interview-prep from-design $FIX/multi/projects/beta" extend "$FIX/multi"
 write_guide "$FIX/multi/projects/beta"
 check 0 EMPTY                                          extend "$FIX/multi"
 

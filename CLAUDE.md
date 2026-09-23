@@ -16,7 +16,8 @@
 | What each mode requires, writes, how they chain | `.claude/skills/interview-prep/SKILL.md` |
 | How every generated document is formatted | `.claude/skills/interview-prep/references/output-conventions.md` |
 | How a client brief reweights generation | `.claude/skills/interview-prep/references/candidate-profile.md` |
-| What one mode actually does | `.claude/skills/interview-prep/references/mode-from-cv.md`, `mode-answer.md`, `mode-extend.md` |
+| What one mode actually does | `.claude/skills/interview-prep/references/mode-from-design.md`, `mode-from-resps.md`, `mode-answer.md`, `mode-extend.md` |
+| What Q1, Q2 and Q3 mean in a project guide | `.claude/skills/interview-prep/references/tiers.md` |
 | The exact precondition contract | `.claude/skills/interview-prep/scripts/preflight.sh` |
 | What the gate is actually proven to do | `.claude/skills/interview-prep/scripts/gate-check.sh` |
 | How design docs are produced | `.claude/skills/system-design/SKILL.md` |
@@ -44,19 +45,20 @@
 
 ## Architectural Invariants
 
-Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning nothing fails when it is broken, so it will be violated silently. The guard is `.claude/skills/interview-prep/scripts/gate-check.sh`, which has been mutation-tested: folding CANNOT-RUN into BLOCKED, accepting a stub brief, dropping the profile note, and removing the project/case guard are each detected.
+Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning nothing fails when it is broken, so it will be violated silently. The guard is `.claude/skills/interview-prep/scripts/gate-check.sh`, which has been mutation-tested: folding CANNOT-RUN into BLOCKED, accepting a stub brief, dropping the profile note, removing the project/case guard, dropping `from-resps`'s design-doc requirement and dropping `extend`'s `resps-questions.md` report are each detected.
 
 - **Dependencies are artifacts on disk, never session state.** No record of past invocations survives a `/clear` or another machine, so the gate checks files. *(guard: `scripts/gate-check.sh` — every fixture is built fresh in a temp directory, so verdicts can only come from files)*
 - **The gate has exactly three states and callers dispatch on exit code, not text.** `0` READY, `1` BLOCKED (a prerequisite artifact is missing), `2` CANNOT-RUN (the invocation itself is malformed). Folding "you gave me a bad path" into "your prerequisites aren't met" is the failure this prevents. *(guard: `scripts/gate-check.sh` — CANNOT-RUN section)*
 - **A BLOCKED result names a runnable remedy**, e.g. `run: /system-design cases/02/projects/<name>`. *(guard: `scripts/gate-check.sh` — remedy strings are asserted, not just exit codes)*
 - **Stub inputs are rejected on content, not on `-s`.** A 2-byte question file (`1 `) and a 54-byte `inputs.txt` holding only the four headings are both non-empty and both worthless. `has_questions` and `has_brief_content` measure real text; the latter strips the heading labels first, because `Responsibilities:` is 17 characters and clears a naive threshold alone. *(guard: `scripts/gate-check.sh` — stub and unfilled-template checks)*
-- **Optional inputs are always reported, never silent.** Every run prints the profile, both question files and every project by name. An optional input that goes unnoticed is how a feature silently fails to happen. *(guard: `scripts/gate-check.sh` — reporting section)*
-- **Answers are bound to design docs, never to a brief alone.** Every project with a usable brief must have its `/system-design` docs before `answer` runs. `inputs.txt` names the stack and responsibilities but not the architecture, data models or failure modes that make an answer specific; without them the pack recites the Environment line. A case with no projects has nothing to bind to and still runs. *(guard: `scripts/gate-check.sh` — the brief-only fixtures)*
+- **Optional inputs are always reported, never silent.** Every run prints the profile, both question files and every project by name, and `extend` also prints each project's `resps-questions.md`. An optional input that goes unnoticed is how a feature silently fails to happen. *(guard: `scripts/gate-check.sh` — reporting section)*
+- **Answers are bound to design docs, never to a brief alone.** Every project with a usable brief must have its `/system-design` docs before `answer` runs. `inputs.txt` names the stack and responsibilities but not the architecture, data models or failure modes that make an answer specific; without them the pack recites the Environment line. A case with no projects has nothing to bind to and still runs. `from-resps` keeps the docs out of its questions but needs them for its answers, so it requires them like `from-design`. *(guard: `scripts/gate-check.sh` — the brief-only fixtures)*
 - **`answer` needs at least one source** — a question file, a profile, or a project brief. Otherwise "everything is optional" means inventing an interview out of nothing. *(guard: `scripts/gate-check.sh`)*
-- **`from-cv` is per project; `answer` and `extend` are per case.** A case-level `from-cv` would have to block on the least-ready project or invent a fourth "partly ready" state. *(guard: `scripts/gate-check.sh` — the two cross-kind CANNOT-RUN checks)*
-- **One owner per fact.** `output-conventions.md` owns format; `candidate-profile.md` owns client weighting; `SKILL.md` owns the chain; each mode file owns only its own logic. Restating a fact elsewhere is duplication even when the wording differs. `[UNGUARDED]` — a prose convention; nothing fails when it is broken.
+- **`from-design` and `from-resps` are per project; `answer` and `extend` are per case.** A case-level project mode would have to block on the least-ready project or invent a fourth "partly ready" state. *(guard: `scripts/gate-check.sh` — the cross-kind CANNOT-RUN checks)*
+- **One owner per fact.** `output-conventions.md` owns format; `candidate-profile.md` owns client weighting; `tiers.md` owns the difficulty levels of a project guide; `SKILL.md` owns the chain; each mode file owns only its own logic. Restating a fact elsewhere is duplication even when the wording differs. `[UNGUARDED]` — a prose convention; nothing fails when it is broken.
 - **Cases are independent.** Nothing infers a link between two cases from folder numbering or content resemblance, however similar their projects. `[UNGUARDED]` — an absence, and nothing tests for one.
 - **Question order is never rearranged.** A client's bank is pooled from prior candidates and already grouped; its order is what the interviewer reads from. Per-project separation is carried by the `**Project:**` tag and the index — an attribution, not a partition. `[UNGUARDED]` — a content convention, checked only by the review checklist.
+- **`from-resps` questions hold only what the CV states.** An interviewer with only the CV cannot ask about a service, table or decision that exists only in the design docs, so no `resps-questions.md` question names one; its answers may. `[UNGUARDED]` — a content convention, checked only by the mode's review.
 - **Abbreviation facts have one owner and are applied mechanically.** `.claude/glossary.md` owns the expansion, the one-sentence purpose and the official source of every linked term; no skill file and no generated document restates them, and no link is written by hand. *(guard: `link-abbreviations.py --check` — reports a glossary term left unlinked, a title or source that has drifted, and a link to a term the glossary does not hold; mutation-tested by `.claude/scripts/link-abbreviations-check.sh`)*
 
 ### Forbidden patterns
@@ -91,7 +93,7 @@ Case 01 is out of scope for the glossary back-fill and is not passed to `--check
 
 `link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Six mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, dropping the title-divergence finding, disabling the `Must cover` skip, and leaving that skip open past its closing tag.
 
-**Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Four mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, and removing the `projects` parent-directory guard.
+**Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Six mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, removing the `projects` parent-directory guard, skipping `require_design_docs` for `from-resps` only, and removing the `report_resps_guide` call from `extend`.
 
 **Patterns.** Always pair a known-pass with a known-fail, and include a deliberately-wrong control — a check suite that only ever passes confirms whatever you already expected. Three states per check, never two: pass, fail, and could-not-run. Build fixtures in a scratch directory, never inside `cases/`.
 
@@ -99,7 +101,7 @@ Case 01 is out of scope for the glossary back-fill and is not passed to `--check
 
 **A mutation must leave the file parsable.** A mutation that introduces a syntax error makes every check fail at once, which reads as overwhelming evidence and is worthless — it is a could-not-run, not a catch. Parse the file after mutating and before drawing any conclusion.
 
-Known traps, each of which has produced a false FAIL here: `from-cv` treats the project brief as *required*, so it appears under `verified:`, not among the optional `notes:`; `notes:` print on BLOCKED as well as READY, so asserting a note says nothing about the exit code; and `ABSENT` wraps its path in parentheses while `SOURCED` and `FOUND` do not.
+Known traps, each of which has produced a false FAIL here: the project modes treat the project brief as *required*, so it appears under `verified:`, not among the optional `notes:`; `notes:` print on BLOCKED as well as READY, so asserting a note says nothing about the exit code; and `ABSENT` wraps its path in parentheses while `SOURCED` and `FOUND` do not.
 
 ## AI pair behavior
 

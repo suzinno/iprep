@@ -4,17 +4,19 @@
 # Every mode takes exactly one argument, but not all of them take the same kind
 # of thing. A case holds any number of CV projects and at most one interview pack:
 #
-#   <case>/projects/<name>  inputs.txt, the /system-design docs, interview-questions.md
+#   <case>/projects/<name>  inputs.txt, the /system-design docs, interview-questions.md,
+#                           resps-questions.md
 #   <case>/interview        candidate-profile.txt, *-questions.txt, *-answers.md, *-extra.md
 #
-#   from-cv <project>   per project: reads one project, writes that project's guide
-#   answer  <case>      case level: one pack spanning every project in the case
-#   extend  <case>      case level
+#   from-design <project>  per project: reads one project, writes interview-questions.md
+#   from-resps  <project>  per project: reads one project, writes resps-questions.md
+#   answer      <case>     case level: one pack spanning every project in the case
+#   extend      <case>     case level
 #
-# from-cv is per project because a case-level verdict would have to block on the
-# least-ready project, or invent a fourth "partly ready" state. The candidate
-# profile is case level, so the project modes derive the case from the project
-# path and report the profile path they resolved.
+# The project modes are per project because a case-level verdict would have to
+# block on the least-ready project, or invent a fourth "partly ready" state. The
+# candidate profile is case level, so the project modes derive the case from the
+# project path and report the profile path they resolved.
 #
 # Only the folder passed has to exist. A case with no projects, or with no
 # interview pack yet, is an ordinary "not started yet" state and is reported as
@@ -33,7 +35,8 @@
 # OPTIONAL inputs to answer and extend, and never block on their own. Their
 # presence or absence is always reported, because an optional input that goes
 # unnoticed is how the weighting, or the switch to a generated pack, silently
-# fails to happen.
+# fails to happen. extend also reports each sourced project's resps-questions.md,
+# which is optional covered ground and never blocks.
 #
 # A question file counts as a source only if it actually holds questions. A stub
 # such as a lone "1 " is non-empty and would pass a -s test, so usability here is
@@ -52,10 +55,11 @@ notes=()
 
 usage() {
     printf '\nusage:\n'
-    printf '  preflight.sh from-cv <case>/projects/<name>\n'
-    printf '  preflight.sh answer  <case>\n'
-    printf '  preflight.sh extend  <case>\n'
-    printf '\nfrom-cv takes one project; answer and extend take the whole case.\n'
+    printf '  preflight.sh from-design <case>/projects/<name>\n'
+    printf '  preflight.sh from-resps  <case>/projects/<name>\n'
+    printf '  preflight.sh answer      <case>\n'
+    printf '  preflight.sh extend      <case>\n'
+    printf '\nfrom-design and from-resps take one project; answer and extend take the whole case.\n'
 }
 
 cannot_run() {
@@ -206,13 +210,27 @@ report_projects() {
     [ "$found" -eq 1 ] || notes+=("projects: NONE ($case_dir/projects) -- this case has no CV project; generate without project grounding")
 }
 
+# report_resps_guide <project> -- optional input to extend, never blocks
+report_resps_guide() {
+    local name="${1##*/}" path="$1/resps-questions.md"
+    if [ ! -e "$path" ]; then
+        notes+=("project $name resps guide: ABSENT ($path) -- run /interview-prep from-resps $1 to cover it too")
+    elif [ ! -f "$path" ] || [ ! -r "$path" ]; then
+        notes+=("project $name resps guide: PRESENT BUT UNUSABLE (not a readable file): $path -- tell the user before generating")
+    elif [ ! -s "$path" ]; then
+        notes+=("project $name resps guide: PRESENT BUT EMPTY: $path -- tell the user before generating")
+    else
+        notes+=("project $name resps guide: FOUND $path -- read it as covered ground")
+    fi
+}
+
 [ "$#" -ge 1 ] || cannot_run "no mode given"
 
 mode="$1"
 shift
 
 case "$mode" in
-    from-cv|answer|extend) ;;
+    from-design|from-resps|answer|extend) ;;
     *) cannot_run "unknown mode: $mode" ;;
 esac
 
@@ -221,7 +239,9 @@ esac
 target="${1%/}"
 
 case "$mode" in
-    from-cv)
+    # Both project modes need the design docs: from-resps keeps them out of its
+    # questions, but its answers are bound to them like every other mode's.
+    from-design|from-resps)
         require_project_dir "$target"
         project="$target"
         interview="$(case_of "$project")/interview"
@@ -281,7 +301,8 @@ case "$mode" in
         # supported shape and blocks on nothing here.
         if [ "${#SOURCED_PROJECTS[@]}" -gt 0 ]; then
             for project in "${SOURCED_PROJECTS[@]}"; do
-                require "$project/interview-questions.md" "run: /interview-prep from-cv $project"
+                require "$project/interview-questions.md" "run: /interview-prep from-design $project"
+                report_resps_guide "$project"
             done
         fi
         ;;
