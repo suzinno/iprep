@@ -27,15 +27,16 @@ For each responsibility in `inputs.txt`, settle three things before writing any 
 Topic sequence:
 
 1. Architecture and service design
-2. APIs and integration
-3. Databases and data modelling
-4. Messaging and asynchronous processing
-5. Search, data and AI pipelines
-6. Security, identity and secrets
-7. Cloud infrastructure, containers and infrastructure as code
-8. Continuous integration and delivery
-9. Performance and caching
-10. Testing, observability and documentation
+2. Frontend
+3. APIs and integration
+4. Databases and data modelling
+5. Messaging and asynchronous processing
+6. Search, data and AI pipelines
+7. Security, identity and secrets
+8. Cloud infrastructure, containers and infrastructure as code
+9. Continuous integration and delivery
+10. Performance and caching
+11. Testing, observability, documentation and developer tooling
 
 Skip topics the CV does not cover. Within a topic, responsibilities keep their order from the CV.
 
@@ -50,6 +51,8 @@ The guide **verifies the person can back up each responsibility in front of an i
 **How many questions.** The difficulty levels are defined in `tiers.md`. Each responsibility gets one to three questions, scaled to its weight: one for a thin responsibility, two for a typical one, three for a rich one. Three is a hard cap, and every answer block counts toward it, so a sub-question counts as one. Spread a responsibility's questions across levels rather than stacking them at one; a responsibility with three questions has one at each level.
 
 **When a client profile is in play,** weight as `candidate-profile.md` sets out, inside the cap: a matching responsibility can rise to three questions, never past three and never below one.
+
+**One concern per question.** A question targets one technology, one technique or one decision. It never asks about a list in turn — "how did you design the schemas, indexes and migrations" is three questions. A Q3 about how two tools behave together is still one concern. When a responsibility names more concerns than three questions can cover, pick the concerns an interviewer would most likely probe: the one its verb points at ("optimized", "modeled"), then the ones the rest depend on. Leave the others unasked rather than bundling them into one question.
 
 **No repeats.** Where two responsibilities share ground, split it between their sections rather than asking the same question twice.
 
@@ -96,6 +99,8 @@ Write to `<project>/resps-questions.md`.
 - **Responsibility coverage** — walk `inputs.txt` responsibility by responsibility and name the section that holds each. Every responsibility has exactly one section.
 - **Order** — sections follow the topic sequence, responsibilities within a topic keep their CV order, and `R<n>` numbering is unbroken.
 - **Count** — every section holds one to three answer blocks, spread across levels, and a section with three has one at each level.
+- **One concern** — no question heading asks about a list of technologies or techniques in turn.
+- **Unasked technologies** — for each responsibility, list every technology and technique it names that no question in its section asks about, and report the list to the user. A gap the cap forces is expected; a gap nobody reported is the failure.
 - **Knowledge boundary** — for every question heading, list each specific name it uses (tools, components, figures) and confirm it appears in `inputs.txt` or belongs to a technology the brief names or implies. Rewrite every question that fails. This applies to the question headings only; answers may name what the design docs hold.
 - Answers reference this project's design, not textbook generalities, and claim nothing the brief and the design docs do not support.
 - Every Table of Contents link resolves to a real heading anchor in the file.

@@ -16,6 +16,7 @@
 - **Two project-level modes.** `from-design` (the renamed `from-cv`, unchanged in behaviour) writes `interview-questions.md`. `from-resps` writes `resps-questions.md`. Separate files, so neither overwrites the other and the existing guides stay valid.
 - **The knowledge boundary applies to questions only.** A `from-resps` question may use only what `inputs.txt` states plus general knowledge of the listed technologies. Answers still draw on the design docs, so the gate requires them for `from-resps` as it does for `from-design`.
 - **One section per responsibility, at most three questions each**, scaled to how much the responsibility holds. Sections are ordered by topic, not by CV position.
+- **The cap is kept when a responsibility names more concerns than three questions can cover.** Each question takes one concern; the rest stay unasked and the review reports them. Bundling them into compound questions hides the gap and blurs the question.
 - **Difficulty levels have one owner**, `references/tiers.md`, cited by both project modes.
 - **`extend` reads `resps-questions.md`** as further covered ground. It is an optional input: reported, never blocking.
 
