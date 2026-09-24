@@ -347,9 +347,46 @@ Shield Standard covers volumetric attacks. These throttles cover fairness betwee
 
 </details>
 
+---
+
+### Q3. How did you change the API over time without breaking clients that you could not update at the same moment?
+
+**Brief answer**
+Inside `/v1` I made only additive changes: a new field is optional, and nothing is removed or renamed. Each change also stays compatible with the previous release. Edge gateways replay up to 24 hours of old batches, and open browser tabs still run the old console.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **additive changes** — new fields optional, nothing removed within `/v1`
+- **deploy order** — gateway models before new pods
+- **24-hour replay** — old batches arrive after a change
+- **open console tabs** — old assets kept for 7 days
+- **one-release overlap**
+- **new version path** — only for a breaking change
+- expand and contract, traffic on the old version
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The API is versioned under `/v1`. Inside `/v1` I allowed only **additive changes**. A new field is optional and has a default. No field is removed or renamed, and no field changes its type or its meaning. A client built against the old contract keeps working without any change.
+
+The API Gateway request models are generated from the Pydantic models in CI, so the **deploy order** matters. Terraform applies the new gateway models before the new pods roll out. For a few minutes, API Gateway accepts a field that the old pods do not know. That is safe only because the new field is optional and the old pods ignore it.
+
+Two kinds of clients cannot update at the moment I deploy. The first is the edge gateways. An edge gateway buffers up to 24 hours of telemetry and replays it after an outage. Because of this **24-hour replay**, batches built in the old format can arrive a day after a change. So the ingest endpoint must accept the old batch format for at least that long.
+
+The second is the browser. After a deploy, **open console tabs** still run the old JavaScript. We keep the old hashed assets for 7 days, so those tabs keep working. This means the API must also work with the previous console build.
+
+The rule underneath is a **one-release overlap**. Every change works with the version before it and the version after it. The database follows the same rule with expand and contract.
+
+The design has only `/v1`, and it plans no breaking change. So I cannot describe a real `/v2` migration. A breaking change would get a **new version path**. `/v1` would keep running until the edge gateways and the console had moved. I would measure the traffic on the old version before removing it.
+
+</details>
+
 ## R4. APIs — React Query server state
 
-> Implemented React Query for server-state management and asynchronous AI request handling, and built reusable components with React Router, Redux, TailwindCSS, and Vite;
+> Implemented React Query for server-state management and asynchronous AI request handling, and built reusable components with React Router, Redux, [TailwindCSS](https://tailwindcss.com/ "Tailwind CSS — Utility-first CSS framework for styling components directly in markup"), and Vite;
 
 ---
 
@@ -431,9 +468,53 @@ The trade-off is up to 3 seconds of delay before the user sees a result. For run
 
 </details>
 
+---
+
+### Q3. When a page in the React interface loaded slowly, how did you find out whether the time went in the browser, the API or the database?
+
+**Brief answer**
+I checked the three parts in order: the browser's network waterfall first, then API Gateway latency, then a trace of the slow request. Each part has a different fix, so I measured before I changed anything.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **browser first** — the waterfall splits download, rendering and API waits
+- **hashed assets** — cached for a year; only `index.html` is checked again
+- **request waterfall** — dependent queries run one after another
+- **API Gateway latency** — total against integration latency
+- **trace** — FastAPI and SQLAlchemy spans
+- **read budget** — about 90 ms against a 300 ms p95
+- **resolution follows the window** — 720 points, not 8,640
+- 5% sampling, query plan
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I split the load time into three parts and checked them in order: the browser, then the API, then the database. Each part has a different fix, so guessing wastes time.
+
+I start with the **browser first**. The network panel in the browser's developer tools shows a waterfall. It separates three things: downloading the app, running it, and waiting for API calls.
+
+The console is a single-page app that Vite builds. Its **hashed assets** get a new file name on every build, and CloudFront caches them for a year. Only `index.html` is checked again on each load. So on a repeat visit, the app bundle is rarely the problem. On a first visit, it can be.
+
+The waterfall also shows a **request waterfall**: calls that start only after another call finishes. With React Query this happens when one query needs data from another query before it can start. Five 60 ms calls in a row make a slow page, although each call is fast.
+
+If one API call is slow, I compare the time the browser saw with the **API Gateway latency** for that method. API Gateway reports the total latency and the integration latency, which is the time spent in the service. If the browser saw much more than the total, the time is in the network. If the total is much larger than the integration latency, the time is in API Gateway itself, for example in the authorizer. Otherwise, the time is in the service.
+
+In the service, the **trace** of that request shows where the time went. OpenTelemetry records spans for FastAPI, SQLAlchemy and the AWS SDK calls. Only 5% of ordinary requests are sampled, so I look at a sampled slow request or repeat the call. A slow database span then becomes a question of the query plan.
+
+The design gives each read endpoint a **read budget** of about 90 ms against a 300 ms p95 target: 40 ms at the edge, 5–30 ms for an indexed query and 10 ms to serialise the response. A number far outside that budget shows which part to fix.
+
+One cause I designed against is too much data. The telemetry chart uses **resolution follows the window**. A 30-day chart gets hourly points: 720 per signal, not 8,640.
+
+The design gives budgets, not a measured slow-page incident. So this is the method I built the system to support, not the story of one bug.
+
+</details>
+
 ## R5. Databases — DynamoDB and PostgreSQL
 
-> Modeled DynamoDB tables for telemetry checkpoints and audit-log lookups, and designed PostgreSQL schemas, indexes, and SQLAlchemy/[Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy") migrations for operational and AI-generated data;
+> Modeled [DynamoDB](https://aws.amazon.com/dynamodb/ "Amazon DynamoDB — Managed key-value and document database with single-digit-millisecond reads and writes") tables for telemetry checkpoints and audit-log lookups, and designed PostgreSQL schemas, indexes, and SQLAlchemy/[Alembic](https://alembic.sqlalchemy.org/en/latest/ "Alembic — Applies and versions database schema migrations for SQLAlchemy") migrations for operational and AI-generated data;
 
 ---
 
@@ -511,6 +592,87 @@ The **tenant first in every key** rule is for security. An Identity and Access M
 There are **two secondary indexes**. `by_actor` answers "what did this user do". `by_day` answers "what happened on this day". The **sharded day index** splits each day into four shards, so a busy day does not load one partition.
 
 **TTL and Streams** handle retention. `expires_at` is set 400 days ahead. DynamoDB Streams feed `audit-archiver`, which writes to S3 before TTL removes the item.
+
+</details>
+
+---
+
+### Q2. What was your first step when a PostgreSQL query was slow, and how did you find the cause?
+
+**Brief answer**
+First I found which query cost the most in total, then I read its plan with `EXPLAIN (ANALYZE, BUFFERS)` as the application role. On this platform the role matters, because row-level security changes the plan and the table owner skips it.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **total time** — how often it runs, multiplied by how long
+- **`EXPLAIN (ANALYZE, BUFFERS)`** — with real parameter values
+- **application role** — the owner bypasses row-level security
+- **estimated against actual rows** — stale statistics
+- **partition pruning**
+- **matches the filter and the sort**
+- **every index names its query** — each one slows writes
+- pg_stat_statements, `CREATE INDEX CONCURRENTLY`
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+My first step is to find the right query, not to guess. I rank queries by **total time**: how often a query runs, multiplied by how long it takes. A 5 ms query that runs a thousand times a second costs more than one slow report. The `pg_stat_statements` extension gives that ranking. For one slow endpoint, the trace already shows which database call is slow.
+
+Then I read the plan with **`EXPLAIN (ANALYZE, BUFFERS)`**, using real parameter values from a slow call. `ANALYZE` runs the query and shows the real times. `BUFFERS` shows how many pages the query read.
+
+I run it as the **application role**. Every tenant table has row-level security, and the table owner bypasses it. A plan run as the owner has no tenant filter, so it can look fast while the real query is slow. The policy adds `tenant_id = current_setting(…)` to every query. If the planner cannot use that expression with an index, the query falls back to a scan.
+
+In the plan I check three things. The first is **estimated against actual rows**. A large gap usually means stale statistics, and running `ANALYZE` on the table fixes it. The second is **partition pruning**. A query on rollups or document chunks must touch only the partitions it needs. The third is a sequential scan or a large sort on a big table.
+
+The usual fix is an index that **matches the filter and the sort**. The alarm history for one device uses `(tenant_id, device_id, opened_at DESC)`. The query filters on the first two columns. It reads the rows already in the order it needs, so it can stop after one page of results.
+
+An index is not free. Every index slows down writes. An index on a column that changes also stops heap-only updates. So **every index names its query**. I build a new one with `CREATE INDEX CONCURRENTLY`, then run the same `EXPLAIN` again to confirm that the planner uses it.
+
+</details>
+
+---
+
+### Q2. Which of your PostgreSQL tables changed most often, and how did you stop them from bloating?
+
+**Brief answer**
+The five-minute rollups changed most, at about 1,500 rows per second. I kept those updates heap-only with spare space on each page. I removed old data by dropping partitions instead of deleting rows, so vacuum had little left to do.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **dead row versions** — an update never changes a row in place
+- **rollup upserts** — about 1,500 rows per second
+- **free space on the page** — `fillfactor` 70, no index on aggregates
+- **partition drop** — no mass `DELETE`
+- **run status updates** — not heap-only, but low volume
+- **long transaction** — holds back cleanup
+- **autovacuum per table** — lower scale factor on hot partitions
+- **`VACUUM FULL`** — exclusive lock; maintenance window only
+- pg_stat_user_tables, pg_repack
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Bloat is the space that **dead row versions** take up. PostgreSQL never changes a row in place. An update writes a new version of the row and leaves the old version dead until vacuum removes it. So the tables to watch are the ones with the most updates and deletes.
+
+The busiest table was the five-minute rollups. The **rollup upserts** change about 1,500 rows per second at design load. Each batch is one multi-row `INSERT … ON CONFLICT DO UPDATE`.
+
+For those tables I kept **free space on the page**. Rollup partitions use `fillfactor = 70`, and the aggregate columns have no index. So most updates are heap-only: the new version goes on the same page, and no index changes. PostgreSQL can then clean dead versions on that page during normal work, without waiting for vacuum.
+
+The second decision was the **partition drop**. Retention on rollups is a `DROP` of the oldest daily partition. A mass `DELETE` would leave millions of dead rows for vacuum, and a `DROP` leaves none. Old partitions also stop changing, so autovacuum works mainly on the newest ones.
+
+**Run status updates** are different. A run moves from queued to running to validating to a final status. The status column is part of a partial index, so these updates are not heap-only. But the volume is small, about 11,000 runs a day, so default autovacuum handles it.
+
+The main thing that stops vacuum is a **long transaction**. Vacuum cannot remove a row version that an open transaction might still need. Our transactions are short: each one sets the tenant with `SET LOCAL`, does its work and ends. A session left idle inside a transaction is the case to watch.
+
+The design does not fix **autovacuum per table** settings. On the rollup partitions I would lower the scale factor. Then vacuum starts after a fixed number of changed rows, not after a share of a large table. I would check the result with the dead-row counts in `pg_stat_user_tables`.
+
+I would not run **`VACUUM FULL`** on a live table. It rewrites the whole table under an exclusive lock, and that lock blocks reads and writes until it ends. Plain vacuum only marks space for reuse, but it runs alongside normal traffic. `VACUUM FULL` belongs in a maintenance window. `pg_repack` is the online option when a table must really shrink.
 
 </details>
 
@@ -759,6 +921,51 @@ The trade-off is latency against accuracy. Two regenerations can push an analysi
 
 </details>
 
+---
+
+### Q3. You used Step Functions for the AI pipelines and SNS fan-out for other flows. How did you decide between central orchestration and event-driven choreography?
+
+**Brief answer**
+I orchestrated work whose steps depend on each other and that needs one final status, which is every AI run. I used choreography where several consumers react to the same event and do not depend on each other, such as telemetry batches and run events.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **the rule** — dependent steps orchestrated, independent reactions choreographed
+- **telemetry fan-out** — three consumers fail and scale alone
+- **AI pipelines** — fixed order, branching, one status
+- **execution history**
+- **run events** — side effects subscribe; pipelines unchanged
+- **subscriber failure** — never fails the run
+- **cost** — per-transition latency against a hidden flow
+- nothing to undo, saga
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I used both, and **the rule** was whether the steps depend on each other. If a step needs the result of the step before it, and the work needs one final status, I orchestrate it. If several consumers react to the same event and do not depend on each other, I use choreography.
+
+The **telemetry fan-out** is choreography. Each batch goes to an ordered SNS topic, and three queues receive it: the archiver, the rollup consumer and the rules consumer. None of them waits for another. Each one fails, retries and scales on its own. If the rules consumer has a bug, archiving and rollups continue.
+
+The **AI pipelines** are orchestrated with Step Functions. An analysis has a fixed order: validate the request, build the context, run the agent, validate the output and save it. The validation step can send the run back to the agent. Every step has its own retry policy and timeout. The user needs one run status at the end. With choreography, this logic would be spread across several consumers, and no single component would own the status.
+
+Orchestration also gives an **execution history** for every run. When a run fails, I open the execution and see which state failed and with what input. With choreography, I would have to rebuild that picture from logs.
+
+At the end of a run, I switch to choreography. The pipeline publishes **run events** to the `ai-run-events` topic. The webhook dispatcher and the follow-up trigger subscribe to it. Adding a subscriber does not change the pipelines.
+
+A **subscriber failure** never fails the run. If a tenant's webhook endpoint is down, the dispatcher retries from its own queue. After 8 attempts the message goes to a dead-letter queue, and the tenant is notified. The run itself is already complete.
+
+Each style has a **cost**. Step Functions adds about 50–100 ms per state transition and charges per transition. That is acceptable for runs that take minutes. Choreography hides the overall flow. So every consumer must be safe to repeat, and tracing must join the hops.
+
+Partial failure stays simple in the analysis pipeline. It writes its output only in the persist step, and intermediate results sit in S3 and expire after 14 days. So a failed analysis leaves nothing in PostgreSQL to undo, and `MarkFailed` only records the status and the error code. That is why the pipeline needs no saga with compensating steps.
+
+</details>
+
+> **Footnotes:**
+> - **Saga:** A sequence of local transactions in which each step has a compensating step that undoes it if a later step fails. It replaces one distributed transaction across services.
+
 ## R8. Messaging — Async AI processing
 
 > Developed async AI processing with AsyncIO, Celery (Redis broker), SQS with SNS fan-out, and Lambda for long-running tasks;
@@ -967,6 +1174,45 @@ One risk: the checkpointer creates its own tables through `setup()`, and a libra
 
 ---
 
+### Q2. How did you test the LangChain and LangGraph code, when the model does not give the same answer twice?
+
+**Brief answer**
+I split the code into parts I could test exactly and parts I could only measure. Everything around the model ran in Pytest against a fake chat model that replays recorded responses. Answer quality was measured with an evaluation set in staging.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **deterministic code** — validators, budget and allowlist as plain functions
+- **fake chat model** — replays recorded responses
+- **graph routing** — the self-check loop and the tool-call cap
+- **bad outputs on purpose**
+- **evaluation set** — reviewed runs, scored in staging
+- **5-point gate** — blocks promotion
+- **canary** — failure metrics against the stable pods
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I did not try to make the model deterministic. I split the code into parts I can test exactly and parts I can only measure.
+
+Most of the code around the model is **deterministic code**. The output validators, the citation check, the numeric grounding tolerance, the token budget and the tool allowlist are plain Python. Pytest tests them like any other function, with fixed inputs and exact expected results.
+
+For the chains and the graph, I replaced Bedrock with a **fake chat model**. It replays responses recorded from real runs. So a test that runs the LangGraph workflow gets the same model output every time. The test checks what my code does with that output: which tools it calls, what state it saves and what it returns.
+
+The fake model also makes the **graph routing** testable. I script a draft that fails the self-check and confirm that the graph goes back to the act step only once. I script a model that asks for more tools than allowed and confirm that the act step stops at 6 calls.
+
+I also feed in **bad outputs on purpose**: a response that breaks the Pydantic schema, one that cites a chunk that was never retrieved, and one with a number that is not in the evidence. The right check must catch each one. These cases matter most, because a model will produce bad output in production sooner or later.
+
+None of these tests says whether the answers are good. For that I used an **evaluation set** built from reviewed runs. It runs in staging whenever the prompt version or the model ID changes. A **5-point gate** blocks promotion if the pass rate drops by more than 5 points.
+
+In production, a worker change goes out as a **canary** first. The pipeline compares generation and validation failures on the canary pod with those on the stable pods before it promotes the change.
+
+</details>
+
+---
+
 ### Q3. How did you choose Bedrock models for the different steps, and how did Bedrock quotas shape the design?
 
 **Brief answer**
@@ -1000,6 +1246,46 @@ This changed several design choices.
 - **Prompt caching** helps a long, stable system prompt. Support differs by model version, so it has to be confirmed for the model we choose.
 
 A cross-region inference profile can raise throughput. But it must keep requests inside the tenant's geography, so that too is a check before use. Bedrock also keeps model traffic inside the AWS account boundary, but its data-handling terms still had to be confirmed for each region.
+
+</details>
+
+---
+
+### Q3. What are the main risks of running a multi-step LangGraph workflow in production, and how did you limit them?
+
+**Brief answer**
+The four risks are loops, runaway cost, a crash in the middle of a run, and state that grows too large. Each one has a limit in code, not in the prompt: fixed loop counts, a token budget, a checkpointer, and caps on what goes into the state.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **one graph, not many agents**
+- **loops** — self-check once, 6 tool calls, regeneration twice
+- **recursion limit** — a backstop only
+- **runaway cost** — daily token budget, checked first
+- **crash mid-run** — resume from the last checkpoint
+- **repeated side effects** — the one write tool only drafts
+- **state size** — 16 KB cap and S3 pointers
+- 7-day cleanup, validation gate
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+First, a point about scope: I built **one graph, not many agents**. One agent plans, retrieves, calls tools, drafts and checks its own draft. Many risks grow with every extra agent, and a single graph kept them small. Still, a multi-step graph has four risks that I planned for.
+
+The first is **loops**. A graph with a cycle can keep going. So every cycle has a hard limit in code. The self-check can send the graph back to the act step only once. The act step makes at most 6 tool calls per attempt. The pipeline regenerates a failed output at most twice. LangGraph's own **recursion limit** is a backstop behind these limits, not the main control.
+
+The second is **runaway cost**. A graph that loops or retrieves too much spends tokens fast. Each tenant has a daily token budget, and the pipeline checks it before any work starts. The worker count is sized to the Bedrock quota, so a burst waits in the queue instead of turning into throttling.
+
+The third is a **crash mid-run**. A pod can die after five model calls. The PostgreSQL checkpointer saves the state after every step of the graph. So the retried attempt resumes from the last checkpoint and does not repeat the finished model and tool calls.
+
+A call that was running at the moment of the crash can run again. That is why **repeated side effects** must be harmless. All tools but one only read data. The one write tool only creates a pending work-order draft. So a repeated call can at worst leave a second draft, which a person rejects.
+
+The fourth is **state size**. The checkpointer writes the state after every step, so a large state slows every step. Tool results are capped at 16 KB. The context bundle arrives as an S3 pointer, not as content. Old checkpoint threads are deleted 7 days after their run ends.
+
+A last risk is quality: a graph can finish cleanly and still be wrong. The validation gate after the graph handles that. The graph's own self-check is never the authority.
 
 </details>
 
@@ -1288,6 +1574,48 @@ There is one risk to confirm. Custom claims in access tokens need a Cognito feat
 
 ---
 
+### Q1. Which data on the platform did you treat as sensitive, and how did you protect it?
+
+**Brief answer**
+The main asset was each tenant's operational data, which tenant isolation and encryption per data class protect. I kept personal data small on purpose: contact details stay in Cognito, and image metadata is removed before any model sees an image.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **tenant operational data** — the main asset
+- **personal data kept small** — email and phone only in Cognito
+- **inspection images** — workers may appear
+- **key per data class**
+- **no prompts in logs** — by default
+- **GDPR** — region per tenant, pseudonymised actor IDs
+- **no payment or health data**
+- TLS 1.2 minimum, impact assessment for images
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I sorted the data into classes, because each class needed different protection.
+
+The largest class is **tenant operational data**: telemetry, alarms, maintenance history, documents and AI outputs. It is sensitive for business reasons, because it shows how a customer's plant runs and where it fails. Tenant isolation in several layers is the main protection for it.
+
+I designed for **personal data kept small**. Email addresses and phone numbers stay in Cognito only. The users table holds a display name and a role. The audit log holds actor IDs and IP addresses, because an audit trail needs them.
+
+**Inspection images** were the case that is easy to miss. A photo of a machine can show a worker. So preprocessing removes image metadata before any model sees the image. Originals with no finding are deleted after one year.
+
+At rest, every store is encrypted with a customer-managed KMS key, one **key per data class**. Each key's use is logged, and one class can be revoked without touching the others. In transit, the edge requires TLS 1.2 or higher, and bucket and queue policies refuse any request without TLS.
+
+Logs were a real risk. Prompts and model outputs contain tenant data, so there are **no prompts in logs** by default. Logs carry IDs, hashes and token counts instead.
+
+The regulation that applies is the General Data Protection Regulation (**[GDPR](https://gdpr-info.eu/ "General Data Protection Regulation — EU regulation governing the processing of personal data")**). Each tenant is served from a region that matches its data residency. An erasure request pseudonymises the actor IDs in audit records instead of deleting the records. Image inspection also has a Data Protection Impact Assessment ([DPIA](https://gdpr-info.eu/art-35-gdpr/ "GDPR process for assessing privacy risk before high-risk data processing")).
+
+The platform holds **no payment or health data**. So the Payment Card Industry Data Security Standard ([PCI-DSS](https://www.pcisecuritystandards.org/ "Security requirements for organizations that handle payment card data")) and the Health Insurance Portability and Accountability Act ([HIPAA](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160 "US law setting standards for protecting health information")) do not apply.
+
+</details>
+
+---
+
 ### Q2. How did you manage service credentials with Secrets Manager, and how did rotation work without breaking running services?
 
 **Brief answer**
@@ -1495,6 +1823,45 @@ Rollback follows the same split. We re-point the alias for Lambdas and state mac
 
 ---
 
+### Q1. How did you structure the Dockerfiles for the Python services, so that the images stayed small and the builds stayed fast?
+
+**Brief answer**
+I use a multi-stage build, so build tools never reach the final image. I install dependencies before copying the code, so a code change reuses the cached dependency layer. Each image is built once, tagged with the commit SHA, and promoted unchanged.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **multi-stage build** — build tools stay out of the final image
+- **dependencies before code** — a code change reuses the dependency layer
+- **`.dockerignore`**
+- **one image, several roles** — assist API and agent worker
+- **layer cache** — pulled from ECR
+- **built once** — tagged with the commit SHA
+- Dockerfile not fixed by the design, non-root user
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The design docs fix how images move through the pipeline, not what is inside each Dockerfile. So the build rules below are how I structure a Python service image, not a record of this project's files.
+
+I use a **multi-stage build**. The first stage has the compilers and build tools, and it installs the dependencies into a virtual environment. The final stage starts from a slim Python base image. It copies only that environment and the application code, and it runs as a non-root user. Build tools never reach the final image. So the image is smaller, and the image scan has fewer packages to report.
+
+Layer order decides build speed. I copy the dependency lock file and install **dependencies before code**, and only then copy the source. Dependencies change rarely, and code changes on every commit. With this order, a code change rebuilds only the last layers and reuses the dependency layer.
+
+A **`.dockerignore`** file keeps tests, the Git history and local files out of the build context. Without it, a change to any of those files can invalidate the cache.
+
+The platform has fewer images than services, because of **one image, several roles**. `agent-service-api` and `agent-worker` run the same image with a different command. They share the LangGraph code, so one build serves both.
+
+In CI I would use the registry as the **layer cache**. The build pulls cached layers from the previous image in ECR, so a fresh runner does not start from nothing.
+
+Every image is **built once**. It is tagged with the commit SHA and pushed to ECR with an SBOM and a scan. Staging and production run that same image and never rebuild it. So what was tested is what runs.
+
+</details>
+
+---
+
 ### Q2. Walk me through the stages of your GitLab pipeline. What had to pass before a change reached production?
 
 **Brief answer**
@@ -1536,6 +1903,46 @@ The AI evaluation is the stage that is special to this system. Ordinary tests ca
 Bash scripts carry the deploy and verification steps, such as the alarm check before a Lambda alias moves to 100%.
 
 Rollout mechanics on EKS, such as rolling updates and the worker canary, sit in the deploy stages. The pipeline's job is to decide whether a build may move forward at all.
+
+</details>
+
+---
+
+### Q2. How did you set up the GitLab pipeline so that a change to one service did not rebuild and redeploy everything?
+
+**Brief answer**
+Terraform was already split into module groups with one state each, so a change plans only its own group. For services, I would scope build jobs with path rules that also list the shared modules. Each release stays compatible with the one before, so one service can deploy alone.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **path rules** — `rules: changes` per component
+- **shared modules** — rebuild every service that uses them
+- **full suite on main**
+- **Terraform module groups** — one state each
+- **Kustomize overlay** — one image tag per workload
+- **one-release overlap**
+- **deploy order**
+- design does not split jobs per component
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The design docs describe the pipeline stages and the order of deployment, but not how jobs are split per component. So part of this answer is how I would set it up, and I say which part.
+
+The goal is simple. A change to `mcp-gateway` should not rebuild and redeploy the Lambdas. GitLab supports this with **path rules**. I would give each component's build and test jobs `rules: changes` on its own folder. Then a merge request that touches one folder runs only that component's jobs.
+
+The risk is the opposite mistake: a change that should rebuild something, but does not. The **shared modules** cause it. The tenant context, the token-budget module and the Pydantic models are used by several services. So each service's rule would list its own folder and the shared folders. When a shared module changes, every service that uses it rebuilds.
+
+A missing path in a rule fails silently. So I would still run the **full suite on main**, where a skipped dependency would show up before a release.
+
+Terraform already has a boundary in the design: the **Terraform module groups**. Network, cluster, data, messaging, workflows, identity and observability each have their own state per environment. A change to a queue plans only the messaging state. It cannot touch the network by accident, and the plan a reviewer reads stays small.
+
+For the services on EKS, the deploy applies one **Kustomize overlay** per workload. If each overlay holds that workload's image tag, `kubectl apply` changes only the workloads whose tag changed and leaves the others running.
+
+Deploying one service alone is safe only with a **one-release overlap**. Each service stays compatible with the previous and the next version of the others. The fixed **deploy order** still applies to whatever does change: Terraform first, then migrations, then workloads, then the Lambda and state machine aliases.
 
 </details>
 
@@ -1665,6 +2072,46 @@ Each target has a latency budget. For example, the analysis target is a p95 unde
 
 ---
 
+### Q2. Where did you use caching to make the application faster, and how did you know that it actually helped?
+
+**Brief answer**
+I cached in Redis only reads that were frequent and could be slightly old or rebuilt: live status, registry data and dashboard aggregates. The hit rate per key family showed whether a cache earned its place, but the real proof was lower database load and latency.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **live status** — written through on every batch
+- **cache-aside registry** — key deleted after commit
+- **dashboard aggregates** — 30-second TTL
+- **no API caching at the edge** — every response is tenant-specific
+- **hit rate per key family**
+- **database load and latency** — the result that matters
+- **evictions** — memory alarm at 80%
+- every key has a TTL
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I cached in Redis only where a read was frequent and the data could be a little old or rebuilt. Every key has a TTL, so losing the cache costs latency, never correctness.
+
+There were three uses. **Live status** is written through by the rollup consumer on every batch, so a status read is one Redis lookup instead of a query. The **cache-aside registry** holds devices, gateway client mappings and tenant settings. On a miss, the service loads the row from PostgreSQL and sets the key. After a change commits, `platform-api` deletes the key. **Dashboard aggregates** use a 30-second TTL with no invalidation, because 30 seconds is within the freshness target.
+
+I also chose where not to cache. There is **no API caching at the edge**. Every response is tenant-specific, and a shared edge cache could serve one tenant's data to another.
+
+To know that a cache helps, cluster totals are not enough. ElastiCache reports hits and misses for the whole cluster, which mixes key families of very different value. So I would count the **hit rate per key family** in the application, with one metric per key prefix. A family with a low hit rate costs memory and an extra network call on every miss, so it should go.
+
+The hit rate is only a proxy. The result that matters is **database load and latency**. The gateway client lookup runs on every ingest request, up to 80 per second at peak. The cache keeps those reads off PostgreSQL and keeps the lookup at about 2 ms inside a 500 ms ingest budget. I would judge a cache change by database CPU, read latency p95 and the endpoint's own p95.
+
+Last, I watch **evictions**. `platform-cache` removes the least recently used keys when its memory is full. Steady evictions mean useful keys are pushed out before they are read again. The memory alarm at 80% warns before that point.
+
+The design names the layers and their invalidation rules, but it gives no measured hit rates. So I describe the method, not a result.
+
+</details>
+
+---
+
 ### Q3. How did you size connection pools and concurrency across API pods, workers and Lambdas, so that the database was not overloaded?
 
 **Brief answer**
@@ -1697,6 +2144,49 @@ RDS Proxy brings one risk. We set the tenant with `SET LOCAL app.tenant_id` in e
 **Agent workers.** Their limit is not the database but the Bedrock token quota. Each pod runs up to 16 tasks at once on AsyncIO. Four replicas give 64 slots, against about 25 concurrent tasks at the estimated peak. Pods beyond the quota only produce throttling. So the replica count changes when the quota changes, and bursts wait in the `agent-tasks` queue.
 
 **Guard rails.** An alarm fires when connections pass 80% of the maximum. If primary CPU stays above 60% for a week, or read p95 goes above 300 ms, the next step is a read replica for rollup and retrieval reads.
+
+</details>
+
+---
+
+### Q3. When one dependency became slow, such as the AI model or the database, what stopped the slowdown from spreading to the rest of the platform?
+
+**Brief answer**
+Every wait had a limit. Slow work left the request path through queues, and every call had a timeout. Concurrency, connection pools and retries all had fixed limits. So callers queued or failed fast instead of piling up.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **work off the request path** — only assist waits for a model
+- **timeouts** — assist at 25 s, tool calls, 180 s heartbeat
+- **bounded concurrency** — fixed worker slots and connection pools
+- **queues as buffers**
+- **bounded retries** — about 15 minutes, then `model_unavailable`
+- **`503` with `Retry-After`**
+- **degrade, not fail** — cache loss falls back to PostgreSQL
+- **no circuit breaker** — the next step for assist
+- separate service for assist, reserved concurrency
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+A slow dependency spreads when its callers keep waiting on it. Their connections and memory fill up, and then they become slow for everyone else. So I made sure every wait had a limit.
+
+The first control is to keep **work off the request path**. An analysis returns `202` with a run ID, and the model work happens in a pipeline. If Bedrock slows down, runs take longer, but `platform-api` holds no connection open for them. Only assist waits for a model inside a request. It runs in its own service, `agent-service-api`, so a slow model can fill that service but not the main API.
+
+The second is **timeouts** on every call. Assist has a hard 25-second timeout, under API Gateway's 29-second limit. Every MCP tool has a timeout. An agent task has a 180-second heartbeat limit, so a stuck worker is noticed within 3 minutes.
+
+The third is **bounded concurrency**. Each agent worker pod runs at most 16 tasks. Each API process has a fixed database pool. The telemetry Lambdas have reserved concurrency and reach the database through RDS Proxy. So when the database slows down, callers wait for a connection. They do not open more connections and push the database over its limit.
+
+The fourth is **queues as buffers**. When Bedrock throttles, runs wait in the agent task queue. Work is delayed, but nothing is lost, and nothing piles up in memory.
+
+The fifth is **bounded retries** with backoff. Unlimited retries turn a slow dependency into an overloaded one. Throttled agent steps retry for about 15 minutes, and then the run fails with `model_unavailable`.
+
+When the database fails over, the API returns **`503` with `Retry-After`**, so clients back off instead of retrying at once. When the cache fails, the platform must **degrade, not fail**. Reads fall through to PostgreSQL, and rate limits fall back to a per-pod limit in memory. That fallback adds database load, which is one more reason the pools stay bounded.
+
+There is **no circuit breaker** in the design. For the asynchronous paths, queues, bounded pools and timeouts did that job. Assist calls Bedrock inside a request, so a circuit breaker is the next step I would add there. It would fail fast while Bedrock is failing, instead of making each request wait for the full timeout.
 
 </details>
 
