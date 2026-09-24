@@ -233,6 +233,19 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | SQS | Amazon Simple Queue Service | Managed message queue that decouples producers from consumers | https://aws.amazon.com/sqs/ |
 | STS | AWS Security Token Service | Issues short-lived credentials for assumed roles | https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html |
 | VPC | Virtual Private Cloud | Isolated private network in which cloud resources run | https://aws.amazon.com/vpc/ |
+| MSK | Amazon Managed Streaming for Apache Kafka | Runs Apache Kafka clusters as a managed AWS service | https://aws.amazon.com/msk/ |
+| SEO | Search Engine Optimization | Shapes page content so that search engines rank it higher | https://developers.google.com/search/docs/fundamentals/seo-starter-guide |
+| SKU | Stock Keeping Unit | Identifies one sellable variant of a product for inventory and pricing | https://en.wikipedia.org/wiki/Stock_keeping_unit |
+| PII | Personally Identifiable Information | Data that can identify a person and must be minimised and protected | https://csrc.nist.gov/glossary/term/personally_identifiable_information |
+| GTIN | Global Trade Item Number | GS1 identifier that labels the same product across sellers and suppliers | https://www.gs1.org/standards/id-keys/gtin |
+| ETL | Extract, Transform, Load | Moves data out of source systems, reshapes it and loads it into a target store | https://en.wikipedia.org/wiki/Extract,_transform,_load |
+| JDBC | Java Database Connectivity | Standard driver interface that Spark and AWS Glue use to read and write relational databases | https://docs.oracle.com/javase/tutorial/jdbc/overview/index.html |
+| CCPA | California Consumer Privacy Act | Gives California residents rights over the personal data businesses hold about them | https://oag.ca.gov/privacy/ccpa |
+| DynamoDB | Amazon DynamoDB | Managed key-value and document database with single-digit-millisecond reads and writes | https://aws.amazon.com/dynamodb/ |
+| OpenAI | OpenAI | Provides GPT models through an API and official SDKs | https://platform.openai.com/docs/ |
+| MobX | MobX | Makes application state observable so that views update when the data they read changes | https://mobx.js.org/ |
+| D3 | D3.js | JavaScript library that binds data to SVG and HTML for custom visualisations | https://d3js.org/ |
+| TailwindCSS | Tailwind CSS | Utility-first CSS framework for styling components directly in markup | https://tailwindcss.com/ |
 
 ## Deliberately not linked
 
