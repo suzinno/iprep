@@ -129,6 +129,46 @@ Running **two messaging systems** has a cost: two sets of metrics, alerts and cl
 
 </details>
 
+---
+
+### Q3. Which data had to be strongly consistent across your services, and where did you accept eventual consistency?
+
+**Brief answer**
+Stock, orders and price decisions had to be strongly consistent, so each one changes inside one service's own PostgreSQL transaction. Everything built from them, such as search, the cache, channel listings and analytics, is eventually consistent and lags by seconds or minutes. No transaction ever spans two services.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **consistency per domain** — not one CAP choice for the whole system
+- **strong consistency inside one service** — a single PostgreSQL transaction
+- **fail rather than diverge** — writes stop during a failover
+- **eventual consistency for read models** — search, cache, channels, analytics
+- **no distributed transaction** — no two-phase commit, no saga
+- **bounded and measured** — searchable and priced everywhere within 2 minutes
+- **the channel's checkout re-validates**
+- optimistic concurrency with `version`, outbox and inbox
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I did not make one consistency choice for the whole platform. I used the Consistency, Availability and Partition tolerance ([CAP](https://en.wikipedia.org/wiki/CAP_theorem "Names the theorem that a distributed system can guarantee only two of the three during a network partition")) theorem as a frame and chose **consistency per domain**.
+
+Three kinds of data must never be wrong: stock levels, orders and price decisions. An agent's stock update must never apply twice or go missing. For these I kept **strong consistency inside one service**. One service owns each of them, and each change is one PostgreSQL transaction on the `core-db` primary. The primary has a synchronous standby in a second Availability Zone (AZ). So a committed write survives the loss of a zone.
+
+The trade-off is availability. During a network partition or a failover, these writes **fail rather than diverge**. A failover takes 60 to 120 seconds, and writes fail for about two minutes. Reads keep working from Redis and the read replica. I accepted that. A stock level that is wrong in two places is worse than a stock update that fails and is retried.
+
+Everything else is a copy built from events. Catalog lookups through Redis, search, recommendations, the listings on sales channels and the analytics rollups use **eventual consistency for read models**. A shopper who sees a price that is a few seconds old is acceptable. A search that fails is not.
+
+So there is **no distributed transaction** anywhere. There is no two-phase commit and no saga with compensating steps. A saga was not needed, because checkout and payment happen on the channels, not on the platform. Each service gets local atomicity instead. The state change and its outbox row commit together, and consumers de-duplicate with an inbox table. An event can arrive late, but it is never lost and never applied twice.
+
+The lag has targets, so it is **bounded and measured**. A catalog change must be searchable within 2 minutes. A price can differ between the catalog, search and the channels for less than 2 minutes. Kafka consumer lag has its own target of 30 seconds at p95.
+
+The last safety net is that **the channel's checkout re-validates** price and stock. A stale value on a storefront can mislead a shopper for a short time, but it cannot create a wrong order. Inside one service, a `version` column guards concurrent edits. An update that sends an old `If-Match` value is rejected.
+
+</details>
+
 ## R2. Frontend — Merchant analytics dashboards
 
 > Developed interactive merchant analytics dashboards using React, TypeScript, [MobX](https://mobx.js.org/ "MobX — Makes application state observable so that views update when the data they read changes"), and custom state containers;
@@ -707,6 +747,46 @@ Fusion and the session boost add about 3 ms. The p95 stays under 200 ms, because
 
 ---
 
+### Q2. How did you protect the search endpoints from a flood of traffic, such as a scraping bot?
+
+**Brief answer**
+In layers. At the edge, a web application firewall blocks known bots and limits requests per IP address. API Gateway gives each storefront key its own rate limit. Behind that, a cap on result size and the query-embedding cache keep the cost of one request small.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **limits in layers** — edge, key, request, spend
+- **bot control** — against catalog scraping
+- **rate-based rule** — 2,000 requests per 5 minutes per IP
+- **usage plan per key** — steady rate plus burst
+- **publishable key is not a secret** — read-only routes, allowed origins only
+- **bounded request** — at most 50 results
+- **token budget per tenant** — protects model spend in chat
+- 429 to the caller, repeated queries hit the embedding cache, capacity sized for the peak
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Storefront search is a public endpoint. The storefront widget calls it from the shopper's browser, so anyone can call it. That makes it a target for bots that copy a merchant's catalog and prices. So I put **limits in layers**, each one against a different kind of abuse.
+
+The first layer is the edge. AWS Web Application Firewall ([WAF](https://owasp.org/www-community/Web_Application_Firewall "Filters and blocks malicious HTTP traffic before it reaches an application")) sits in front of CloudFront and API Gateway. Its **bot control** rule group runs on the storefront routes, against catalog scraping. A **rate-based rule** blocks an IP address after 2,000 requests in 5 minutes. That stops a simple script, but not a bot spread over many addresses.
+
+The second layer is the key. Each storefront calls the API with a publishable API key that identifies the tenant. API Gateway applies a **usage plan per key**, with a steady rate and a burst. A traffic spike on one tenant's key is throttled with a 429. So it cannot use up the capacity that the other 800 tenants share.
+
+The **publishable key is not a secret**. It sits in the page's code, and anyone can read it. So its only power is the read-only storefront routes, and it works only from the tenant's allowed origins. A stolen key can search, but it cannot change anything.
+
+The third layer is the request itself. Search is a **bounded request**: `limit` is at most 50 results, so one call cannot ask for the whole catalog. Repeated queries also hit the query-embedding cache in Redis. A bot that sends the same query again costs about 1 ms of embedding time, not a Bedrock call.
+
+The fourth layer protects money, not capacity. Chat reaches the same retrieval through the chat agent, and every chat turn calls a model. A **token budget per tenant**, a daily counter in Redis, caps that spend. Without it, a flood of chat messages would turn into a bill.
+
+Behind all the layers, capacity is sized for a peak of about 600 search retrievals per second. The limits keep abuse away from that capacity. They do not make up for missing capacity.
+
+</details>
+
+---
+
 ### Q3. How would this search design hold up with ten times the catalog?
 
 **Brief answer**
@@ -739,6 +819,44 @@ So I set an **evolution trigger**: more than 50 million chunks, or an HNSW rebui
 The key design decision is that the change stays behind the **same retriever interface**. `search-service` calls a LangChain retriever. A new retriever class can use OpenSearch, and `conversation-service` and `recommendation-service` do not change.
 
 Before that point, there are cheaper steps. The embeddings are already stored as `halfvec(512)`, half-precision, which halves their size. Reads already go to `search-db-replica`, so another replica adds read capacity. The hash partitions also hide one risk: a **large tenant** with a big share of all chunks would dominate its partition. That tenant can get its own partition.
+
+</details>
+
+---
+
+### Q3. How quickly did a product or stock change show up in search results, and what limited the delay?
+
+**Brief answer**
+A stock change showed up within seconds, and a product change within the 2-minute target. The delay is the event path from the owning service to the search index. For a text change, most of it is the new embeddings.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **search is a read model** — built from events, never written directly
+- **outbox to Kafka** — about 200 ms
+- **search indexer** — consumes product and inventory events
+- **stock is a column update** — no new embedding
+- **only changed chunks are re-embedded** — content hash per chunk
+- **freshness target** — searchable within 2 minutes
+- **consumer lag** — 30 seconds at p95, alerted
+- replica lag, separate topics for stock and products, large import bursts
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+**Search is a read model**. No service writes to `search-db` directly. `catalog-service` owns products and `inventory-service` owns stock. `search-db` is a copy built from their events, so its delay is the delay of that event path.
+
+The path has four steps. First, the owning service commits the change and an outbox row in one transaction, and the relay publishes it to Kafka about 200 ms later. That step is the **outbox to Kafka**. Second, the **search indexer**, `search-indexer`, consumes `catalog.product-events` and `inventory.events`. Third, it updates `search.product_documents` on the `search-db` primary. Fourth, `search-service` reads from the replica, which adds the replica's lag of a few seconds at most.
+
+Stock and text are very different in cost. A stock change only sets `in_stock`, and a price change only updates `price_amount`. **Stock is a column update** on the existing chunk rows. It needs no new embedding, and it is searchable within seconds. Stock and products also travel on separate topics. So a backlog of product events from an import does not hold up stock changes, as long as the indexer processes the two topics separately.
+
+A change to a title or description is slower, because the text needs new embeddings. Each chunk stores its own content hash. The indexer compares the hashes, so **only changed chunks are re-embedded** with Bedrock. A price edit costs no model call at all. A new description costs a few embedding calls.
+
+The **freshness target** is that a catalog change is searchable within 2 minutes. It is a written requirement, and tenants accept that delay.
+
+The main risk is a burst. A large import can change many products at once, and each one produces events. The indexer then falls behind, and its **consumer lag** grows. Consumer lag per group has a target of under 30 seconds at p95, and it is alerted. So a growing backlog is visible long before the 2-minute target is missed. The fix is more indexer replicas, up to the topic's 24 partitions. Beyond that, the embedding quota is the limit, not the indexer.
 
 </details>
 
@@ -983,6 +1101,48 @@ Model output is also untrusted text. Before a description is saved or pushed to 
 
 </details>
 
+---
+
+### Q3. How did you keep generated SEO descriptions factually correct across a catalog too large for people to review?
+
+**Brief answer**
+The model may use only the product's own attributes. A deterministic check then compares every factual claim in the output with those attributes before anything is saved. A description that fails is regenerated once and then held for review. The supplier's own text stays live in the meantime.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **grounded input only** — the normalised attributes and cleaned supplier text
+- **structured output** — description plus the attributes it used
+- **deterministic claim check** — numbers, units and risky words
+- **one retry, then review** — held for the merchant
+- **supplier text stays live** — never a blank or unchecked page
+- **checked before caching** — a bad answer is never cached
+- **sampled evaluation per prompt version** — before the canary is promoted
+- low temperature, false rejections
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+At about 130,000 descriptions a day, nobody can read them all. So the checks had to be automatic, and they had to be cheap. A second model call to verify every description would cancel much of the 35% cost saving.
+
+The first control is the input. The prompt gets **grounded input only**: the product's normalised attributes as `key: value` lines, and the supplier text after cleaning. The instructions say to use only those facts and to leave out anything that is not there. I also use a low temperature, so the model writes less freely.
+
+The second control is the shape of the output. The model returns **structured output**: a Pydantic model with the description and the list of attribute keys it used. If it names an attribute that the product does not have, the output fails at once.
+
+The third control is a **deterministic claim check** in plain Python. It extracts every number and unit from the text, such as "500 ml" or "2-year warranty". Each one must match an attribute value. It also looks for a short list of risky words, such as "waterproof", "organic", "certified" or "hypoallergenic". An attribute must back each of those words. These are the claims that cause returns and legal trouble when they are false.
+
+A description that fails gets **one retry, then review**. The retry adds the failed claims to the prompt as things to remove. If it fails again, the product's `enrichment_status` becomes `needs_review`, and the product appears in a review list in the merchant console. The **supplier text stays live** until then. So a failure never leaves a product with a blank page or an unchecked description.
+
+The check runs before the response cache. A description is **checked before caching**, so a bad answer is never stored and served again to another product with the same attributes.
+
+Finally, I run a **sampled evaluation per prompt version**. A sample of outputs from a new prompt version is scored against its attributes before the canary is promoted.
+
+The trade-off is false rejections. The check sometimes rejects a correct sentence, for example a number the model wrote in words. I accepted that. A rejected description costs one retry, but a false claim can cost a return or a complaint.
+
+</details>
+
 ## R10. Data and AI pipelines — Function-calling tools
 
 > Built custom function-calling tools with LangChain and Pydantic to enable [LLM](https://en.wikipedia.org/wiki/Large_language_model "Large Language Model — Neural network trained on text that generates and interprets natural language") agents to execute secure inventory lookups and stock updates;
@@ -1060,6 +1220,48 @@ The third rule: a **tool registry per principal**. Shoppers get read-only tools.
 Under all of this, PostgreSQL enforces **row-level security** ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html "Row Level Security — Restricts which rows a database query can see or modify based on the current user")). Each transaction sets `app.tenant_id` from the verified claim, and the policy hides every row of another tenant. A bug that forgets the tenant filter returns no rows, not another tenant's rows.
 
 Text from suppliers is also untrusted. The steps that process it run with no tools bound at all.
+
+</details>
+
+---
+
+### Q2. How did a Cognito login turn into the permissions your tools checked?
+
+**Brief answer**
+Cognito issues a short-lived access token, and a pre-token trigger adds the tenant and the user's scopes to it. Every service verifies that token itself, and the shared library maps the user's Cognito group to a role and the role to permissions. The tools run with that same token.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **authorization code flow** — with PKCE, for a public client
+- **pre-token trigger** — adds the tenant id and scopes
+- **each service verifies the token** — not only the gateway
+- **groups to roles to permissions** — mapped in the chassis
+- **tenant check** — the claim must match the resource
+- **15-minute access token** — how long a removed role still works
+- **client credentials for partners** — custom scopes
+- MFA for owner and admin, feature plan to verify
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Merchant users sign in to the console through a Cognito user pool. The console uses the [OAuth2](https://datatracker.ietf.org/doc/html/rfc6749 "OAuth 2.0 — Authorization framework that lets an application access resources on a user's behalf") **authorization code flow** with Proof Key for Code Exchange ([PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Protects an OAuth authorization code exchange for clients that cannot hold a secret")). PKCE is needed because a single-page app cannot keep a client secret. Enterprise tenants can federate their own identity provider through OpenID Connect (OIDC). Multi-factor authentication ([MFA](https://en.wikipedia.org/wiki/Multi-factor_authentication "Multi Factor Authentication — Requires more than one form of evidence to verify a user's identity")) is required for the `owner` and `admin` roles.
+
+A standard Cognito access token does not carry the tenant. So a Lambda **pre-token trigger**, `cognito-pre-token`, adds `tenant_id` and the user's scopes to the access token when Cognito issues it. One detail needs checking. Custom claims in access tokens need version 2 of that trigger, which needs the Essentials or Plus feature plan. So I would confirm the user pool's plan before relying on it.
+
+API Gateway has a Cognito authorizer, and it rejects a bad token at the edge. But the authorizer alone is not enough. Internal calls between services never pass through API Gateway, and a copilot tool call is one of them. So **each service verifies the token** itself. The shared chassis checks the [RS256](https://datatracker.ietf.org/doc/html/rfc7518 "RSA Signature with SHA-256 — Asymmetric signing algorithm commonly used to sign JWTs") signature against a cached JSON Web Key Set ([JWKS](https://datatracker.ietf.org/doc/html/rfc7517 "Publishes the public keys a party needs to verify a signed token")). It then checks `iss`, `aud`, `exp` and `token_use = access`.
+
+Next come the permissions. The chassis maps Cognito groups to roles, and roles to permissions: **groups to roles to permissions**. For example, `catalog_manager` can adjust stock, and `analyst` can only read. The mapping lives in code, so a change goes through review and the pipeline.
+
+Then comes the **tenant check**. The token's `tenant_id` must equal the tenant of the resource. The chassis checks it first, and row-level security in PostgreSQL checks it again.
+
+For the tools, the copilot forwards the user's own token to `inventory-service`. So a tool call passes exactly these checks, with no extra rights.
+
+The **15-minute access token** has a side effect. If an admin removes a user's role, the old token still works until it expires, at most 15 minutes later. The next refresh then issues a token without that role. I accepted that window in exchange for not calling Cognito on every request.
+
+Partners have no users. They use **client credentials for partners**, with custom scopes on the `cap-api` resource server, such as `inventory.read` or `pricing.approve`.
 
 </details>
 
@@ -1147,6 +1349,44 @@ The same pipeline ships the parts that are not containers. The console and the w
 
 ---
 
+### Q1. How did you build the Docker images for the Python services so they stayed small and quick to rebuild?
+
+**Brief answer**
+With a multi-stage Dockerfile. One stage installs the dependencies with the build tools, and a slim final stage copies in only the installed packages and the code. The dependency layers come before the source code, so a normal code change rebuilds only the last small layer.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **multi-stage build** — build tools never reach the final image
+- **slim base image** — pinned by digest
+- **layer order** — lock file first, source code last
+- **one image per service** — worker and relay run it with another command
+- **registry cache** — the previous image as the build cache
+- **non-root user**
+- **fewer packages, fewer findings** — the scan on push
+- `.dockerignore`, shared chassis as a package
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Every service uses the same Dockerfile pattern, a **multi-stage build**. The first stage starts from the full Python image. It has the compiler and headers that some packages need to build, such as the PostgreSQL client libraries. It installs the locked dependencies into a virtual environment. The final stage starts from a **slim base image** and copies in only that virtual environment and the service code. So compilers, headers and package caches never reach production. I pin the base image by digest, not only by tag. A rebuild then cannot pick up a different base image by surprise.
+
+The **layer order** is what makes rebuilds fast. Docker caches each layer and reuses it until something that layer depends on changes. So the Dockerfile copies the dependency lock file first and installs the dependencies. The shared chassis library is installed there too, as a normal package. Only then does the Dockerfile copy the source code. A normal pull request changes code, not dependencies. So the expensive install layer is reused, and only the last small layer is rebuilt. If the source were copied first, every code change would reinstall every package.
+
+There is **one image per service**. `catalog-service` and `catalog-worker` run the same image with a different command, and so does the service's outbox relay. So an API and its worker always run the same code, tagged by the same commit.
+
+In Bitbucket Pipelines each build starts on a clean runner with no local cache. So the build uses a **registry cache**. It pulls the service's previous image from Amazon Elastic Container Registry (ECR) and uses its layers as the cache. Without that, the careful layer order would help only on a developer's laptop.
+
+The final image runs as a **non-root user**. A compromised process then has fewer rights inside the container.
+
+Small images also help security: **fewer packages, fewer findings**. ECR scans every image on push, and a critical Common Vulnerabilities and Exposures (CVE) finding fails the build. A slim image has fewer operating system packages, so fewer findings that do not apply can block a release. A `.dockerignore` file keeps tests, local environment files and the Git history out of the build context.
+
+</details>
+
+---
+
 ### Q2. How did the pipeline get permission to deploy into AWS?
 
 **Brief answer**
@@ -1180,6 +1420,48 @@ The result is **no stored keys**: no long-lived AWS keys exist for deployment. T
 Deploy identity and runtime identity are separate. Running pods use **IAM roles for service accounts**, one role per service, each listing only its own resources. For example, only `agent-worker` can read the OpenAI key from Secrets Manager. The pipeline deploys the pods but never holds their runtime permissions.
 
 This area touches cloud identity, so I would always have it reviewed. A trust policy that forgets the repository condition would let any repository in the workspace deploy.
+
+</details>
+
+---
+
+### Q2. How did the services on EKS scale out when traffic reached its peak?
+
+**Brief answer**
+The API services scale on CPU with a Horizontal Pod Autoscaler, and the cluster adds nodes when new pods do not fit. Before known sales I raised the minimum replicas, because autoscaling reacts in minutes and a flash sale peaks in seconds. The workers that call LLMs do not scale with traffic, because the provider quota is their limit.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **Horizontal Pod Autoscaler** — CPU target for the API services
+- **readiness probe** — no traffic before the pod is ready
+- **node autoscaling** — new nodes for pods that do not fit
+- **pre-scaling for known peaks** — minimum replicas raised in advance
+- **connection budget caps replicas** — about 450 connections against 1,000
+- **workers do not follow traffic** — the provider quota is the limit
+- **Kafka partitions cap consumers**
+- graceful shutdown, PodDisruptionBudget, spread across zones
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Normal traffic on the catalog and inventory API is about 450 requests per second. The peak, during a holiday or a flash sale, is about ten times that. The services are stateless, so they scale out by adding pods.
+
+The API services use a **Horizontal Pod Autoscaler** ([HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ "Horizontal Pod Autoscaler — Automatically adjusts the number of Kubernetes pod replicas to match load")) on CPU. When the average CPU of a Deployment's pods stays above the target, the HPA adds replicas. CPU follows the request rate well for these services. Most of their work per request is token checks, serialisation and short database queries.
+
+A new pod must not get traffic before it can serve it. Each pod has a **readiness probe**. It passes only after the pod has its database pool, its Redis connection and the cached token signing keys. The Kubernetes Service sends traffic only to ready pods.
+
+When new pods do not fit on the existing nodes, **node autoscaling** adds nodes to the EKS node group. That takes a few minutes. The HPA also reacts with a delay, because it waits for CPU to stay high. A flash sale reaches its peak in seconds. So I used **pre-scaling for known peaks**. Before a planned sale or holiday, I raised the minimum replicas, so the capacity was there before the traffic.
+
+Scaling out has limits that I set on purpose. Each pod has its own database pool of up to 10 connections. At the peak replica counts, the total is about 450 connections against `max_connections = 1,000`. So the **connection budget caps replicas**. The HPA's maximum replicas are set so that a scale-out cannot use up the database's connections.
+
+The **workers do not follow traffic**. The Celery workers that call Bedrock and OpenAI have a fixed concurrency per queue. The provider quota sets their throughput, not the number of pods. More workers would only get more 429 responses.
+
+**Kafka partitions cap consumers**. A consumer group uses at most one consumer per partition. So a consumer Deployment is useful only up to its topic's partition count, for example 12 for order events.
+
+Scaling in matters too. A pod that is being removed stops taking new requests and finishes the ones in flight, a graceful shutdown. A PodDisruptionBudget keeps enough replicas running while nodes change, and replicas are spread across three Availability Zones.
 
 </details>
 
@@ -1301,6 +1583,46 @@ The **14-day retention** is longer than on other topics. If a consumer has a bug
 
 ---
 
+### Q2. What happened when a consumer could not process an order event?
+
+**Brief answer**
+It depended on whether the failure was temporary or permanent. A temporary failure, such as a database failover, was retried in place with backoff. A permanent one, such as an invalid payload, went to a dead-letter topic after a few attempts. Every later event of the same order followed it there.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **no per-message retry in Kafka** — a failing event blocks its partition
+- **temporary or permanent** — decides retry or park
+- **retry in place with backoff** — offset not committed
+- **dead-letter topic** — the event, the error and its offset
+- **park the whole order** — later events of that order follow it
+- **alert on the first dead letter**
+- **replay after the fix** — the inbox makes it safe
+- consumer lag alert, Pydantic validation, 14-day retention
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+This is the weak spot of Kafka compared with SQS. There is **no per-message retry in Kafka**. A consumer commits an offset, and everything before that offset counts as done. If one event keeps failing and the consumer keeps retrying it, the whole partition stops behind it. With 12 partitions, one bad event stops about a twelfth of all orders for that consumer group.
+
+So the first step is to decide whether the failure is **temporary or permanent**. A timeout, a database failover or a 503 from another service is temporary. An event that fails Pydantic validation, or one that hits a bug in the consumer code, is permanent. Retrying a permanent failure never helps.
+
+A temporary failure gets a **retry in place with backoff**. The consumer does not commit the offset. It waits and tries again, with a growing delay. A `core-db` failover takes up to about two minutes, and the retries wait it out. The partition's lag grows during that time, and the consumer lag alert shows it.
+
+A permanent failure goes to a **dead-letter topic**, `orders.events.dlq`, after three attempts. The dead letter holds the original event, the error, and the source partition and offset. The consumer then commits and moves on.
+
+Order events add one more problem. Their key is the order id, because the lifecycle events of one order must be read in sequence. If "placed" is parked and "cancelled" is processed, inventory releases stock it never reserved. So I **park the whole order**. The consumer records the parked order key in a small table. Every later event with that key also goes to the dead-letter topic, in order, until the order is fixed. Other orders keep flowing.
+
+A dead letter always needs a person. So I **alert on the first dead letter**, not on a rate of them. The alert opens a ticket rather than a page, because every other order keeps flowing.
+
+The last step is the **replay after the fix**. The parked events go back through the consumer in their original order, and the order key is released. Replay is safe because each consumer records the event id in its inbox table, so an event that was already applied is skipped. For a bug that hit many orders, the 14-day retention also lets me reset the consumer group's offset and replay the topic itself.
+
+</details>
+
+---
+
 ### Q3. What happened to catalog lookups when Redis went down at peak load?
 
 **Brief answer**
@@ -1333,6 +1655,46 @@ If the whole cluster is lost, the effect is **degraded latency**. Catalog lookup
 The services **fail open** on the cache. A Redis error or timeout is treated as a miss, and the request goes to PostgreSQL. A cache outage must not become an error for the shopper. When Redis comes back, the single-flight lock stops a stampede of refills on hot keys.
 
 The 0.3 ms figure has a condition. It assumes the lookup index and the hot pages stay in `shared_buffers`. The design docs mark it to **verify with a replayed load** against a production-sized snapshot, checking the buffer hit ratio. I would not claim the cold-cache guarantee without that test.
+
+</details>
+
+---
+
+### Q3. What happened to order events when a Kafka broker failed at peak load?
+
+**Brief answer**
+Nothing a user could see. Every partition has three replicas across three zones, and a write is acknowledged only when at least two of them have it. So one broker can fail without losing an acknowledged event, and a new leader takes over its partitions within seconds.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **three brokers across three zones** — managed by MSK
+- **replication factor 3**
+- **acks from two in-sync replicas** — `acks=all`, `min.insync.replicas=2`
+- **leader election** — a follower from the in-sync set takes over
+- **short pause, no loss** — clients refresh metadata and retry
+- **second broker lost** — writes stop, events wait in the outbox
+- **outbox age alert** — oldest unpublished row over 60 seconds
+- unclean leader election off, idempotent producer, inbox de-duplication
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The cluster runs on Amazon Managed Streaming for Apache Kafka (MSK). It has **three brokers across three zones**, one in each Availability Zone. Every topic has **replication factor 3**, so each partition has a leader and two followers, each on a different broker.
+
+The write rule is what protects events. Producers use `acks=all`, and the topics use `min.insync.replicas=2`. A write is acknowledged only when the leader and at least one follower have it. An in-sync replica ([ISR](https://kafka.apache.org/documentation/#design_replicatedlog "In-Sync Replicas — The set of partition replicas caught up with the leader and eligible to acknowledge a write")) is a replica that has caught up with the leader. So with **acks from two in-sync replicas**, an acknowledged event is always on at least two brokers.
+
+When one broker fails, the partitions it led need a new leader. The controller runs **leader election** and picks a follower from the in-sync set. Unclean leader election is off. A replica that has fallen behind can never become leader, because it would lose acknowledged events.
+
+For the clients this means a **short pause, no loss**. Producers and consumers get an error for the affected partitions. They refresh their metadata and retry against the new leader, which takes seconds. At peak, the platform produces about 250 order events per second. The pause shows as a small bump in latency and consumer lag, and users see nothing. Two brokers remain, which still meets `min.insync.replicas=2`, so writes continue.
+
+The harder case is a **second broker lost**. Then only one replica is left, which is below the minimum. The broker rejects `acks=all` writes on purpose, because it will not acknowledge an event that exists on only one disk. This is where the outbox helps. The relay cannot publish, so events stay in the outbox tables. Business transactions still commit in PostgreSQL. Search, channels and analytics fall behind, but nothing is lost. When the brokers come back, the relay publishes the backlog in commit order.
+
+The **outbox age alert** fires when the oldest unpublished row is more than 60 seconds old. That tells me Kafka or the relay has a problem before anyone notices stale search results.
+
+Retries can create duplicates. The producer is idempotent, so a retried write is not stored twice in the partition. Consumers also record each event id in their inbox, so a duplicate that gets through is still applied only once.
 
 </details>
 
@@ -1454,6 +1816,46 @@ The per-tenant detail lives where cardinality is cheap.
 The **agent runs table**, `pricing.agent_runs`, stores tokens in and out, cost, status and timing for every pricing and trend run, per tenant. A per-tenant cost question is a Structured Query Language ([SQL](https://en.wikipedia.org/wiki/SQL "Queries and manipulates data in a relational database")) query, not a Prometheus query.
 
 All of this sits behind **one dashboard layer**. Grafana reads Prometheus for the application and agent metrics and CloudWatch for the AWS-managed services. I chose this over a hosted monitoring product because of its cost at this metric cardinality.
+
+</details>
+
+---
+
+### Q3. How did you decide which alerts should page someone, so the team did not learn to ignore them?
+
+**Brief answer**
+Pages come only from service level objectives that users feel, and only when the error budget burns fast. Everything else, such as high CPU or a slow node in an agent chain, stays on a dashboard or becomes a ticket.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **alert on symptoms, not causes** — what the user feels
+- **service level objectives** — one per user-facing flow
+- **error budget** — about 43 minutes a month at 99.9%
+- **multi-window burn rate** — 2% of the budget in 1 hour, 5% in 6 hours
+- **pipeline objectives** — consumer lag and outbox age
+- **causes on dashboards** — CPU, node latency, cache hit rate
+- **ticket, not page** — failures that can wait for working hours
+- lower target for chat, short window that ends the alert
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The rule I used is **alert on symptoms, not causes**. A page must mean that users are affected now, or soon will be. High CPU is a cause. If requests are still fast, nobody needs to wake up for it.
+
+So pages come from **service level objectives** (SLOs), one for each flow a user feels. Each one has a service level indicator ([SLI](https://sre.google/sre-book/service-level-objectives/ "Service Level Indicator — Measured metric, such as latency or error rate, used to judge service health")), which is the metric it is measured on, and a 30-day window. Catalog lookups must succeed 99.9% of the time, with p95 under 50 ms. Search averages about 110 ms, with p95 under 200 ms. The first chat token arrives within 1.5 seconds at p95. A price decision is applied within 5 minutes of its signal at p95. A 1-million-row import completes within 2 hours in 95% of cases.
+
+Each objective has an **error budget**. At 99.9% over 30 days, the budget is about 43 minutes of failure. Chat has a lower target, 99.5%, because it depends on an external model provider.
+
+I do not alert on a single bad minute. I alert on the **multi-window burn rate**, which is how fast the budget is being spent. One rule fires when 2% of the monthly budget is spent within 1 hour, which is 14.4 times the normal rate. A second rule fires when 5% is spent within 6 hours. Each rule also checks a short window, so the alert ends soon after the problem is fixed. The fast rule catches outages. The slow rule catches a steady problem that a fixed threshold would miss.
+
+The event pipeline has its own **pipeline objectives**. Kafka consumer lag must stay under 30 seconds at p95, and the oldest unpublished outbox row under 60 seconds. They warn early, before stale search results or stale prices break a user-facing objective.
+
+Everything else stays as **causes on dashboards**: CPU, memory, p95 per agent node, cache hit rates and token counts. When a page fires, Grafana shows these next to the objective, and they point to the cause. They do not page on their own.
+
+Some failures matter but can wait. A failed Glue job or a message in a dead-letter queue becomes a **ticket, not page**. An engineer handles it in working hours.
 
 </details>
 
