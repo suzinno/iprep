@@ -1,6 +1,6 @@
 # Output Conventions
 
-Single owner for how every `interview-prep` output looks. All three modes load this file; none of them restate what is here.
+Single owner for how every `interview-prep` output looks. All four modes load this file; none of them restate what is here.
 
 ---
 
@@ -80,7 +80,7 @@ A bold entry may carry a short clause where the bare term is ambiguous: one clau
 
 Entries appear in the order the detailed answer raises them.
 
-**What an entry is** depends on the pack. Technical packs, and a project's own `interview-questions.md`, list **terms** — the named concepts the answer turns on:
+**What an entry is** depends on the pack. Technical packs, and a project's own guides, list **terms** — the named concepts the answer turns on:
 
 ```
 <details>
@@ -140,7 +140,7 @@ The document then opens with an index, directly under the header notes, giving t
 - **general** — Q4.1–Q4.6, Q11, Q12
 ```
 
-**Which files carry this:** `<interview>/tech-answers.md` and `<interview>/tech-extra.md`. The soft-skills files do not — soft-skills questions are not project-bound. A project's own `interview-questions.md` does not either: every question in it belongs to that project by construction.
+**Which files carry this:** `<interview>/tech-answers.md` and `<interview>/tech-extra.md`. The soft-skills files do not — soft-skills questions are not project-bound. A project's own guides — `interview-questions.md` and `resps-questions.md` — do not either: every question in them belongs to that project by construction.
 
 ---
 
@@ -185,7 +185,7 @@ Every mode re-reads its own output and verifies:
 - Every `Must cover` list holds two to eight bold entries and at most seven plain ones, and no entry is an incidental mention — a contrast case, a variant of another entry, or one item of an illustrative run
 - Abbreviations expanded on first use
 - Every sentence passes `.claude/b2-lang-rules.md` — checked against that file, not from memory
-- Numbering is consistent and unbroken
+- Numbering is consistent and unbroken — in a project guide the `Q<n>` label is the difficulty level and repeats by design (see `tiers.md`)
 - In an attributed file: every question carries a `**Project:**` line, every value names a real project folder or `general`, and the index at the top accounts for every question exactly once
 
 Each mode file adds its own checks on top of these.

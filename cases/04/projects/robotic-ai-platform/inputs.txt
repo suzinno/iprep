@@ -1,0 +1,25 @@
+Title: ROBOTIC & INDUSTRIAL AI INTELLIGENCE PLATFORM
+
+Description: A cloud-native platform for processing operational data from distributed robotic systems and industrial sensors while providing AI-assisted analysis and visual intelligence. The system combines real-time telemetry processing with LLM-powered workflows for contextual analysis, automated interpretation of operational data, and image-based inspection scenarios. Built for production workloads, the platform supports asynchronous AI pipelines, scalable AWS infrastructure, secure data access, and reliable processing of long-running generation and analysis tasks.
+
+Environment: Python, TypeScript, JavaScript, FastAPI, AsyncIO, SQLAlchemy, Alembic, Pydantic, Celery, OAuth2, Pytest, moto, LangChain, LangGraph, MCP, React, React Router, React Query, React Testing Library, Redux, TailwindCSS, HTML/CSS, Vite, PostgreSQL, Redis, AWS(Step Functions, Lambda, API Gateway, SQS, SNS, DynamoDB, S3, Cognito, IAM, Secrets Manager, CloudWatch, EKS, ECR, Bedrock, etc.), Docker, Docker Compose, Kubernetes(k8s), Terraform, GitLab CI/CD, Bash, Linux, Cursor, GitLab.
+
+Responsibilities:
+●​ Designed FastAPI services for robotic data processing and AI workflows, using dependency injection, and reusable service modules for high-concurrency application workloads;
+●​ Designed AWS Step Functions state machines orchestrating multi-step AI analysis, generation, and validation pipelines with retries and failure handling;
+●​ Developed async AI processing with AsyncIO, Celery (Redis broker), SQS with SNS fan-out, and Lambda for long-running tasks;
+●​ Exposed backend services through API Gateway with request validation, throttling, and OAuth2-based authorization;
+●​ Implemented tenant-aware access control using AWS Cognito and IAM policies, and stored service credentials in Secrets Manager;
+●​ Modeled DynamoDB tables for telemetry checkpoints and audit-log lookups, and designed PostgreSQL schemas, indexes, and SQLAlchemy/Alembic migrations for operational and AI-generated data;
+●​ Configured AWS S3 for robotic datasets, generated assets, and intermediate AI processing artifacts;
+●​ Built LangChain pipelines on AWS Bedrock for contextual analysis and tool execution, and LangGraph workflows for multi-step reasoning, state management, and validation;
+●​ Developed MCP integrations exposing robotic telemetry, operational data, and internal services as controlled tools for AI agents;
+●​ Built RAG workflows using PostgreSQL and vector retrieval to enrich AI responses with operational context;
+●​ Optimized FastAPI and asynchronous processing paths to improve responsiveness of AI-powered application workflows;
+●​ Established CloudWatch metrics, logs, and alarms for APIs, queues, Step Functions executions, and generation failures;
+●​ Managed Step Functions, Lambda, queues, and IAM resources with Terraform, and deployed backend services to AWS EKS from ECR images using Docker, Docker Compose, and Kubernetes(k8s);
+●​ Developed React and TypeScript interfaces for AI-powered inspection, analysis, and generation-review workflows;
+●​ Implemented React Query for server-state management and asynchronous AI request handling, and built reusable components with React Router, Redux, TailwindCSS, and Vite;
+●​ Wrote Pytest suites with moto for Lambda handlers, SQS consumers, and DynamoDB access, plus React Testing Library tests for frontend workflows;
+●​ Automated image builds, test runs, and multi-environment deployments through GitLab CI/CD with Bash scripts on Linux build agents;
+●​ Used Cursor as the main development environment for prototyping, multi-file refactoring, debugging, and Pytest generation, and for navigating unfamiliar service code before changing it.

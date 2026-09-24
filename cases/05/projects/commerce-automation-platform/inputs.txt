@@ -1,0 +1,22 @@
+Title: INTELLIGENT COMMERCE AUTOMATION PLATFORM
+
+Description: An enterprise-grade retail intelligence and operations platform designed to streamline core e-commerce workflows, optimize revenue strategies, and elevate customer engagement across multi-channel retail ecosystems. The system leverages generative AI pipelines and automated data processing to streamline bulk product cataloging, extract structured metadata, and execute dynamic pricing algorithms based on real-time market signals. Additionally, it integrates conversational AI agents and predictive analytics engines to deliver hyper-personalized product recommendations, analyze buyer intent, and scale automated customer interactions while maintaining high throughput and low latency.
+
+Environment: Python, JavaScript, TypeScript, FastAPI, SQLAlchemy, Pydantic, Alembic, OAuth2, React, Mobx, TailwindCSS, Webpack, React Router, React Testing Library, HTML/CSS, shadcn/ui, D3.js, Treemaps, Celery, LangChain, LangGraph, OpenAI SDK, AWS(Bedrock, EKS, ECR, SQS, SNS, S3, Lambda, API Gateway, DynamoDB, Glue, IAM, Cognito, RDS, CloudWatch, etc.), Kafka, PostgreSQL, Redis, Pytest, Docker, Docker Compose, Bitbucket, Bitbucket Pipelines, Kubernetes(k8s), Prometheus, Grafana, Cursor, Codex, Bash.
+
+Responsibilities:
+●​ Architected distributed microservices topology on AWS, establishing asynchronous event-driven communication across core services;
+●​ Tuned PostgreSQL with optimized indexes and partitioning, sustaining 4,500+ RPS under peak load while maintaining sub-50ms response times;
+●​ Constructed AWS Glue ETL pipelines to clean, chunk, and structure massive supplier catalogs for downstream AI processing;
+●​ Engineered context-aware product search pipelines using LangChain and PostgreSQL vector extensions, dropping average retrieval latency from 450ms to 110ms;
+●​ Built autonomous dynamic pricing and trend-analysis agents using LangGraph workflows and the OpenAI SDK;
+●​ Leveraged Amazon Bedrock foundation models to automate SEO description synthesis, cutting operational API costs by 35% through response caching and token optimization;
+●​ Built custom function-calling tools with LangChain and Pydantic to enable LLM agents to execute secure inventory lookups and stock updates;
+●​ Developed interactive merchant analytics dashboards using React, TypeScript, MobX, and custom state containers;
+●​ Rendered category sales breakdowns and customer behavior flows using D3.js heatmaps and Treemap visualizations;
+●​ Utilized Tailwind CSS and shadcn/ui components to build scalable UI libraries and multi-step seller onboarding workflows;
+●​ Deployed Docker-containerized microservices to AWS EKS clusters using Bitbucket Pipelines for automated CI/CD deployment;
+●​ Leveraged Redis caching and Kafka event streams to handle high-concurrency catalog lookups and order events;
+●​ Configured full-stack observability with Prometheus and Grafana to detect latency bottlenecks in AI agent chains;
+●​ Maintained high code quality and software stability using Pytest and React Testing Library across critical workflows;
+●​ Accelerated feature development and prototyping by integrating Cursor and Codex workflows into daily coding tasks.

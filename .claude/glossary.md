@@ -205,6 +205,47 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | RU | Request Unit | Azure Cosmos DB's currency for provisioned throughput, charged per request regardless of operation type | https://learn.microsoft.com/en-us/azure/cosmos-db/request-units |
 | CD | Continuous Deployment | Automatically releases every build that passes the pipeline's gates to production without a manual step | https://en.wikipedia.org/wiki/Continuous_deployment |
 | SHA | Secure Hash Algorithm | Family of cryptographic hash functions used to verify content integrity | https://csrc.nist.gov/pubs/fips/180-4/upd1/final |
+| AWS | Amazon Web Services | Cloud provider whose managed compute, storage and messaging services host a system | https://aws.amazon.com/ |
+| ARN | Amazon Resource Name | Globally unique identifier of an AWS resource, used in policies and cross-service references | https://docs.aws.amazon.com/IAM/latest/UserGuide/reference-arns.html |
+| AZ | Availability Zone | Isolated group of data centres within an AWS Region, used to survive a single-site failure | https://aws.amazon.com/about-aws/global-infrastructure/regions_az/ |
+| CMMS | Computerized Maintenance Management System | Tracks industrial assets, work orders and maintenance history | https://en.wikipedia.org/wiki/Computerized_maintenance_management_system |
+| CSS | Cascading Style Sheets | Describes how HTML elements are laid out and styled in a browser | https://developer.mozilla.org/en-US/docs/Web/CSS |
+| DLQ | Dead-Letter Queue | Holds messages that failed processing repeatedly so they can be inspected and redriven | https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html |
+| ECR | Amazon Elastic Container Registry | Stores, scans and serves container images for deployment | https://aws.amazon.com/ecr/ |
+| EKS | Amazon Elastic Kubernetes Service | Managed Kubernetes hosting on AWS | https://aws.amazon.com/eks/ |
+| FIFO | First In, First Out | Queue and topic mode that preserves message order within a group and removes duplicates | https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html |
+| GSI | Global Secondary Index | DynamoDB index with its own partition key that serves an alternative access pattern | https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html |
+| IAM | AWS Identity and Access Management | Controls which principals may perform which actions on which AWS resources | https://aws.amazon.com/iam/ |
+| IEC | International Electrotechnical Commission | Publishes international standards for electrical and industrial technology, including the IEC 62443 industrial security series | https://www.iec.ch/ |
+| KMS | AWS Key Management Service | Creates and controls the keys that encrypt data at rest, and logs every use | https://aws.amazon.com/kms/ |
+| KPI | Key Performance Indicator | Measurable value that tracks how well an operation meets its targets | https://en.wikipedia.org/wiki/Performance_indicator |
+| LLM | Large Language Model | Neural network trained on text that generates and interprets natural language | https://en.wikipedia.org/wiki/Large_language_model |
+| MCP | Model Context Protocol | Open protocol that exposes tools and data to AI agents through a standard interface | https://modelcontextprotocol.io/ |
+| NDJSON | Newline-Delimited JSON | Stores one JSON record per line so files can be streamed and appended | https://github.com/ndjson/ndjson-spec |
+| NLB | Network Load Balancer | Layer 4 load balancer that forwards TCP and TLS connections to targets | https://docs.aws.amazon.com/elasticloadbalancing/latest/network/introduction.html |
+| OT | Operational Technology | Hardware and software that monitors and controls industrial equipment and processes | https://en.wikipedia.org/wiki/Operational_technology |
+| RAG | Retrieval-Augmented Generation | Grounds a model's answer in documents retrieved at query time | https://en.wikipedia.org/wiki/Retrieval-augmented_generation |
+| RDS | Amazon Relational Database Service | Managed hosting for relational databases such as PostgreSQL, with backups and failover | https://aws.amazon.com/rds/ |
+| S3 | Amazon Simple Storage Service | Durable object storage for files, datasets and archives | https://aws.amazon.com/s3/ |
+| SaaS | Software as a Service | Delivers an application as a hosted service that customers use rather than install | https://en.wikipedia.org/wiki/Software_as_a_service |
+| SNS | Amazon Simple Notification Service | Managed publish-subscribe topics that fan one message out to many subscribers | https://aws.amazon.com/sns/ |
+| SOC | System and Organization Controls | Audit reports on a service organization's security, availability and confidentiality controls | https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2 |
+| SQS | Amazon Simple Queue Service | Managed message queue that decouples producers from consumers | https://aws.amazon.com/sqs/ |
+| STS | AWS Security Token Service | Issues short-lived credentials for assumed roles | https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html |
+| VPC | Virtual Private Cloud | Isolated private network in which cloud resources run | https://aws.amazon.com/vpc/ |
+| MSK | Amazon Managed Streaming for Apache Kafka | Runs Apache Kafka clusters as a managed AWS service | https://aws.amazon.com/msk/ |
+| SEO | Search Engine Optimization | Shapes page content so that search engines rank it higher | https://developers.google.com/search/docs/fundamentals/seo-starter-guide |
+| SKU | Stock Keeping Unit | Identifies one sellable variant of a product for inventory and pricing | https://en.wikipedia.org/wiki/Stock_keeping_unit |
+| PII | Personally Identifiable Information | Data that can identify a person and must be minimised and protected | https://csrc.nist.gov/glossary/term/personally_identifiable_information |
+| GTIN | Global Trade Item Number | GS1 identifier that labels the same product across sellers and suppliers | https://www.gs1.org/standards/id-keys/gtin |
+| ETL | Extract, Transform, Load | Moves data out of source systems, reshapes it and loads it into a target store | https://en.wikipedia.org/wiki/Extract,_transform,_load |
+| JDBC | Java Database Connectivity | Standard driver interface that Spark and AWS Glue use to read and write relational databases | https://docs.oracle.com/javase/tutorial/jdbc/overview/index.html |
+| CCPA | California Consumer Privacy Act | Gives California residents rights over the personal data businesses hold about them | https://oag.ca.gov/privacy/ccpa |
+| DynamoDB | Amazon DynamoDB | Managed key-value and document database with single-digit-millisecond reads and writes | https://aws.amazon.com/dynamodb/ |
+| OpenAI | OpenAI | Provides GPT models through an API and official SDKs | https://platform.openai.com/docs/ |
+| MobX | MobX | Makes application state observable so that views update when the data they read changes | https://mobx.js.org/ |
+| D3 | D3.js | JavaScript library that binds data to SVG and HTML for custom visualisations | https://d3js.org/ |
+| TailwindCSS | Tailwind CSS | Utility-first CSS framework for styling components directly in markup | https://tailwindcss.com/ |
 
 ## Deliberately not linked
 

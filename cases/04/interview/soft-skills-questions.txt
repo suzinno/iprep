@@ -1,0 +1,18 @@
+how do you suggest your ideas on improvements to the team
+how do you estimate tasks ensuring efficient planning and meeting deadlines?
+your approach to decomposing complex tasks
+How would you onboard a new engineer on a complex distributed system?
+How do you explain technical trade-offs to non-technical stakeholders?
+How do you balance technical leadership with hands-on engineering?
+How do you handle knowledge gaps on your team?
+How do you handle your knowledge gaps?
+what drives you in your work?
+What are your expectations of the future project?
+most interesting bug
+Code Review approach
+describe me your Definition Of Done
+How do you maintain code quality (e.g., code reviews, tests, linters)?
+
+Explain a technical challenge you faced and how you solved it?
+What did you learn from working on the recent project that you would apply elsewhere?
+how do you deal with unclear requirements?
