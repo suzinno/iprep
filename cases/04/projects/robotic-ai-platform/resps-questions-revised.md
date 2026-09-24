@@ -66,7 +66,7 @@ One thing to watch: FastAPI caches a dependency once per request. That is what I
 
 ---
 
-### Q2. How did you structure the reusable service modules so that several services could share them, and where did you draw the boundaries?
+### Q2. How did you structure the reusable service modules so that several services could share them. Where did you draw the boundaries?
 
 **Brief answer**
 I put logic that more than one service needs into small modules with one owner each: the token-budget check, the tenant context and the [Pydantic](https://docs.pydantic.dev/latest/ "Pydantic — Python library that validates and parses data against typed models at runtime") contracts. Each module takes its clients by injection, so the application programming interface ([API](https://en.wikipedia.org/wiki/API "Application Programming Interface — Defines the contract by which software components exchange requests and data")), the workers and the Lambdas can all call it.
@@ -104,7 +104,7 @@ The design docs do not fix the exact package layout. I would not claim a specifi
 
 ---
 
-### Q3. How did you split the platform into separate FastAPI services, and why not one service?
+### Q3. What shaped the architecture of the system, why is it not one service? How did you split the platform into separate FastAPI services?
 
 **Brief answer**
 I split by how each part scales, where it may be reached from and how it fails. `platform-api` serves the core Representational State Transfer ([REST](https://en.wikipedia.org/wiki/REST "Architectural style for stateless, resource-oriented HTTP APIs")) API, `agent-service-api` serves synchronous assist, and `mcp-gateway` serves agent tools. One service would force one scaling rule and one exposure on work that needs different ones.
@@ -148,86 +148,50 @@ The workers, `agent-worker` and `celery-worker`, sit behind queues and are not H
 
 </details>
 
-## R2. Architecture — React review interfaces
-
-> Developed React and TypeScript interfaces for AI-powered inspection, analysis, and generation-review workflows;
-
 ---
 
-### Q2. Walk me through the generation-review workflow in the interface. What does a reviewer see, and what can they do with an AI output?
+### Q3. How did you decide between central orchestration and event-driven choreography?
 
 **Brief answer**
-A reviewer opens a pending output and sees the content with its citations and its validation result. They approve, edit or reject it. Nothing can be exported until a person approves it, and an output that failed validation can never be exported.
+I orchestrated work whose steps depend on each other and that needs one final status, which is every AI run. I used choreography where several consumers react to the same event and do not depend on each other, such as telemetry batches and run events.
 
 <details>
 <summary><strong>Must cover</strong></summary>
 
-- **review queue** — outputs with `review_status` pending
-- **citations and validation result**
-- **approve, edit or reject**
-- **new version on edit** — earlier versions stay unchanged
-- **`completed_unvalidated`** — shown with its failures, never exportable
-- **no self-approval** — reviewer differs from the requester
-- **annotation canvas** — bounding boxes, held in Redux
-- role check, work-order drafts
+- **the rule** — dependent steps orchestrated, independent reactions choreographed
+- **telemetry fan-out** — three consumers fail and scale alone
+- **AI pipelines** — fixed order, branching, one status
+- **execution history**
+- **run events** — side effects subscribe; pipelines unchanged
+- **subscriber failure** — never fails the run
+- **cost** — per-transition latency against a hidden flow
+- nothing to undo, saga
 
 </details>
 
 <details>
 <summary><strong>Detailed answer</strong></summary>
 
-The workflow starts in the **review queue**. It lists outputs whose `review_status` is `pending`. Inspection results, generated documents and work-order drafts start as `pending`. Analyses start as `not_required`, because they are advice and not exported.
+I used both, and **the rule** was whether the steps depend on each other. If a step needs the result of the step before it, and the work needs one final status, I orchestrate it. If several consumers react to the same event and do not depend on each other, I use choreography.
 
-When a reviewer opens an output, they see the content next to its **citations and validation result**. Citations point to the document chunks and tool results the agent used. The validation block shows each check that ran and whether it passed.
+The **telemetry fan-out** is choreography. Each batch goes to an ordered SNS topic, and three queues receive it: the archiver, the rollup consumer and the rules consumer. None of them waits for another. Each one fails, retries and scales on its own. If the rules consumer has a bug, archiving and rollups continue.
 
-The reviewer can **approve, edit or reject**. Each decision creates a row in `reviews`. An edit creates a **new version on edit** in `ai_outputs`. The original version stays as it was. So the audit trail shows what the model wrote and what the person changed.
+The **AI pipelines** are orchestrated with Step Functions. An analysis has a fixed order: validate the request, build the context, run the agent, validate the output and save it. The validation step can send the run back to the agent. Every step has its own retry policy and timeout. The user needs one run status at the end. With choreography, this logic would be spread across several consumers, and no single component would own the status.
 
-Some runs end as **`completed_unvalidated`**. That means the output still failed validation after two regenerations. The interface shows it with its failures, so the reviewer can see the problem. The export action is disabled for it, and the backend also refuses the export.
+Orchestration also gives an **execution history** for every run. When a run fails, I open the execution and see which state failed and with what input. With choreography, I would have to rebuild that picture from logs.
 
-There is **no self-approval**. The backend checks that `reviews.reviewer_id` differs from `ai_runs.requested_by`. The interface hides the approve action in that case, but the backend is the authority.
+At the end of a run, I switch to choreography. The pipeline publishes **run events** to the `ai-run-events` topic. The webhook dispatcher and the follow-up trigger subscribe to it. Adding a subscriber does not change the pipelines.
 
-For inspections, the reviewer works on an **annotation canvas**. It shows each image with the model's bounding boxes, defect type, severity and rationale. The reviewer can adjust or remove a finding. The canvas state and the unsaved review draft live in Redux, because they are client-only state.
+A **subscriber failure** never fails the run. If a tenant's webhook endpoint is down, the dispatcher retries from its own queue. After 8 attempts the message goes to a dead-letter queue, and the tenant is notified. The run itself is already complete.
 
-Only `reviewer` and `tenant_admin` may review. The same screen approves work-order drafts that an agent proposed.
+Each style has a **cost**. Step Functions adds about 50–100 ms per state transition and charges per transition. That is acceptable for runs that take minutes. Choreography hides the overall flow. So every consumer must be safe to repeat, and tracing must join the hops.
 
-</details>
-
----
-
-### Q3. What risks come with showing AI-generated content in a web interface, and how did your interface deal with them?
-
-**Brief answer**
-Two risks: the content could inject script into the console, and people could trust it more than they should. I rendered everything through React's escaping and never as raw HyperText Markup Language ([HTML](https://html.spec.whatwg.org/ "Markup format that structures content for web browsers")). I also labelled every output as generated by artificial intelligence (AI) and kept a human review step before export.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **script injection** — model output is untrusted text
-- **React's escaping** — never raw HTML
-- **exported artifact** — download from another origin
-- **over-trust**
-- **AI-generated label** — with model and prompt version
-- **human review before export**
-- EU AI Act, unvalidated outputs flagged, no edge caching
+Partial failure stays simple in the analysis pipeline. It writes its output only in the persist step, and intermediate results sit in S3 and expire after 14 days. So a failed analysis leaves nothing in PostgreSQL to undo, and `MarkFailed` only records the status and the error code. That is why the pipeline needs no saga with compensating steps.
 
 </details>
 
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-The first risk is **script injection**. Model input includes text the platform does not control, such as documents, maintenance notes and text inside images. So a prompt injection could make the model write HTML or script into its output. If the console rendered that output as HTML, the script would run in the reviewer's session.
-
-The console renders every output through **React's escaping**. It never uses raw HTML injection. Generated text shows as text, even when it contains tags.
-
-The **exported artifact** is a second path. `run-persist-output` builds the HTML file from escaped Markdown. S3 serves it as a download with `Content-Disposition: attachment`, on a different origin from the console. So even a bad file cannot read the console's session.
-
-The second risk is **over-trust**. A clean, confident report looks correct even when it is not. I dealt with it in three ways. Every output carries an **AI-generated label** with its model and prompt version. An output that failed validation shows its failures, and it cannot be exported. And there is always **human review before export** for inspections and generated documents. That gate also supports the EU AI Act work for EU tenants.
-
-A smaller risk is caching. API responses are tenant-specific, so there is **no edge caching** of them in CloudFront. Only the static assets are cached.
-
-These controls do not stop the model from following an injected instruction. They limit what that instruction can do in the browser.
-
-</details>
+> **Footnotes:**
+> - **Saga:** A sequence of local transactions in which each step has a compensating step that undoes it if a later step fails. It replaces one distributed transaction across services.
 
 ## R3. APIs — API Gateway edge
 
@@ -235,7 +199,7 @@ These controls do not stop the model from following an injected instruction. The
 
 ---
 
-### Q1. Which OAuth2 flows did you use for the different clients of the API, and why?
+### Q1. How OAuth2 flow differed for different clients of the API (Console users, Edge gateways and Internal agents)? Which OAuth2 flows did you use for the different clients of the API, and why?
 
 **Brief answer**
 Console users log in with the Authorization Code flow with Proof Key for Code Exchange ([PKCE](https://datatracker.ietf.org/doc/html/rfc7636 "Protects an OAuth authorization code exchange for clients that cannot hold a secret")). Edge gateways and internal agents use the client credentials flow, and each gateway has its own client. Every caller has exactly one identity type.
@@ -308,48 +272,7 @@ AWS Web Application Firewall ([WAF](https://owasp.org/www-community/Web_Applicat
 
 ---
 
-### Q3. How did you decide the throttling limits at API Gateway, and how did they fit with the other limits in the system?
-
-**Brief answer**
-Each limit protects a different thing, so I layered them. There is a per-IP rule at WAF, stage and method limits at API Gateway, per-tenant usage plans, and per-tenant run and token limits in the application. I sized the stage limit at about five times the estimated peak.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **WAF rate rule per IP** — plant users share one address
-- **stage limit** — about five times the estimated peak
-- **method limits** — tighter on ingest, run creation and assist
-- **usage plans** — per-tenant API key meters ingest, never authenticates
-- **application limits** — per-tenant run rate and token budget
-- **integration timeout** — assist fits under 29 seconds
-- Shield Standard, gateway paths excluded
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-I started from the question "what does each limit protect?". The answer gave four layers.
-
-The first is the **WAF rate rule per IP**. It allows 10,000 requests per 5 minutes per IP on console paths. One polling console makes about 160 requests in that time. A plant's users share one egress address, so the limit allows about 60 users behind one address. Gateway paths are excluded for the same reason.
-
-The second is the API Gateway **stage limit**: 1,000 requests per second with a burst of 2,000. The estimated peak is about 200 requests per second. So the limit is about five times the peak. It protects the pods from a flood, not from normal growth.
-
-The third is **method limits**. Ingest gets 300 requests per second. Run creation and assist get 20 per second each, because each call there costs model tokens.
-
-The fourth is **usage plans**. Each gateway sends a per-tenant API key tied to a usage plan. It meters and caps each tenant's ingest. The key only identifies usage. It is never treated as authentication.
-
-API Gateway cannot count tokens. So the **application limits** live in Redis. A counter caps AI run creation per tenant per minute. A daily token budget caps spend.
-
-The **integration timeout** is a limit too. API Gateway's default is 29 seconds. Assist has a hard timeout of 25 seconds, so it always answers before the gateway times out. Larger questions become analysis runs.
-
-Shield Standard covers volumetric attacks. These throttles cover fairness between tenants and cost.
-
-</details>
-
----
-
-### Q3. How did you change the API over time without breaking clients that you could not update at the same moment?
+### Q3. How did you change the API over time without breaking clients that could not be updated at the same moment?
 
 **Brief answer**
 Inside `/v1` I made only additive changes: a new field is optional, and nothing is removed or renamed. Each change also stays compatible with the previous release. Edge gateways replay up to 24 hours of old batches, and open browser tabs still run the old console.
@@ -429,7 +352,7 @@ React Router handles the screens, TailwindCSS the styling and Vite the build. Vi
 
 ---
 
-### Q2. How did the interface handle an AI request that takes minutes, from the click to the result, and why did you choose that approach?
+### Q2. How did the interface handle an AI request that takes minutes, from the click to the result? Why did you choose the asynchronous approach (btw was it polling)?
 
 **Brief answer**
 The click sends a `POST` with an idempotency key and gets back `202` with a `run_id`. React Query then polls the run every 3 seconds until it reaches a terminal status. I chose polling over a push channel because it uses the existing REST edge and stays bounded at this scale.
@@ -518,86 +441,7 @@ The design gives budgets, not a measured slow-page incident. So this is the meth
 
 ---
 
-### Q1. How did you decide which data went to DynamoDB and which went to PostgreSQL?
-
-**Brief answer**
-Relational, transactional or tenant-filtered data went to PostgreSQL. High-rate key-value writes and append-only lookups went to DynamoDB. That put the telemetry checkpoints and the audit log in DynamoDB, and everything else in PostgreSQL.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **the storage rule** — access pattern decides the store
-- **telemetry checkpoints** — conditional writes kept off PostgreSQL
-- **audit log** — not written to the database it audits
-- **consistency per store** — PostgreSQL consistent, telemetry eventually consistent
-- **no sharding** — one PostgreSQL primary is enough
-- TTL and Streams, joins and row-level security
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-I used **the storage rule**: each store holds the data whose access pattern it serves best.
-
-PostgreSQL holds tenants, devices, alarms, maintenance history, rollups, runs, outputs, reviews, inspections and document embeddings. This data needs joins, transactions and row-level security. A review decision must never be lost or applied twice.
-
-DynamoDB holds two tables.
-
-The first is the **telemetry checkpoints** table. Three consumers each record how far they got for each gateway. At design load that is about 81 conditional writes per second. Each write only needs consistency within one item. That load does not belong on the main database, where it would compete with user queries.
-
-The second is the **audit log**. It records every mutation, sensitive read and AI tool call. It is append-only and read by key. DynamoDB also gives time to live ([TTL](https://en.wikipedia.org/wiki/Time_to_live "Time To Live — Duration after which a cached or stored value expires")) for expiry and Streams for the archive. And there is a design reason: if audit writes went to PostgreSQL, a problem with that database would also stop the audit trail of that problem.
-
-The choice also sets **consistency per store**. PostgreSQL is the consistent store. During a failover, it rejects writes rather than let them diverge. The telemetry path chooses availability, and a reader may see status up to 30 seconds old. In DynamoDB, a checkpoint update is consistent within its item. Audit lookups through a secondary index are eventually consistent.
-
-**No sharding** was needed. The five-year estimate is about 650 GB and under 2,000 row writes per second. That fits one PostgreSQL primary with a standby.
-
-</details>
-
----
-
-### Q2. How did you design the DynamoDB keys for the telemetry checkpoints and the audit-log lookups?
-
-**Brief answer**
-Checkpoints are keyed by gateway with the consumer name as the sort key, and updated with a conditional write. Audit events are keyed by tenant and resource, with two secondary indexes for lookups by actor and by day, and every key starts with the tenant.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **gateway as partition key** — consumer name as sort key
-- **conditional update** — only moves the watermark forward
-- **gaps**
-- **strongly consistent read** — for gateway replay
-- **tenant first in every key** — lets IAM scope a session
-- **two secondary indexes** — by actor, and by day in four shards
-- **TTL and Streams** — archive before expiry
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-`telemetry_checkpoints` uses the **gateway as partition key** and the consumer name as the sort key: `archiver`, `rollup` or `rules`. Each item holds `high_watermark_seq`, `last_batch_id`, `gaps` and `updated_at`. The table has about 1,200 items. The load is the write rate, not the size.
-
-A consumer skips a batch whose sequence is at or below the watermark. After it applies a batch, it runs a **conditional update**. The condition is `high_watermark_seq < :seq`, or the attribute does not exist yet. So a late or repeated message can never move the watermark back.
-
-If the new sequence is more than one above the watermark, the missing range goes into **gaps**. The list holds at most 20 ranges. A gap means data the gateway lost, so it raises an alarm.
-
-When a gateway reconnects, `GET /v1/telemetry/checkpoints/{gateway_id}` reads the archiver item with a **strongly consistent read**. So the gateway replays from exactly the right place.
-
-`audit_log` uses a partition key of `T#<tenant_id>#R#<resource_type>#<resource_id>`. The sort key is the timestamp plus an event ID. So the main lookup, "history of this resource", is one query.
-
-The **tenant first in every key** rule is for security. An Identity and Access Management ([IAM](https://aws.amazon.com/iam/ "AWS Identity and Access Management — Controls which principals may perform which actions on which AWS resources")) condition on `dynamodb:LeadingKeys` can then limit a tenant-scoped session to its own keys.
-
-There are **two secondary indexes**. `by_actor` answers "what did this user do". `by_day` answers "what happened on this day". The **sharded day index** splits each day into four shards, so a busy day does not load one partition.
-
-**TTL and Streams** handle retention. `expires_at` is set 400 days ahead. DynamoDB Streams feed `audit-archiver`, which writes to S3 before TTL removes the item.
-
-</details>
-
----
-
-### Q2. What was your first step when a PostgreSQL query was slow, and how did you find the cause?
+### Q2. What would be your first step when a PostgreSQL query is slow, and how do you find the cause?
 
 **Brief answer**
 First I found which query cost the most in total, then I read its plan with `EXPLAIN (ANALYZE, BUFFERS)` as the application role. On this platform the role matters, because row-level security changes the plan and the table owner skips it.
@@ -630,49 +474,6 @@ In the plan I check three things. The first is **estimated against actual rows**
 The usual fix is an index that **matches the filter and the sort**. The alarm history for one device uses `(tenant_id, device_id, opened_at DESC)`. The query filters on the first two columns. It reads the rows already in the order it needs, so it can stop after one page of results.
 
 An index is not free. Every index slows down writes. An index on a column that changes also stops heap-only updates. So **every index names its query**. I build a new one with `CREATE INDEX CONCURRENTLY`, then run the same `EXPLAIN` again to confirm that the planner uses it.
-
-</details>
-
----
-
-### Q2. Which of your PostgreSQL tables changed most often, and how did you stop them from bloating?
-
-**Brief answer**
-The five-minute rollups changed most, at about 1,500 rows per second. I kept those updates heap-only with spare space on each page. I removed old data by dropping partitions instead of deleting rows, so vacuum had little left to do.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **dead row versions** — an update never changes a row in place
-- **rollup upserts** — about 1,500 rows per second
-- **free space on the page** — `fillfactor` 70, no index on aggregates
-- **partition drop** — no mass `DELETE`
-- **run status updates** — not heap-only, but low volume
-- **long transaction** — holds back cleanup
-- **autovacuum per table** — lower scale factor on hot partitions
-- **`VACUUM FULL`** — exclusive lock; maintenance window only
-- pg_stat_user_tables, pg_repack
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-Bloat is the space that **dead row versions** take up. PostgreSQL never changes a row in place. An update writes a new version of the row and leaves the old version dead until vacuum removes it. So the tables to watch are the ones with the most updates and deletes.
-
-The busiest table was the five-minute rollups. The **rollup upserts** change about 1,500 rows per second at design load. Each batch is one multi-row `INSERT … ON CONFLICT DO UPDATE`.
-
-For those tables I kept **free space on the page**. Rollup partitions use `fillfactor = 70`, and the aggregate columns have no index. So most updates are heap-only: the new version goes on the same page, and no index changes. PostgreSQL can then clean dead versions on that page during normal work, without waiting for vacuum.
-
-The second decision was the **partition drop**. Retention on rollups is a `DROP` of the oldest daily partition. A mass `DELETE` would leave millions of dead rows for vacuum, and a `DROP` leaves none. Old partitions also stop changing, so autovacuum works mainly on the newest ones.
-
-**Run status updates** are different. A run moves from queued to running to validating to a final status. The status column is part of a partial index, so these updates are not heap-only. But the volume is small, about 11,000 runs a day, so default autovacuum handles it.
-
-The main thing that stops vacuum is a **long transaction**. Vacuum cannot remove a row version that an open transaction might still need. Our transactions are short: each one sets the tenant with `SET LOCAL`, does its work and ends. A session left idle inside a transaction is the case to watch.
-
-The design does not fix **autovacuum per table** settings. On the rollup partitions I would lower the scale factor. Then vacuum starts after a fixed number of changed rows, not after a share of a large table. I would check the result with the dead-row counts in `pg_stat_user_tables`.
-
-I would not run **`VACUUM FULL`** on a live table. It rewrites the whole table under an exclusive lock, and that lock blocks reads and writes until it ends. Plain vacuum only marks space for reuse, but it runs alongside normal traffic. `VACUUM FULL` belongs in a maintenance window. `pg_repack` is the online option when a table must really shrink.
 
 </details>
 
@@ -764,43 +565,6 @@ Every bucket uses a Key Management Service ([KMS](https://aws.amazon.com/kms/ "A
 
 </details>
 
----
-
-### Q2. How did large datasets and images get into S3 — through your API or around it?
-
-**Brief answer**
-Around it. The API creates the record and returns pre-signed upload URLs, and the client uploads straight to S3. The URLs are signed with a tenant-scoped session, so they cannot reach another tenant's prefix.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **declared size and SHA-256**
-- **pre-signed upload URLs** — multipart for datasets
-- **tenant-scoped session** — a tampered key is still refused
-- **complete or start call** — client says the upload is done
-- **status row** — `uploading`, `processing`, `ready`, `failed`
-- **metadata stripped** — before any model sees an image
-- why not through the API, Celery media queue
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-Uploads go around the API. Recorded datasets add about 1 TB a month in the estimate, and a single file can be large. Sending that through API Gateway and a pod would hit body limits and use pod memory. It would also pay for the same bytes twice.
-
-The client first calls `POST /v1/datasets` or `POST /v1/inspections`. It lists each file with a **declared size and [SHA-256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm 256-bit — Produces a fixed-size digest used to verify content integrity")**. [SHA](https://csrc.nist.gov/pubs/fips/180-4/upd1/final "Secure Hash Algorithm — Family of cryptographic hash functions used to verify content integrity")-256 is the Secure Hash Algorithm 256-bit digest of the file. The API creates the record and returns **pre-signed upload URLs**. Datasets use multipart upload, so a large file can resume after a failure.
-
-The URLs are signed with a **tenant-scoped session**. `platform-api` assumes the `tenant-data-access` role with a session tag for the tenant. That role only allows keys under that tenant's prefix. If someone edits the key in a [URL](https://datatracker.ietf.org/doc/html/rfc3986 "Uniform Resource Locator — Addresses the location and access method of a resource on the web"), S3 still refuses the request.
-
-When the upload finishes, the client makes a **complete or start call**. For a dataset that is `POST /v1/datasets/{id}/complete`. For an inspection it is `POST /v1/inspections/{id}/start`, and it only works once every image is uploaded.
-
-The dataset then moves through its **status row**: `uploading`, `processing`, then `ready` or `failed`. [Celery](https://docs.celeryq.dev/en/stable/ "Celery — Distributed task queue that runs background and scheduled jobs outside the request cycle") jobs on the `media` queue build manifests and thumbnails. A sweeper picks up any dataset that stays in `processing` for more than 15 minutes.
-
-For inspections, `image-preprocess` resizes each image and writes it to `intermediate/`. At that step, each image also gets its **metadata stripped**. The model only sees the cleaned copy.
-
-</details>
-
 ## R7. Messaging — Step Functions pipelines
 
 > Designed AWS Step Functions state machines orchestrating multi-step AI analysis, generation, and validation pipelines with retries and failure handling;
@@ -841,257 +605,6 @@ The alternative was Celery chains. Celery has no durable per-step state and no v
 
 > **Footnotes:**
 > - **Claim-check pattern:** A message carries a reference to data kept in a store, and the receiver fetches the data itself. It keeps large payloads out of size-limited messages.
-
----
-
-### Q2. How did you set up retries and failure handling in the state machines? Which errors did you retry, and what happened when the retries ran out?
-
-**Brief answer**
-Each kind of error had its own retry policy, with backoff sized to the failure it covers. Anything that still failed went through a `Catch` to one failure state, which recorded an error code and a metric.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **retry policy** — different per error type
-- **backoff** — step retries span longer than a database failover
-- **heartbeat timeout**
-- **Agent.Throttled** — about 15 minutes of waiting before failing
-- **Catch** — every state routes to `MarkFailed`
-- **error_code**
-- **idempotent start** — execution name equals `run_id`
-- GenerationFailures, budget_exceeded, model_unavailable
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-I set a separate **retry policy** for each kind of error, because each error has a different cause and a different recovery time.
-
-- **Step Lambdas.** We retried `Lambda.ServiceException`, `Lambda.TooManyRequestsException` and database errors. The interval is 5 s with **backoff** ×2 and 5 attempts. That spans about 155 s. A PostgreSQL failover takes 60–120 s, so a step can survive a failover without failing the run.
-- **The agent step.** We retried `States.HeartbeatTimeout` and `States.Timeout` with 30 s, ×2, 2 attempts. A **heartbeat timeout** means the worker pod has probably crashed. The retry sends a new task token, and the new attempt resumes from the last LangGraph checkpoint.
-- **Model throttling.** The worker raises **Agent.Throttled** when Bedrock keeps throttling after the adaptive retry built into the software development kit ([SDK](https://en.wikipedia.org/wiki/Software_development_kit "Software Development Kit — Packaged set of tools and libraries for building against a platform")). We retried it with 60 s, ×2, 4 attempts. That is about 15 minutes of waiting before the run fails with `model_unavailable`.
-
-Some errors are never retried. A request over the tenant's token budget fails at once with `budget_exceeded`, because a retry cannot fix it.
-
-When retries run out, a **Catch** on every state routes to `MarkFailed`. That state calls the `run-set-status` Lambda. It records the **error_code** on the `ai_runs` row and emits the `GenerationFailures` metric. So the user always sees a terminal status, and on-call sees the failure grouped by cause.
-
-Retries only work if repeats are safe. The API starts each execution with the name set to the `run_id`. This gives an **idempotent start**: a retried `StartExecution` with the same name and input returns the existing execution. `ai_outputs` also has a unique key on run and version, so a repeated write cannot create a duplicate version.
-
-</details>
-
----
-
-### Q3. How did the validation step in your pipelines work, and what happened when an AI output failed it?
-
-**Brief answer**
-The validation step ran the cheapest checks first and stopped at the first failure. A failed output went back to the agent with the failures as feedback, up to two times. After that, the output was kept but marked so it could never be exported.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **cheapest first** — stops at the first failed check
-- **schema validation**
-- **citation check** — every cited source was retrieved in this run
-- **numeric grounding**
-- **grounding review** — a small model, only after deterministic checks pass
-- **regeneration** — failures fed back, at most twice
-- **completed_unvalidated** — kept and reviewable, never exportable
-- self_check, latency against accuracy
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-The `run-validate-output` Lambda owns validation. It runs the checks **cheapest first** and stops at the first failure.
-
-1. **Schema validation** against the Pydantic model for the output kind. It takes about 50 ms.
-2. A **citation check**. Every chunk or tool result the output cites must have been retrieved during this run. This catches invented sources.
-3. **Numeric grounding**. Every number in the output must appear in the evidence, within a tolerance. A wrong torque value or temperature in a maintenance report is a real risk, so numbers get their own check.
-4. Only then a **grounding review** by a Haiku-class model. It checks that the claims follow from the evidence. It takes about 2 s and about 10% extra tokens.
-
-If a check fails, the state machine loops back to the agent step. It passes the failures in as feedback, and the run's `regen_count` goes up. We allowed **regeneration** at most twice. After two failed regenerations, `run-persist-output` saves the output and sets the run status to **completed_unvalidated**. A reviewer sees it together with the failures, but it can never be exported.
-
-Why keep a failed output at all? Much of it may still be useful, and a reviewer can fix one bad claim faster than we can run a new analysis. The export block keeps an unchecked document from reaching a plant.
-
-Inside the LangGraph workflow there is also a `self_check` node. That is the model checking itself. The pipeline step is the authority, and it is deterministic wherever possible.
-
-The trade-off is latency against accuracy. Two regenerations can push an analysis from about 2 to about 4.5 minutes. We accepted that, because a wrong maintenance instruction costs more than a slow one. The target was that fewer than 5% of runs need two regenerations.
-
-</details>
-
----
-
-### Q3. You used Step Functions for the AI pipelines and SNS fan-out for other flows. How did you decide between central orchestration and event-driven choreography?
-
-**Brief answer**
-I orchestrated work whose steps depend on each other and that needs one final status, which is every AI run. I used choreography where several consumers react to the same event and do not depend on each other, such as telemetry batches and run events.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **the rule** — dependent steps orchestrated, independent reactions choreographed
-- **telemetry fan-out** — three consumers fail and scale alone
-- **AI pipelines** — fixed order, branching, one status
-- **execution history**
-- **run events** — side effects subscribe; pipelines unchanged
-- **subscriber failure** — never fails the run
-- **cost** — per-transition latency against a hidden flow
-- nothing to undo, saga
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-I used both, and **the rule** was whether the steps depend on each other. If a step needs the result of the step before it, and the work needs one final status, I orchestrate it. If several consumers react to the same event and do not depend on each other, I use choreography.
-
-The **telemetry fan-out** is choreography. Each batch goes to an ordered SNS topic, and three queues receive it: the archiver, the rollup consumer and the rules consumer. None of them waits for another. Each one fails, retries and scales on its own. If the rules consumer has a bug, archiving and rollups continue.
-
-The **AI pipelines** are orchestrated with Step Functions. An analysis has a fixed order: validate the request, build the context, run the agent, validate the output and save it. The validation step can send the run back to the agent. Every step has its own retry policy and timeout. The user needs one run status at the end. With choreography, this logic would be spread across several consumers, and no single component would own the status.
-
-Orchestration also gives an **execution history** for every run. When a run fails, I open the execution and see which state failed and with what input. With choreography, I would have to rebuild that picture from logs.
-
-At the end of a run, I switch to choreography. The pipeline publishes **run events** to the `ai-run-events` topic. The webhook dispatcher and the follow-up trigger subscribe to it. Adding a subscriber does not change the pipelines.
-
-A **subscriber failure** never fails the run. If a tenant's webhook endpoint is down, the dispatcher retries from its own queue. After 8 attempts the message goes to a dead-letter queue, and the tenant is notified. The run itself is already complete.
-
-Each style has a **cost**. Step Functions adds about 50–100 ms per state transition and charges per transition. That is acceptable for runs that take minutes. Choreography hides the overall flow. So every consumer must be safe to repeat, and tracing must join the hops.
-
-Partial failure stays simple in the analysis pipeline. It writes its output only in the persist step, and intermediate results sit in S3 and expire after 14 days. So a failed analysis leaves nothing in PostgreSQL to undo, and `MarkFailed` only records the status and the error code. That is why the pipeline needs no saga with compensating steps.
-
-</details>
-
-> **Footnotes:**
-> - **Saga:** A sequence of local transactions in which each step has a compensating step that undoes it if a later step fails. It replaces one distributed transaction across services.
-
-## R8. Messaging — Async AI processing
-
-> Developed async AI processing with AsyncIO, Celery (Redis broker), SQS with SNS fan-out, and Lambda for long-running tasks;
-
----
-
-### Q1. You list AsyncIO, Celery, SQS with SNS, and Lambda. How did you decide which one handled which kind of work?
-
-**Brief answer**
-One rule decided it: who starts the work, how long it runs, and what code it needs. AsyncIO handled concurrency inside every process, Celery took short app jobs, Lambda behind SQS took event-driven work, and Step Functions with an SQS callback took the long AI runs.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **AsyncIO** — concurrency inside one process, not a job system
-- **Celery** — app-started, under 10 minutes, restartable from a status row
-- **Lambda behind SQS** — event-driven, stateless, under 15 minutes
-- **SQS callback** — steps that need the LangGraph stack
-- **acks_late**
-- **noeviction** — a separate broker the cache cannot evict from
-- **sweeper** — re-enqueues jobs stuck for 15 minutes
-- visibility_timeout, task_time_limit, results ignored
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-These tools answer different questions, so I gave each one a clear job.
-
-**AsyncIO** is not a job system. It runs inside every service, worker and Lambda. It lets one process wait on hundreds of model, database and AWS calls on few threads.
-
-For background jobs I used one rule:
-
-- **Celery** takes work that the app starts itself and that finishes in under 10 minutes. The work needs the app's object-relational mapping ([ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping "Object Relational Mapper — Maps application objects to relational database rows and queries")) and code, and it can restart from a PostgreSQL status row. Examples are document parsing and embedding, thumbnails, partition upkeep and hourly rollups.
-- **Lambda behind SQS** takes event-driven, stateless work under 15 minutes that AWS triggers. Examples are the three telemetry consumers, webhooks, follow-ups and the audit archive.
-- Step Functions takes multi-step work that needs per-step retries and a history: the three AI pipelines.
-- An **SQS callback** to `agent-worker` takes a pipeline step that needs the LangGraph stack and may run for minutes.
-
-Celery needed care to be reliable. We set **acks_late** so a task is acknowledged only after it finishes. `task_time_limit` is 600 s, and the broker `visibility_timeout` is 3,600 s. The timeout is longer than any task, so a slow task is never delivered twice. Results are ignored; job state lives in PostgreSQL rows such as `datasets.status`.
-
-Celery runs on its own Redis, `celery-broker`, with **noeviction**. The cache Redis uses `allkeys-lru`. If they shared one cluster, cache eviction could delete a queued job. The broker's replication is asynchronous, so a failover can still lose messages. A `celery-beat` **sweeper** covers that: it re-enqueues any dataset or document stuck in `processing` or `pending` for more than 15 minutes.
-
-The mistake I avoided is using one tool for everything. Celery chains for AI runs would lose durable history. Lambda for agent steps would hit the 15-minute limit.
-
-</details>
-
----
-
-### Q2. How did you use SNS fan-out with SQS, and how did you keep the consumers correct when a message arrived twice or out of order?
-
-**Brief answer**
-Each telemetry batch went to an SNS First In, First Out ([FIFO](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html "Queue and topic mode that preserves message order within a group and removes duplicates")) topic that fanned out to three ordered SQS queues, one per consumer, grouped by gateway. Each consumer skipped what it had already seen, applied an effect that is safe to repeat, and then advanced its checkpoint.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **SNS FIFO** — fan-out to three ordered queues, one per consumer
-- **message group** — the gateway ID; ordering is per gateway
-- **deduplication ID** — the `batch_id`, over a five-minute window
-- **high watermark** — skip any batch at or below it
-- **idempotent effect**
-- **conditional update** — the checkpoint only moves forward
-- **dead-letter queue (DLQ)** — only that gateway's group is blocked
-- exactly-once effect, last_seq guard, ai-run-events
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-`platform-api` publishes each telemetry batch to `telemetry-batches.fifo`, an SNS topic in **SNS FIFO** mode. The topic fans out to three FIFO queues: archive, rollup and rules. A Lambda reads each queue. So each consumer fails, retries and scales on its own.
-
-The **message group** is the gateway ID. Order holds per gateway, and one slow gateway never blocks another. The **deduplication ID** is the `batch_id`, so SNS drops a retry within five minutes.
-
-Longer-range duplicates still happen, for example when a gateway replays its buffer after an outage. So every consumer follows three steps:
-
-1. Read its checkpoint in DynamoDB and skip any batch whose `seq` is at or below the **high watermark**.
-2. Apply the batch with an **idempotent effect**. The archiver writes to a deterministic S3 key. The rollup upsert only changes a row when `last_seq` is lower than the new one. The rules consumer relies on a partial unique index that allows one active alarm per device and rule.
-3. Advance the checkpoint with a **conditional update**. It succeeds only if the stored watermark is lower than the new `seq`.
-
-A crash between step 2 and step 3 causes a redelivery. The idempotent effect absorbs it. The checkpoint and the effect live in different stores, so neither one alone could guarantee this. Together they give an exactly-once effect on top of at-least-once delivery.
-
-A poison message is different. After 5 receives it moves to the **dead-letter queue ([DLQ](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html "Dead-Letter Queue — Holds messages that failed processing repeatedly so they can be inspected and redriven"))**. For about 5 minutes only that gateway's group is blocked. An alarm fires on any DLQ message, and we redrive after the fix. Malformed batches never get this far: `platform-api` rejects them with `422` at ingest.
-
-The same fan-out idea serves run events. `ai-run-events` fans out to the webhook and follow-up queues, so a new subscriber never changes the pipelines.
-
-</details>
-
----
-
-### Q3. Lambda has a 15-minute limit. How did you run AI tasks that could take longer than that?
-
-**Brief answer**
-The agent step ran on a worker pool on EKS, not in Lambda. Step Functions sent the task with a callback token through SQS and waited. The worker sent heartbeats while it worked and returned the result with the token.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **task token** — Step Functions waits until the worker returns it
-- **long-poll**
-- **deletes the message** — right after recording the token
-- **SendTaskHeartbeat** — every 60 s against a 180 s heartbeat limit
-- **resume** — from the last LangGraph checkpoint
-- **Bedrock quota** — sets worker capacity, not CPU
-- queue age alarm, TimeoutSeconds 900
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-The agent step can take minutes and needs the full Python AI stack. So it runs on `agent-worker`, a deployment on EKS. The state machine uses the `sqs:sendMessage.waitForTaskToken` integration. It puts a message with a **task token** on `agent-tasks` and waits.
-
-The worker protocol has four rules.
-
-- The worker uses **long-poll** reads on `agent-tasks`.
-- It records the task token and then **deletes the message** at once. Retrying belongs to Step Functions alone. If SQS also redelivered the message, one failure could run twice.
-- While it works, it calls **SendTaskHeartbeat** every 60 s. The task state sets `HeartbeatSeconds: 180` and `TimeoutSeconds: 900`. If a pod crashes, Step Functions notices within 3 minutes and retries the step with a new token.
-- A retried attempt uses the same LangGraph thread. So it can **resume** from the last checkpoint and does not repeat completed model and tool calls.
-
-At the end the worker calls `SendTaskSuccess` with a pointer to its output in S3, or `SendTaskFailure` with an error.
-
-Capacity was the interesting part. Each pod runs up to 16 tasks at once on AsyncIO. Four replicas give 64 slots against about 25 concurrent tasks at the estimated peak. The limit is the **Bedrock quota**, not CPU. More pods than the quota allows only produce throttling. So the replica count changes when the quota changes, and bursts wait in `agent-tasks`. A queue age alarm fires when the oldest message is older than 600 s.
-
-</details>
 
 ## R9. AI pipelines — LangChain and LangGraph
 
@@ -1174,7 +687,7 @@ One risk: the checkpointer creates its own tables through `setup()`, and a libra
 
 ---
 
-### Q2. How did you test the LangChain and LangGraph code, when the model does not give the same answer twice?
+### Q2. How did you test the LangChain and LangGraph code?
 
 **Brief answer**
 I split the code into parts I could test exactly and parts I could only measure. Everything around the model ran in Pytest against a fake chat model that replays recorded responses. Answer quality was measured with an evaluation set in staging.
@@ -1213,7 +726,7 @@ In production, a worker change goes out as a **canary** first. The pipeline comp
 
 ---
 
-### Q3. How did you choose Bedrock models for the different steps, and how did Bedrock quotas shape the design?
+### Q3. How did you choose Bedrock models for the different steps? How did Bedrock quotas shape the design?
 
 **Brief answer**
 Sonnet-class models did reasoning and vision, Haiku-class models did checks and small tasks, and Titan made embeddings. The Bedrock token quota, not compute, was the limit the whole AI side was sized against.
@@ -1295,7 +808,7 @@ A last risk is quality: a graph can finish cleanly and still be wrong. The valid
 
 ---
 
-### Q1. Why did you expose these tools through MCP instead of writing them directly into each agent?
+### Q1. Why MCP integrations are at all needed, why did you expose these tools through MCP instead of writing them directly into each agent?
 
 **Brief answer**
 One MCP server gave every agent the same tools behind one policy layer. Writing tools into each agent would repeat the tenant checks and limits in every agent, and one agent would sooner or later get them wrong.
@@ -1331,7 +844,7 @@ The cost is an **extra network hop** and one more service to run. A tool call is
 
 ---
 
-### Q2. What made these tools "controlled"? How did you stop an agent from reaching data or actions it should not?
+### Q2. What made these tools "controlled" and how did you stop an agent from reaching data or actions it should not?
 
 **Brief answer**
 The server enforced every control, never the prompt. Each call was bound to an active run that fixed the tenant. Each run type had its own tool allowlist. Results and calls were capped, and every call was audited. The one write tool only created a draft for a person to approve.
@@ -1495,7 +1008,7 @@ Every chunk the model cites is checked later. The validation step confirms that 
 
 ---
 
-### Q3. How did you keep each tenant's documents apart in a shared PostgreSQL vector store, and where does that design stop scaling?
+### Q3. How did you keep each tenant's documents apart in a shared PostgreSQL vector store? Where does that design stop scaling?
 
 **Brief answer**
 Each tenant had its own partition of the chunk table with its own vector index, plus row-level security on top. It stops scaling when one tenant grows past about 10 million chunks or retrieval gets slow, and then that tenant moves to a dedicated index.
@@ -1533,44 +1046,6 @@ The trade-off was deliberate. pgvector means one fewer system, vectors inside th
 ## R12. Security — tenant-aware access control
 
 > Implemented tenant-aware access control using AWS Cognito and IAM policies, and stored service credentials in Secrets Manager;
-
----
-
-### Q1. Where did the tenant identity come from on each request, and how did you make sure a client could not choose it?
-
-**Brief answer**
-For users, the tenant came from a claim that a Cognito trigger added to the access token from an attribute that only the admin API can write. For edge gateways, it came from the gateway's client ID through a lookup; it never came from a path, query or body.
-
-<details>
-<summary><strong>Must cover</strong></summary>
-
-- **pre-token-generation trigger** — adds `tenant_id` and roles claims
-- **custom:tenant_id** — writable only through the admin API
-- **client ID** — maps each gateway to its tenant
-- **never from the request**
-- **verified twice** — at API Gateway and again in the service
-- **per-route dependency** — role checks inside the tenant
-- **site scoping**
-- Cognito feature plan, users table fallback
-
-</details>
-
-<details>
-<summary><strong>Detailed answer</strong></summary>
-
-Users log in through Cognito. A Lambda called `token-enricher` runs as a Cognito **pre-token-generation trigger**. It adds `tenant_id` and `roles` claims to the access token. It reads the tenant from the user's **custom:tenant_id** attribute and the roles from Cognito groups. App clients cannot write that attribute; only the admin API can. So a user cannot move themselves to another tenant.
-
-Edge gateways use their own app client. Each gateway's **client ID** maps to one row in `core.devices`. `platform-api` looks it up through a Redis cache and takes the tenant from there.
-
-The rule is that the tenant comes **never from the request**: not from a path, a query parameter or a body field. A `tenant_id` field in the body never decides the tenant.
-
-The token is **verified twice**. API Gateway's Cognito authorizer checks signature, expiry and scope. `platform-api` checks the token again against the cached JWKS, because a request that bypassed the gateway must not be trusted.
-
-Inside a tenant, roles decide what a user may do. A FastAPI **per-route dependency** enforces them, so no route can skip the check. On top of that there is attribute-based **site scoping**: a user with rows in `user_site_access` sees only those sites.
-
-There is one risk to confirm. Custom claims in access tokens need a Cognito feature plan above Lite and the version 2 trigger event. If the plan lacks it, the fallback is to resolve tenant and roles in `platform-api` from `core.users` by the token subject, cached in Redis.
-
-</details>
 
 ---
 
