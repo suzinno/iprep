@@ -85,7 +85,7 @@ erDiagram
 | `orders` | (`tenant_id`, `order_id`, `placed_at`) | `channel`, `channel_order_id`, `status`, `total_amount`, `currency`, `shopper_ref`, `ship_country`, `updated_at`; unique (`tenant_id`, `channel`, `channel_order_id`, `placed_at`) |
 | `order_lines` | (`tenant_id`, `order_id`, `placed_at`, `line_no`) | `sku`, `qty`, `unit_price` |
 
-Orders keep no shopper name, address or payment data. `shopper_ref` is a pseudonymous [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key"), and `ship_country` is the only location field kept (see `06-security.md`).
+Orders keep no shopper name, address or payment data. `shopper_ref` is a pseudonymous [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash-based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key"), and `ship_country` is the only location field kept (see `06-security.md`).
 
 **`pricing` schema** (`pricing-service`, `agent-worker`)
 

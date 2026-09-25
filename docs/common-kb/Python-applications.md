@@ -1161,7 +1161,7 @@ The split is 76 MUST, 38 NICE and 19 OPTIONAL across 19 topics. The security gro
 
   <details><summary><strong>Answer</strong></summary>
 
-  An [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") or a signed token proves a payload came from a party holding the key and was not modified, which is what a webhook signature verifies. It does not make an unsafe format safe — a signed pickle is still a pickle, and a compromised key is then full code execution.
+  An [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash-based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") or a signed token proves a payload came from a party holding the key and was not modified, which is what a webhook signature verifies. It does not make an unsafe format safe — a signed pickle is still a pickle, and a compromised key is then full code execution.
 
   </details>
 

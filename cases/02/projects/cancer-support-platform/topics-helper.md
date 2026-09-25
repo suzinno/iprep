@@ -542,7 +542,7 @@ The split is 148 MUST, 48 NICE, 13 OPTIONAL across 23 topics. A MUST-heavy list 
 
   </details>
 
-- **NICE** — Searchable encryption: deterministic vs non-deterministic encryption, [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") blind index, key separation, and what a blind index leaks
+- **NICE** — Searchable encryption: deterministic vs non-deterministic encryption, [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash-based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") blind index, key separation, and what a blind index leaks
 
   <details><summary><strong>Answer</strong></summary>
 

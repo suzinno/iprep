@@ -71,7 +71,7 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | GiST | Generalized Search Tree | PostgreSQL index type supporting range and exclusion constraints | https://www.postgresql.org/docs/current/gist.html |
 | HA | High Availability | System design goal of remaining operational despite component failure | https://en.wikipedia.org/wiki/High_availability |
 | HIPAA | Health Insurance Portability and Accountability Act | US law setting standards for protecting health information | https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160 |
-| HMAC | Hash based Message Authentication Code | Verifies both the integrity and authenticity of a message using a shared secret key | https://datatracker.ietf.org/doc/html/rfc2104 |
+| HMAC | Hash-based Message Authentication Code | Verifies both the integrity and authenticity of a message using a shared secret key | https://datatracker.ietf.org/doc/html/rfc2104 |
 | HNSW | Hierarchical Navigable Small World | Graph index for approximate nearest-neighbour search over vectors | https://arxiv.org/abs/1603.09320 |
 | HOT | Heap Only Tuple | PostgreSQL update path that keeps the new row version on the same page and touches no index | https://www.postgresql.org/docs/current/storage-hot.html |
 | HPA | Horizontal Pod Autoscaler | Automatically adjusts the number of Kubernetes pod replicas to match load | https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/ |
@@ -246,6 +246,12 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | MobX | MobX | Makes application state observable so that views update when the data they read changes | https://mobx.js.org/ |
 | D3 | D3.js | JavaScript library that binds data to SVG and HTML for custom visualisations | https://d3js.org/ |
 | TailwindCSS | Tailwind CSS | Utility-first CSS framework for styling components directly in markup | https://tailwindcss.com/ |
+| SLA | Service Level Agreement | Commitment between a provider and its customer on measurable service targets, such as delivery time | https://en.wikipedia.org/wiki/Service-level_agreement |
+| BI | Business Intelligence | Tools and practices that turn stored business data into reports and dashboards for decisions | https://en.wikipedia.org/wiki/Business_intelligence |
+| ECS | Amazon Elastic Container Service | Managed container orchestration on AWS; with Fargate it runs containers without managing servers | https://aws.amazon.com/ecs/ |
+| EC2 | Amazon Elastic Compute Cloud | Virtual machines on AWS for workloads that need a full operating system | https://aws.amazon.com/ec2/ |
+| ETA | Estimated Time of Arrival | Predicted time a vehicle or shipment reaches its destination | https://en.wikipedia.org/wiki/Estimated_time_of_arrival |
+| SCD | Slowly Changing Dimension | Warehouse dimension design that records how attribute values change over time; type 2 keeps each version with validity dates | https://en.wikipedia.org/wiki/Slowly_changing_dimension |
 
 ## Deliberately not linked
 
