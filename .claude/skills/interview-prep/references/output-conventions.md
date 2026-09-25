@@ -174,8 +174,8 @@ The document then opens with an index, directly under the header notes, giving t
 
 8. **Output language** — Prose is written in the language the gate's `language:` note names, `en` or `ru`, one per case. The gate owns how `<interview>/language.txt` is read and when it falls back to `en`. Russian prose has no readability file, because its reader is a native speaker; rules 3 and 4 apply to it unchanged.
 
-   - **Fixed text stays in English.** Everything this file or a mode file gives as a literal template is copied as written: document titles and header notes, the `Brief answer`, `Must cover`, `Detailed answer` and `Footnotes` labels, the `Q<n>.` numbering, the `**Project:**` line and the `Questions by project` heading. The linker and this checklist match these strings, and a translated label stops matching without any error.
-   - **Supplied questions are copied as written.** A question from a client's `*-questions.txt` keeps its own wording and language, because a translation changes what the client asked. Generated questions, answers, `Must cover` entries and footnotes are in the case language.
+   - **Fixed text stays in English.** Everything this file or a mode file gives as a literal template is copied as written: document titles and header notes, the `Brief answer`, `Must cover`, `Detailed answer` and `Footnotes` labels, the `Q<n>.` numbering, the `**Project:**` line and the `Questions by project` heading. The linker and this checklist match these strings, and a translated label stops matching without any error. A name a mode file offers as a choice rather than as text to copy — a topic from `from-resps`'s topic sequence — is not fixed text and is written in the case language, like section labels and pillar names.
+   - **Quoted source text is copied as written.** A question from a client's `*-questions.txt` and a responsibility quoted from `inputs.txt` keep their own wording and language, because a translation changes what the source said. Quoted text is exempt from the one-form-per-concept rule below. Generated questions, answers, `Must cover` entries and footnotes are in the case language.
    - **Technical terms in Russian prose.** Product, library and protocol names and all abbreviations stay in Latin script. A concept with a Russian term in common engineering use takes that term (шардирование, идемпотентность, репликация); any other concept keeps its English term in Latin script. A document uses one form per concept throughout.
    - **Abbreviations expand in English**, as in «Object-Relational Mapping (ORM)». The linker recognises an expansion only in the glossary's wording, which is English.
 
@@ -188,11 +188,12 @@ Every mode re-reads its own output and verifies:
 - Detailed answers meet the 600-character minimum — **all** of them, not most
 - No duplicate content between brief and detailed (brief = headline, detailed = substance)
 - Both `<details>` blocks of every question — `Must cover` and `Detailed answer` — are opened and closed
-- Every bold `Must cover` entry appears in that question's detailed answer, in the order the list gives
+- Every bold `Must cover` entry appears in that question's detailed answer, in the order the list gives. The same words in another grammatical form count: Russian changes word endings, so «один проход» appears as «одним проходом»
 - Every `Must cover` list holds two to eight bold entries and at most seven plain ones, and no entry is an incidental mention — a contrast case, a variant of another entry, or one item of an illustrative run
 - Abbreviations expanded on first use
 - In English output, every sentence passes `.claude/b2-lang-rules.md` — checked against that file, not from memory
 - Prose is in the language the gate reported, and every literal template string is in English exactly as given
+- Every same-file link (`](#…)`) resolves to a heading — checked by `python3 .claude/scripts/check-anchors.py <file>`, never by eye
 - Numbering is consistent and unbroken — in a project guide the `Q<n>` label is the difficulty level and repeats by design (see `tiers.md`)
 - In an attributed file: every question carries a `**Project:**` line, every value names a real project folder or `general`, and the index at the top accounts for every question exactly once
 

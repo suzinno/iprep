@@ -31,7 +31,7 @@ mv cases/03/projects/project-name cases/03/projects/my-project
 
 Then **delete the input files the client did not give you** — `cases/03/interview/` ships all three empty, and an empty file is reported as present-but-unusable on every run, where a deleted one is cleanly absent.
 
-For Russian output, write `ru` to `cases/03/interview/language.txt` before the first `/interview-prep` run. It applies to every mode in the case; without it the output is English.
+For output in Russian, set the case language first — see [Output in another language](#output-in-another-language).
 
 **Per project**, repeating for each project the case holds:
 
@@ -44,6 +44,18 @@ For Russian output, write `ru` to `cases/03/interview/language.txt` before the f
 
 5. `/interview-prep answer cases/03` — writes `soft-skills-answers.md` and `tech-answers.md`, spanning every project in the case.
 6. `/interview-prep extend cases/03` — writes `soft-skills-extra.md` and `tech-extra.md`, further questions that avoid what is already covered.
+
+## Output in another language
+
+The interview material can be written in Russian; the `/system-design` docs are always English. The language is set per case, as a file, so every mode — including one run in a later session — writes in the same language.
+
+1. Write `ru` to `cases/03/interview/language.txt` before the first `/interview-prep` run. It covers every mode in the case, the per-project guides included. Without the file the output is English; a file holding anything other than `en` or `ru` also falls back to English, and the gate's notes say so.
+2. The brief may be in Russian too. Keep the four headings in `inputs.txt` exactly as the template ships them — `/system-design` and the gate read them — and write everything under them in the language of the CV the interviewer will hold. Keep no translated copy of the brief: every mode reads `inputs.txt` and nothing else, and the design's traceability table quotes it as written.
+3. Run the pipeline as usual, and check that the gate's `language:` note ends in `write the prose in ru`.
+
+Switching an existing case is the same file. Packs already written stay in their language, and `extend` warns when its base answers do not match the case language.
+
+What stays in English in a Russian pack, what is copied as written, and how technical terms are spelled is owned by the Output language rule in `.claude/skills/interview-prep/references/output-conventions.md`.
 
 ## An existing case
 

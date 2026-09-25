@@ -23,6 +23,7 @@
 | How design docs are produced | `.claude/skills/system-design/SKILL.md` |
 | What an abbreviation means, and where its link points | `.claude/glossary.md` |
 | How abbreviation links are applied and verified | `.claude/scripts/link-abbreviations.py` |
+| Whether a document's table-of-contents links resolve | `.claude/scripts/check-anchors.py` |
 | How to write English a B2 reader follows | `.claude/b2-lang-rules.md` |
 | Which language generated prose is written in | `.claude/skills/interview-prep/references/output-conventions.md` (Output language rule) |
 | The spoken one-topic answers, and how one is added | `docs/common-kb/quick-check.md`, `.claude/commands/quick-check.md` |
@@ -85,6 +86,7 @@ Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning not
 shellcheck .claude/skills/interview-prep/scripts/*.sh .claude/scripts/*.sh
 .claude/skills/interview-prep/scripts/gate-check.sh
 .claude/scripts/link-abbreviations-check.sh
+.claude/scripts/check-anchors-check.sh
 python3 .claude/scripts/link-abbreviations.py --check cases/02/projects/*/*.md cases/02/interview/topics/*.md
 ```
 
@@ -93,6 +95,8 @@ Case 01 is out of scope for the glossary back-fill and is not passed to `--check
 `gate-check.sh` builds every fixture in a temp directory and exits non-zero on any failure. It ends with a self-test that plants a wrong expectation and confirms it is reported — a suite that only ever passes confirms whatever you already expected.
 
 `link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Seven mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, dropping the title-divergence finding, disabling the `Must cover` skip, leaving that skip open past its closing tag, and matching word boundaries as ASCII only.
+
+`check-anchors-check.sh` follows the same pattern, one fixture per anchor rule. Six mutations of the checker must be caught: keeping only ASCII letters, collapsing repeated hyphens, dropping underscores, keeping a heading link's URL, removing the duplicate-heading suffix, and disabling fence tracking.
 
 **Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Eight mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, removing the `projects` parent-directory guard, skipping `require_design_docs` for `from-resps` only, removing the `report_resps_guide` call from `extend`, removing the `report_language` call, and accepting any `language.txt` value as valid.
 

@@ -70,6 +70,5 @@ Write to `<project>/interview-questions.md`.
 
 - **Responsibility coverage** — walk `inputs.txt` responsibility by responsibility and name the question that targets each. List any gaps and fill them.
 - Every pillar has a `## <Pillar Name>` heading, and its questions run Q1 → Q2 → Q3.
-- Every Table of Contents link resolves to a real heading anchor in the file.
 - Answers reference this project's specifics, not textbook generalities.
 - When a profile was used: every hard must-have in it is targeted by at least one question, the named pain points are targeted at Q2 or Q3, and the header carries the weighting note.

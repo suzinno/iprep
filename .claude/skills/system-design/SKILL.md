@@ -59,7 +59,7 @@ After all section files are written, create `<project>/00-overview.md`:
 - Project title and a one-paragraph executive summary
 - Links to each section file with a one-line description
 - Full tech stack listing with role assignments (e.g., "Redis — session cache, rate limiting")
-- A **Requirement Traceability** table mapping every Responsibility from `inputs.txt` to the section that addresses it, with an explicit "no architectural implication" entry for any responsibility that is process or tooling rather than system behaviour. An unmapped responsibility is either a gap in the design or a claim the brief does not support — both are worth seeing before the design is read
+- A **Requirement Traceability** table mapping every Responsibility from `inputs.txt` to the section that addresses it. Quote each responsibility exactly as `inputs.txt` states it, in its own language, even where the design is written in English: a translation is a second copy of the brief that can make a claim stronger or weaker without anyone noticing. Give an explicit "no architectural implication" entry to any responsibility that is process or tooling rather than system behaviour. An unmapped responsibility is either a gap in the design or a claim the brief does not support — both are worth seeing before the design is read
 
 ## Step 5 — Cross-Document Consistency Review
 
@@ -71,8 +71,10 @@ After all files are written, re-read them and verify:
 - No control or guarantee in one file silently invalidates a mechanism in another. A synchronous audit-on-read in `06`, for instance, makes the replica-served reads in `03` impossible, because a replica cannot write. Check obligations against mechanisms, not names against names
 - Every numeric target is achievable given the settings specified elsewhere. Sum the contributing latencies and compare against the stated figure rather than asserting the figure
 - Security boundaries in `06` reflect the topology from `02` and communication patterns from `04`
+- Every table, schema, queue or bucket a component reads or writes in `02`–`05` is granted to that component's role in `06`. A reader with no grant is the same defect as an index on an undeclared column: each file looks right alone, and comparing names will not surface it
 - Scale estimates in `01` are proportional to infrastructure decisions in `02`–`05`
 - If any inconsistency is found, fix it before finishing. Where the fix meant choosing between two defensible designs, state the choice and its cost in the affected file — a contradiction resolved silently leaves the reader unable to tell that a decision was ever made
+- Run `python3 .claude/scripts/check-anchors.py <project>/*.md` and fix every table-of-contents link it reports; anchors are derived from heading text by rules that are easy to misapply by hand
 - Once the files are consistent, run `python3 .claude/scripts/link-abbreviations.py <project>/*.md` to link the first occurrence of every glossary term. Never write these links by hand: `.claude/glossary.md` owns what each abbreviation expands to, what it is for, and where its source lives. If the design uses a term the glossary does not hold, add the row first, then re-run.
 
 ---
