@@ -252,6 +252,12 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | EC2 | Amazon Elastic Compute Cloud | Virtual machines on AWS for workloads that need a full operating system | https://aws.amazon.com/ec2/ |
 | ETA | Estimated Time of Arrival | Predicted time a vehicle or shipment reaches its destination | https://en.wikipedia.org/wiki/Estimated_time_of_arrival |
 | SCD | Slowly Changing Dimension | Warehouse dimension design that records how attribute values change over time; type 2 keeps each version with validity dates | https://en.wikipedia.org/wiki/Slowly_changing_dimension |
+| DWH | Data Warehouse | Central store that integrates historical data from many sources for reporting and analysis | https://en.wikipedia.org/wiki/Data_warehouse |
+| MPP | Massively Parallel Processing | Splits one query across many nodes that each process their own slice of the data at the same time | https://en.wikipedia.org/wiki/Massively_parallel |
+| FX | Foreign Exchange | Conversion between currencies and the rates used to value amounts in another currency | https://en.wikipedia.org/wiki/Foreign_exchange_market |
+| GL | General Ledger | The accounting record of every account's balance, against which operational figures are reconciled | https://en.wikipedia.org/wiki/General_ledger |
+| GOST | Gosudarstvenny Standart | Russian national standards, including the cryptographic algorithms certified protection tools must use | https://en.wikipedia.org/wiki/GOST |
+| YAML | YAML Ain't Markup Language | Human-readable data serialisation format used for configuration and exported definitions | https://yaml.org/spec/1.2.2/ |
 
 ## Deliberately not linked
 
