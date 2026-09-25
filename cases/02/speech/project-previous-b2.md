@@ -92,7 +92,7 @@ What makes the split affordable is that it isn't nine repositories. There is one
 
 For a smaller team, yes. I would build one deployable with the same six modules and the same schema-per-module boundary. I would move a component out only when there is a real trigger. The trigger is a component with its own release cadence, its own hardware or its own owner. Here, the trigger was blast radius on data that two competitors share.
 
-> **"If you split a system by domain nouns, you get the coupling of a monolith and the failure modes of a network."**
+> **"If you split by data nouns instead of by what changes together, you get the coupling of a monolith and the failure modes of a network.."**
 
 </details>
 
