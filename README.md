@@ -10,7 +10,7 @@ Everything lives under `cases/`. A **case** is one engagement: any number of CV 
 cases/01/
   projects/<name>/   inputs.txt · 00-overview.md…06-security.md
                      interview-questions.md · resps-questions.md
-  interview/         candidate-profile.txt · {soft-skills,tech}-questions.txt
+  interview/         candidate-profile.txt · language.txt · {soft-skills,tech}-questions.txt
                      {soft-skills,tech}-answers.md · {soft-skills,tech}-extra.md
 ```
 
@@ -30,6 +30,8 @@ mv cases/03/projects/project-name cases/03/projects/my-project
 ```
 
 Then **delete the input files the client did not give you** — `cases/03/interview/` ships all three empty, and an empty file is reported as present-but-unusable on every run, where a deleted one is cleanly absent.
+
+For Russian output, write `ru` to `cases/03/interview/language.txt` before the first `/interview-prep` run. It applies to every mode in the case; without it the output is English.
 
 **Per project**, repeating for each project the case holds:
 

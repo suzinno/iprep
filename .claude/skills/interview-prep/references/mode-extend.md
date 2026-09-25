@@ -15,6 +15,8 @@ Generate additional questions that read as a natural continuation of an existing
 - `<interview>/candidate-profile.txt`, when the gate reported it FOUND — the client's brief on what they want in a candidate. Load `candidate-profile.md` and follow it; it owns the weighting.
 - `<project>/inputs.txt` and `<project>/interview-questions.md` for **every** project the gate reported as `SOURCED` — each guide holds questions *and* answers, so all of them together are a second body of covered ground to avoid re-asking, and the briefs tailor new questions toward what the candidate would realistically face. Where the gate reports a project's `resps-questions.md` as FOUND, read it too: it is further covered ground in the same way. Its absence is normal and changes nothing.
 
+Write in the language the gate reported, even where the base answers are in another one. If they are, tell the user before generating: the extra packs will not match the base pack.
+
 ---
 
 ## Step 2 — Analyze the original set

@@ -24,6 +24,7 @@
 | What an abbreviation means, and where its link points | `.claude/glossary.md` |
 | How abbreviation links are applied and verified | `.claude/scripts/link-abbreviations.py` |
 | How to write English a B2 reader follows | `.claude/b2-lang-rules.md` |
+| Which language generated prose is written in | `.claude/skills/interview-prep/references/output-conventions.md` (Output language rule) |
 | The spoken one-topic answers, and how one is added | `docs/common-kb/quick-check.md`, `.claude/commands/quick-check.md` |
 
 ## Don't touch without reading
@@ -45,13 +46,13 @@
 
 ## Architectural Invariants
 
-Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning nothing fails when it is broken, so it will be violated silently. The guard is `.claude/skills/interview-prep/scripts/gate-check.sh`, which has been mutation-tested: folding CANNOT-RUN into BLOCKED, accepting a stub brief, dropping the profile note, removing the project/case guard, dropping `from-resps`'s design-doc requirement and dropping `extend`'s `resps-questions.md` report are each detected.
+Declared rules. Each names its guard, or is marked `[UNGUARDED]` — meaning nothing fails when it is broken, so it will be violated silently. The guard is `.claude/skills/interview-prep/scripts/gate-check.sh`, which has been mutation-tested: folding CANNOT-RUN into BLOCKED, accepting a stub brief, dropping the profile note, removing the project/case guard, dropping `from-resps`'s design-doc requirement, dropping `extend`'s `resps-questions.md` report, dropping the output-language report and accepting an invalid language are each detected.
 
 - **Dependencies are artifacts on disk, never session state.** No record of past invocations survives a `/clear` or another machine, so the gate checks files. *(guard: `scripts/gate-check.sh` — every fixture is built fresh in a temp directory, so verdicts can only come from files)*
 - **The gate has exactly three states and callers dispatch on exit code, not text.** `0` READY, `1` BLOCKED (a prerequisite artifact is missing), `2` CANNOT-RUN (the invocation itself is malformed). Folding "you gave me a bad path" into "your prerequisites aren't met" is the failure this prevents. *(guard: `scripts/gate-check.sh` — CANNOT-RUN section)*
 - **A BLOCKED result names a runnable remedy**, e.g. `run: /system-design cases/02/projects/<name>`. *(guard: `scripts/gate-check.sh` — remedy strings are asserted, not just exit codes)*
 - **Stub inputs are rejected on content, not on `-s`.** A 2-byte question file (`1 `) and a 54-byte `inputs.txt` holding only the four headings are both non-empty and both worthless. `has_questions` and `has_brief_content` measure real text; the latter strips the heading labels first, because `Responsibilities:` is 17 characters and clears a naive threshold alone. *(guard: `scripts/gate-check.sh` — stub and unfilled-template checks)*
-- **Optional inputs are always reported, never silent.** Every run prints the profile, both question files and every project by name, and `extend` also prints each project's `resps-questions.md`. An optional input that goes unnoticed is how a feature silently fails to happen. *(guard: `scripts/gate-check.sh` — reporting section)*
+- **Optional inputs are always reported, never silent.** Every run prints the profile, the output language, both question files and every project by name, and `extend` also prints each project's `resps-questions.md`. An optional input that goes unnoticed is how a feature silently fails to happen. *(guard: `scripts/gate-check.sh` — reporting section)*
 - **Answers are bound to design docs, never to a brief alone.** Every project with a usable brief must have its `/system-design` docs before `answer` runs. `inputs.txt` names the stack and responsibilities but not the architecture, data models or failure modes that make an answer specific; without them the pack recites the Environment line. A case with no projects has nothing to bind to and still runs. `from-resps` keeps the docs out of its questions but needs them for its answers, so it requires them like `from-design`. *(guard: `scripts/gate-check.sh` — the brief-only fixtures)*
 - **`answer` needs at least one source** — a question file, a profile, or a project brief. Otherwise "everything is optional" means inventing an interview out of nothing. *(guard: `scripts/gate-check.sh`)*
 - **`from-design` and `from-resps` are per project; `answer` and `extend` are per case.** A case-level project mode would have to block on the least-ready project or invent a fourth "partly ready" state. *(guard: `scripts/gate-check.sh` — the cross-kind CANNOT-RUN checks)*
@@ -91,9 +92,9 @@ Case 01 is out of scope for the glossary back-fill and is not passed to `--check
 
 `gate-check.sh` builds every fixture in a temp directory and exits non-zero on any failure. It ends with a self-test that plants a wrong expectation and confirms it is reported — a suite that only ever passes confirms whatever you already expected.
 
-`link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Six mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, dropping the title-divergence finding, disabling the `Must cover` skip, and leaving that skip open past its closing tag.
+`link-abbreviations-check.sh` builds every fixture in a temp directory and ends with the same planted-wrong-expectation self-test. Seven mutations of the linker must be caught: disabling fence tracking, removing the heading skip, breaking idempotency, dropping the title-divergence finding, disabling the `Must cover` skip, leaving that skip open past its closing tag, and matching word boundaries as ASCII only.
 
-**Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Six mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, removing the `projects` parent-directory guard, skipping `require_design_docs` for `from-resps` only, and removing the `report_resps_guide` call from `extend`.
+**Re-verifying the harness itself.** After changing either script, mutate `preflight.sh` and confirm the harness fails, then restore with `git checkout --`. Eight mutations that must be caught: `EXIT_CANNOT_RUN=1`, bypassing `has_brief_content`, altering a `notes:` string, removing the `projects` parent-directory guard, skipping `require_design_docs` for `from-resps` only, removing the `report_resps_guide` call from `extend`, removing the `report_language` call, and accepting any `language.txt` value as valid.
 
 **Patterns.** Always pair a known-pass with a known-fail, and include a deliberately-wrong control — a check suite that only ever passes confirms whatever you already expected. Three states per check, never two: pass, fail, and could-not-run. Build fixtures in a scratch directory, never inside `cases/`.
 
