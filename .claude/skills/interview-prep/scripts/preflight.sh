@@ -6,7 +6,8 @@
 #
 #   <case>/projects/<name>  inputs.txt, the /system-design docs, interview-questions.md,
 #                           resps-questions.md
-#   <case>/interview        candidate-profile.txt, *-questions.txt, *-answers.md, *-extra.md
+#   <case>/interview        candidate-profile.txt, language.txt, *-questions.txt, *-answers.md,
+#                           *-extra.md
 #
 #   from-design <project>  per project: reads one project, writes interview-questions.md
 #   from-resps  <project>  per project: reads one project, writes resps-questions.md
@@ -37,6 +38,10 @@
 # unnoticed is how the weighting, or the switch to a generated pack, silently
 # fails to happen. extend also reports each sourced project's resps-questions.md,
 # which is optional covered ground and never blocks.
+#
+# language.txt sets the language every mode writes its prose in, for the whole
+# case. It is optional and never blocks: absent means en, and a value other than
+# en or ru falls back to en with a note, so the fallback is never silent.
 #
 # A question file counts as a source only if it actually holds questions. A stub
 # such as a lone "1 " is non-empty and would pass a -s test, so usability here is
@@ -179,6 +184,26 @@ report_profile() {
     fi
 }
 
+# report_language <interview-dir> -- optional input, never blocks. Every outcome
+# ends in "write the prose in <lang>", so a caller reads one phrase for the
+# language whichever branch produced it.
+report_language() {
+    local path="$1/language.txt" value
+    if [ ! -e "$path" ]; then
+        notes+=("language: ABSENT ($path) -- write the prose in en (the default)")
+    elif [ ! -f "$path" ] || [ ! -r "$path" ]; then
+        notes+=("language: PRESENT BUT UNUSABLE (not a readable file): $path -- write the prose in en; tell the user before generating")
+    elif [ ! -s "$path" ]; then
+        notes+=("language: PRESENT BUT EMPTY: $path -- write the prose in en; tell the user before generating")
+    else
+        value="$(tr -d '[:space:]' < "$path")"
+        case "$value" in
+            en|ru) notes+=("language: FOUND $path -- write the prose in $value") ;;
+            *)     notes+=("language: PRESENT BUT UNUSABLE (expected en or ru): $path -- write the prose in en; tell the user before generating") ;;
+        esac
+    fi
+}
+
 # report_projects <case> -- the CV projects in a case are OPTIONAL inputs to answer
 # and extend, and never block on their own. Every project is reported by name.
 # Sets PROJECT_SOURCED=1 when at least one has a usable brief, and collects those
@@ -307,6 +332,8 @@ case "$mode" in
         fi
         ;;
 esac
+
+report_language "$interview"
 
 print_notes() {
     if [ "${#notes[@]}" -gt 0 ]; then

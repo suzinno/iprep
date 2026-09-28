@@ -61,7 +61,7 @@ All APIs are [REST](https://en.wikipedia.org/wiki/REST "Representational State T
 | `POST /v1/storefront/chat/messages` | `{thread_id?, shopper_ref, message}` | Server-sent event stream of tokens and product cards |
 | `POST /v1/storefront/events` | a batch of ≤ 100 interaction events | `202 Accepted` |
 
-**Channel webhooks:** `POST /webhooks/{channel}` goes to Lambda `webhook-ingest` and returns `202` after an [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") check and de-duplication.
+**Channel webhooks:** `POST /webhooks/{channel}` goes to Lambda `webhook-ingest` and returns `202` after an [HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Hash-based Message Authentication Code — Verifies both the integrity and authenticity of a message using a shared secret key") check and de-duplication.
 
 **Internal only** (inside the cluster, never exposed through API Gateway): `POST /internal/catalog/variants:batchGet` and `POST /internal/search/retrieve`. `conversation-service`, `recommendation-service` and `channel-connector` call these.
 

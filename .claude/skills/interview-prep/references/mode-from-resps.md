@@ -32,11 +32,15 @@ Topic sequence:
 4. Databases and data modelling
 5. Messaging and asynchronous processing
 6. Search, data and AI pipelines
-7. Security, identity and secrets
-8. Cloud infrastructure, containers and infrastructure as code
-9. Continuous integration and delivery
-10. Performance and caching
-11. Testing, observability, documentation and developer tooling
+7. Data quality and reconciliation
+8. Business intelligence and reporting
+9. Security, identity and secrets
+10. Cloud infrastructure, containers and infrastructure as code
+11. Continuous integration and delivery
+12. Performance and caching
+13. Testing, observability, documentation and developer tooling
+
+Checks on the data itself — completeness, uniqueness, reconciliation, discrepancies between sources — are Data quality. Tests of code, or of a report before or after a change is released, are Testing. Dashboards, report definitions and changes to them are Business intelligence and reporting.
 
 Skip topics the CV does not cover. Within a topic, responsibilities keep their order from the CV.
 
@@ -103,5 +107,4 @@ Write to `<project>/resps-questions.md`.
 - **Unasked technologies** — for each responsibility, list every technology and technique it names that no question in its section asks about, and report the list to the user. A gap the cap forces is expected; a gap nobody reported is the failure.
 - **Knowledge boundary** — for every question heading, list each specific name it uses (tools, components, figures) and confirm it appears in `inputs.txt` or belongs to a technology the brief names or implies. Rewrite every question that fails. This applies to the question headings only; answers may name what the design docs hold.
 - Answers reference this project's design, not textbook generalities, and claim nothing the brief and the design docs do not support.
-- Every Table of Contents link resolves to a real heading anchor in the file.
 - When a profile was used: the header carries the weighting note, and each hard must-have the brief names or implies is targeted by at least one question. Report any must-have the brief never mentions — this guide cannot ask about it.

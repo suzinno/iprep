@@ -61,7 +61,7 @@ A **case** is one engagement. It holds any number of CV projects and at most one
 | Path | Written by | Holds |
 |---|---|---|
 | `<case>/projects/<name>/` | `/system-design`, `from-design`, `from-resps` | `inputs.txt`, `00-overview.md`…`06-security.md`, `interview-questions.md`, `resps-questions.md` |
-| `<case>/interview/` | `answer`, `extend` | `candidate-profile.txt`, `*-questions.txt`, `*-answers.md`, `*-extra.md` |
+| `<case>/interview/` | `answer`, `extend` | `candidate-profile.txt`, `language.txt`, `*-questions.txt`, `*-answers.md`, `*-extra.md` |
 
 Throughout this file and every mode file, `<project>` is one `<case>/projects/<name>` folder and `<interview>` is `<case>/interview`. Project folder names are free-form — the gate globs `projects/*/` and never reads the name.
 
@@ -103,7 +103,7 @@ Dispatch on the **exit code**, not on the printed text:
 | `1` | BLOCKED | **Stop.** Report the unsatisfied preconditions and the `to unblock:` remedy verbatim. Offer to run the remedy. Do not generate anything. |
 | `2` | CANNOT-RUN | **Stop.** The invocation is malformed. Report the problem and ask for the correct arguments. |
 
-Read the gate's `notes:` section either way. It reports every optional input: the candidate profile, each `*-questions.txt`, and every project in the case by name. On any `PRESENT BUT EMPTY` or `PRESENT BUT UNUSABLE` verdict, say so to the user before generating — a file was put there deliberately, and producing an unweighted or ungrounded pack silently is the failure to avoid.
+Read the gate's `notes:` section either way. It reports every optional input: the candidate profile, the output language, each `*-questions.txt`, and every project in the case by name. On any `PRESENT BUT EMPTY` or `PRESENT BUT UNUSABLE` verdict, say so to the user before generating — a file was put there deliberately, and producing an unweighted or ungrounded pack silently is the failure to avoid.
 
 A BLOCKED result is not a hurdle to reason around. Generating output from missing prerequisites produces a guide grounded in nothing — the failure is silent and the result looks fine. If the user explicitly instructs you to proceed anyway, say plainly what will be missing from the result, then proceed.
 

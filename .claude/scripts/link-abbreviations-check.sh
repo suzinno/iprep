@@ -145,6 +145,16 @@ printf '# T\n\nThe tokens SCIMv2 and preORMap and SHAsum must all stay bare.\n' 
 check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/boundary.md"
 want_file "$FIX/boundary.md" HAS 'The tokens SCIMv2 and preORMap and SHAsum must all stay bare.'
 
+echo "--- a term glued to Cyrillic letters is inside a longer token and stays bare ---"
+printf '# T\n\nСлова ORMный и SCIMовский остаются без ссылки.\n' > "$FIX/cyrillic-glued.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/cyrillic-glued.md"
+want_file "$FIX/cyrillic-glued.md" HAS 'Слова ORMный и SCIMовский остаются без ссылки.'
+
+echo "--- Russian prose with an English expansion: the title carries purpose only ---"
+printf '# T\n\nСервис использует Object-Relational Mapping (ORM) для всех таблиц.\n' > "$FIX/cyrillic-inline.md"
+check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/cyrillic-inline.md"
+want_file "$FIX/cyrillic-inline.md" HAS 'использует Object-Relational Mapping ([ORM](https://en.wikipedia.org/wiki/Object-relational_mapping "Maps relational rows onto objects so queries are written in the host language.")) для всех таблиц.'
+
 echo "--- where the prose already expands the term, the title carries purpose only ---"
 printf '# T\n\nWe use Object-Relational Mapping (ORM) throughout.\n' > "$FIX/inline.md"
 check 0 EMPTY --glossary "$FIX/glossary.md" "$FIX/inline.md"

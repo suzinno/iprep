@@ -103,6 +103,13 @@ cp -r "$FIX/complete" "$FIX/resps-found";    write_resps_guide "$FIX/resps-found
 cp -r "$FIX/complete" "$FIX/resps-empty";    : > "$FIX/resps-empty/projects/alpha/resps-questions.md"
 cp -r "$FIX/complete" "$FIX/resps-unusable"; mkdir "$FIX/resps-unusable/projects/alpha/resps-questions.md"
 
+# lang-*: complete, plus one state of the optional language.txt each
+cp -r "$FIX/complete" "$FIX/lang-ru";         printf 'ru\n' > "$FIX/lang-ru/interview/language.txt"
+cp -r "$FIX/complete" "$FIX/lang-en";         printf 'en\n' > "$FIX/lang-en/interview/language.txt"
+cp -r "$FIX/complete" "$FIX/lang-empty";      : > "$FIX/lang-empty/interview/language.txt"
+cp -r "$FIX/complete" "$FIX/lang-unknown";    printf 'russian\n' > "$FIX/lang-unknown/interview/language.txt"
+cp -r "$FIX/complete" "$FIX/lang-unreadable"; mkdir "$FIX/lang-unreadable/interview/language.txt"
+
 # noguide: designed but from-design not yet run, answers present
 new_project "$FIX/noguide/projects/alpha"; mkdir -p "$FIX/noguide/interview"
 write_brief "$FIX/noguide/projects/alpha"; write_design_docs "$FIX/noguide/projects/alpha"
@@ -171,6 +178,22 @@ check 0 "project alpha resps guide: ABSENT"            extend "$FIX/complete"
 check 0 "project alpha resps guide: FOUND"             extend "$FIX/resps-found"
 check 0 "project alpha resps guide: PRESENT BUT EMPTY" extend "$FIX/resps-empty"
 check 0 "project alpha resps guide: PRESENT BUT UNUSABLE" extend "$FIX/resps-unusable"
+
+echo "--- the output language is reported, and a bad value falls back to en ---"
+check 0 "language: ABSENT"                             answer "$FIX/complete"
+check 0 "write the prose in en (the default)"          answer "$FIX/complete"
+check 0 "write the prose in en"                        answer "$FIX/lang-en"
+# case level: every mode reads the one language.txt under <case>/interview
+check 0 "write the prose in ru"                        from-design "$FIX/lang-ru/projects/alpha"
+check 0 "write the prose in ru"                        from-resps  "$FIX/lang-ru/projects/alpha"
+check 0 "write the prose in ru"                        answer "$FIX/lang-ru"
+check 0 "write the prose in ru"                        extend "$FIX/lang-ru"
+check 0 "language: PRESENT BUT EMPTY"                  answer "$FIX/lang-empty"
+check 0 "language: PRESENT BUT UNUSABLE (expected en or ru)" answer "$FIX/lang-unknown"
+check 0 "write the prose in en; tell the user"         answer "$FIX/lang-unknown"
+check 0 "language: PRESENT BUT UNUSABLE (not a readable file)" answer "$FIX/lang-unreadable"
+# notes print on BLOCKED too; the language is reported there as well
+check 1 "language: ABSENT"                             answer "$FIX/bare"
 
 echo "--- answer is bound to the design docs, not to a brief alone ---"
 check 1 "run: /system-design $FIX/nodocs/projects/alpha"        answer "$FIX/nodocs"
