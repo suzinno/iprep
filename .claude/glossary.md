@@ -258,6 +258,18 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | GL | General Ledger | The accounting record of every account's balance, against which operational figures are reconciled | https://en.wikipedia.org/wiki/General_ledger |
 | GOST | Gosudarstvenny Standart | Russian national standards, including the cryptographic algorithms certified protection tools must use | https://en.wikipedia.org/wiki/GOST |
 | YAML | YAML Ain't Markup Language | Human-readable data serialisation format used for configuration and exported definitions | https://yaml.org/spec/1.2.2/ |
+| ACM | AWS Certificate Manager | Issues and renews the TLS certificates used by AWS load balancers, CloudFront and API Gateway | https://aws.amazon.com/certificate-manager/ |
+| ALB | Application Load Balancer | AWS layer-7 load balancer that routes HTTP and WebSocket traffic to targets | https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html |
+| Auth0 | Auth0 | Hosted identity platform that brokers sign-in, single sign-on and multi-factor authentication for applications | https://auth0.com/docs |
+| DMZ | Demilitarized Zone | Network zone that holds internet-facing components and separates them from internal networks | https://csrc.nist.gov/glossary/term/demilitarized_zone |
+| FMC | Cisco Secure Firewall Management Center | Central console that configures Cisco firewalls and streams their intrusion and connection events | https://www.cisco.com/c/en/us/support/security/defense-center/series.html |
+| GraphQL | GraphQL | Query language that lets a client choose which fields an API returns | https://graphql.org/ |
+| HEC | HTTP Event Collector | Splunk endpoint that receives events over HTTPS, authenticated with a token | https://docs.splunk.com/Documentation/Splunk/latest/Data/UsetheHTTPEventCollector |
+| IRSA | IAM Roles for Service Accounts | Gives a Kubernetes service account on EKS its own AWS IAM role | https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html |
+| SAML | Security Assertion Markup Language | XML standard an identity provider uses to pass sign-in assertions to an application | https://docs.oasis-open.org/security/saml/v2.0/ |
+| SNA | Cisco Secure Network Analytics | Analyses network flow telemetry to detect threats and unusual host behaviour | https://www.cisco.com/c/en/us/support/security/stealthwatch/series.html |
+| SSO | Single Sign-On | Lets a user sign in once with one identity provider and reach several applications | https://en.wikipedia.org/wiki/Single_sign-on |
+| TFA | Two-Factor Authentication | Requires a second proof of identity besides a password at sign-in | https://en.wikipedia.org/wiki/Multi-factor_authentication |
 
 ## Deliberately not linked
 

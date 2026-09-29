@@ -1,0 +1,21 @@
+Title: AI CONVERSATIONAL RECRUITMENT & CANDIDATE MATCHING ECOSYSTEM
+
+Description: An AI-driven recruitment platform designed to automate the generation of dynamic job descriptions and comprehensive candidate profiles through natural language dialogues. The system utilizes advanced conversational assistants and retrieval-augmented pipelines to evaluate user input in real-time, enabling seamless matching between employer requirements and applicant datasets while eliminating traditional, static job-board forms.
+
+Environment: Python, TypeScript, JavaScript, FastAPI, REST API, React, Zustand, Tailwind CSS, HTML/CSS, WebSockets, Protobuf, SQLAlchemy, Alembic, Pydantic, OAuth2, Auth0, SSO, SAML 2.0, Active Directory, TFA, OpenAI API, LangChain, RAG, Langfuse, PostgreSQL, Redis, DynamoDB, RabbitMQ, Pandas, NumPy, HTTPx, Tenacity, PyTest, Jest, React Testing Library, Splunk, Splunk HEC, Splunk Secure Gateway, Splunk Spacebridge, FMC, SNA, eStreamer, Terraform, AWS (IAM, RDS, Lambda, EKS, ECR, SQS, VPC, S3, API Gateway, DynamoDB), Docker, Kubernetes(k8s), Helm, Claude Code, Gemini, Linux.
+
+Responsibilities:
+• Designed and optimized distributed microservices utilizing FastAPI to expose secure REST APIs and manage core domains (candidate processing, employer portals, and conversational engines) across a unified repository;
+• Engineered a highly responsive conversational frontend interface utilizing React and Tailwind CSS, leveraging Zustand to manage complex, real-time state mutations during live AI dialogues;
+• Built real-time bidirectional communication channels via WebSockets within the runtime chat engine to support instantaneous LLM token streaming and seamless frontend synchronization;
+• Architected advanced RAG (Retrieval-Augmented Generation) workflows using LangChain and OpenAI models to parse, analyze, and semantically index unstructured text data from live recruitment dialogues;
+• Configured Splunk Secure Gateway and Spacebridge to securely expose enterprise monitoring data for Splunk Mobile, enabling authenticated access to operational dashboards and critical recruitment platform alerts without direct inbound network exposure;
+• Integrated comprehensive security observability by routing application audit logs via Splunk HEC, while aggregating network events from FMC, Secure Network Analytics (SNA), and eStreamer Client Add-On into centralized Splunk dashboards for threat monitoring;
+• Optimized inter-service communication overhead by migrating heavy JSON payloads to Protobuf, ensuring rapid, schema-validated data exchange between the LLM matching engine and core backend modules;
+• Structured massive event-driven datasets using Pandas and NumPy to clean, parse, and manipulate legacy CV structures and bulk applicant profiles;
+• Implemented a robust Transactional Outbox pattern alongside Redis-based deduplication layers to ensure strict at-least-once message delivery via RabbitMQ and prevent duplicate side effects upon worker retries;
+• Constructed fault-tolerant integrations with third-party LLM gateways by deploying asynchronous HTTPx clients with sophisticated Tenacity retry and backoff strategies;
+• Provisioned scalable cloud infrastructure utilizing Terraform, configuring AWS API Gateway and Lambda for serverless event routing, alongside DynamoDB for high-throughput, low-latency conversational state storage;
+• Collaborated with infrastructure and security teams on deploying externally accessible API components within a DMZ architecture, ensuring secure traffic isolation, controlled ingress routing, and protected communication between services;
+• Implemented Splunk Mobile deployment by integrating it with Splunk Enterprise and Secure Gateway, enabling secure remote monitoring of platform health and operational alerts;
+• Guarded application reliability and frontend state integrity by authoring comprehensive Jest and React Testing Library suites, coupled with exhaustive PyTest coverage for backend AI endpoints.
