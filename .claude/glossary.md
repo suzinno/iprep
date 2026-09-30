@@ -270,6 +270,26 @@ A term used in a generated document belongs in one of the two tables below. `--c
 | SNA | Cisco Secure Network Analytics | Analyses network flow telemetry to detect threats and unusual host behaviour | https://www.cisco.com/c/en/us/support/security/stealthwatch/series.html |
 | SSO | Single Sign-On | Lets a user sign in once with one identity provider and reach several applications | https://en.wikipedia.org/wiki/Single_sign-on |
 | TFA | Two-Factor Authentication | Requires a second proof of identity besides a password at sign-in | https://en.wikipedia.org/wiki/Multi-factor_authentication |
+| ACR | Azure Container Registry | Stores and geo-replicates container images for Azure deployments | https://learn.microsoft.com/en-us/azure/container-registry/ |
+| BAA | Business Associate Agreement | HIPAA contract under which a vendor may handle protected health information for a covered entity | https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html |
+| ChatGPT | ChatGPT | OpenAI's conversational large language model product | https://openai.com/chatgpt/ |
+| CRUD | Create, Read, Update, Delete | Names the four basic operations of persistent storage | https://en.wikipedia.org/wiki/Create,_read,_update_and_delete |
+| CSI | Container Storage Interface | Standard plugin interface through which Kubernetes attaches storage volumes | https://kubernetes-csi.github.io/docs/ |
+| DML | Data Manipulation Language | The SQL statements that read and change rows | https://en.wikipedia.org/wiki/Data_manipulation_language |
+| DR | Disaster Recovery | Restores a system in another location after a failure too large for in-place redundancy | https://en.wikipedia.org/wiki/Disaster_recovery |
+| DRF | Django REST Framework | Toolkit for building REST APIs on Django with serializers and permission classes | https://www.django-rest-framework.org/ |
+| FDA | Food and Drug Administration | US regulator whose remit includes software used as a medical device | https://www.fda.gov/medical-devices/digital-health-center-excellence/software-medical-device-samd |
+| FHIR | Fast Healthcare Interoperability Resources | Healthcare standard for exchanging clinical records through REST APIs | https://hl7.org/fhir/ |
+| FK | Foreign Key | Constraint that makes a row reference an existing row in another table | https://www.postgresql.org/docs/current/ddl-constraints.html#DDL-CONSTRAINTS-FK |
+| GZRS | Geo-Zone-Redundant Storage | Azure Storage redundancy that copies data across zones in one region and to a paired region | https://learn.microsoft.com/en-us/azure/storage/common/storage-redundancy |
+| KEDA | Kubernetes Event-driven Autoscaling | Scales Kubernetes workloads on external event sources such as queue depth | https://keda.sh/ |
+| KQL | Kusto Query Language | Query language for Azure Monitor Log Analytics and Azure Data Explorer | https://learn.microsoft.com/en-us/kusto/query/ |
+| MSAL | Microsoft Authentication Library | Client library that obtains tokens from Microsoft Entra ID | https://learn.microsoft.com/en-us/entra/identity-platform/msal-overview |
+| mTLS | Mutual TLS | TLS in which client and server both present certificates, so each authenticates the other | https://en.wikipedia.org/wiki/Mutual_authentication |
+| NEWS2 | National Early Warning Score 2 | Scores routine vital signs to detect clinical deterioration in adult patients | https://www.rcp.ac.uk/improving-care/resources/national-early-warning-score-news-2/ |
+| PK | Primary Key | Column set that uniquely identifies each row in a table | https://www.postgresql.org/docs/current/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS |
+| SpO2 | Peripheral oxygen saturation | Percentage of haemoglobin carrying oxygen, measured by a pulse oximeter | https://en.wikipedia.org/wiki/Pulse_oximetry |
+| TPM | Trusted Platform Module | Hardware chip that stores cryptographic keys so they cannot be copied off the device | https://trustedcomputinggroup.org/resource/trusted-platform-module-tpm-summary/ |
 
 ## Deliberately not linked
 

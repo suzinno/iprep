@@ -1,0 +1,25 @@
+Title: SMART HEALTHCARE SYSTEM (IoT)
+
+Description: The main goal of this project is to deploy a comprehensive system of devices to monitor patients' health and provide timely medical interventions and notify medical staff about patients’ health status. Also there was a helping robot that could help people to transfer across hospitals.
+
+Environment: Python, Django, Django Rest Framework, Flask, SQLAlchemy, OpenAI, Pydantic, OAuth, Alembic, Celery, Pandas, Numpy, Azure(Functions, Machine Learning, Blob Storage, AKS, Container Registry, API Management, SQL Database, CosmosDB, Monitor, etc.) RabbitMQ, MongoDB, PostgreSQL, Redis, Grafana, Prometheus, Terraform, Docker, Docker Compose, GitHub, GitHub Actions, Bash, Kubernetes(k8s).
+
+Responsibilities:
+●​ Designing the overall structure and schema of the databases and microservices, and ensuring that they are scalable, secure, and easy to maintain;
+●​ Identifying the appropriate technology stack and tools to use for the design and implementation of microservices;
+●​ Designing and implementing disaster recovery plans for Kubernetes(k8s) environments;
+●​ Developing optimized SQL queries and stored procedures for PostgreSQL;
+●​ Optimize CI/CD pipelines for speed and efficiency, reducing build and deployment times through caching and parallel jobs;
+●​ Integration with LLM ChatGPT for creating a chatbot that answers expert questions and quickly searches for information among a corpus of documents with expert recommendations;
+●​ Define and manage Azure infrastructure components using Terraform;
+●​ Configuring OAuth authentication in the application;
+●​ Azure Blob Storage configuration for storing images and other files;
+●​ Implement monitoring and logging mechanisms to track the health and performance of the microservices;
+●​ Data normalization and data inspection using Pandas;
+●​ Utilizing NumPy for transposing, sorting and concatenating data;
+●​ Implement serverless calculations using Azure Functions;
+●​ Configure and deploy Kubernetes(k8s) clusters using Azure AKS;
+●​ RabbitMQ configuration for communication between services;
+●​ Setting up logging for the system using Grafana;
+●​ Monitoring and maintaining the health of the Kubernetes(k8s) cluster, and troubleshooting any issues that may arise;
+●​ Build indexes on SQL tables and optimization of existing raw queries.
