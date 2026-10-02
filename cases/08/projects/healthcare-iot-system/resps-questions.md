@@ -1,6 +1,6 @@
 # Responsibility Questions — Smart Healthcare System (IoT)
 > Auto-generated from the [CV](https://en.wikipedia.org/wiki/Curriculum_vitae "Curriculum Vitae — Document summarizing a candidate's work history and qualifications") brief. Questions use only what the CV states; answers draw on the system design documents.
-> Some sections go past the three-question cap. The extra questions come from a supplied technical question bank and keep its wording.
+> Some sections go past the three-question cap. The extra questions either come from a supplied technical question bank or were generated on request.
 
 ## Table of Contents
 - [R1. Architecture — Services and database structure](#r1-architecture--services-and-database-structure)
@@ -1358,6 +1358,130 @@ The targets were a first streamed token within 2 seconds, and a full answer with
 
 ---
 
+### Q1. Why did you build the chatbot on retrieval instead of fine-tuning the model on your documents?
+
+**Brief answer**
+Fine-tuning changes how a model writes, but it is a poor way to teach it facts that change. The guidelines changed often, every answer needed a source a clinician could check, and a retired document had to stop appearing at once. Retrieval gave all three, and fine-tuning gave none of them.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **knowledge that changes** — a new version replaces the old one at once
+- **old facts stay in the model's weights**
+- **citations** — retrieval knows which passages it sent
+- **facts versus behaviour** — fine-tuning teaches format, not facts
+- **only an upload** — an editor, not an engineer
+- **control at query time** — the code chooses what the model sees
+- **fine-tune for style and still retrieve for facts**
+- training run per change, filter by hospital
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The corpus is clinical guidelines and expert recommendations. Five needs decided the approach.
+
+**Knowledge that changes.** Guidelines get new versions. With retrieval, a new version replaces the old one in the index. The old chunks are marked inactive, so the next question already uses the new text. With fine-tuning, the old facts stay in the model's weights. Removing them means training a new model, and you still cannot prove the old fact is gone.
+
+**Citations.** In a clinical setting, an answer nobody can check is worse than no answer. Retrieval knows which passages it sent, so each answer cites the document, the chunk and the title. A fine-tuned model cannot say where a fact came from.
+
+**Facts versus behaviour.** Fine-tuning is good at teaching format, tone and vocabulary. It is unreliable at teaching facts. The model may mix two guidelines, or produce a dose that sounds right but is not. That is the risk this design works hardest against.
+
+**Speed of change.** Fine-tuning needs training data in question-and-answer form, a training run per change, and a new evaluation each time. Retrieval needs only an upload. A knowledge editor adds a document, and no engineer is involved.
+
+**Control at query time.** With retrieval, the code chooses what the model sees. It leaves out inactive documents, and it could filter by hospital later. A fine-tuned model carries everything in its weights, for every user.
+
+When would I fine-tune? If answers needed a fixed house format that prompting could not hold, or if the model kept misreading local abbreviations. Then I would fine-tune for style and still retrieve for facts. The two approaches work together.
+
+</details>
+
+---
+
+### Q1. Walk me through how you built the knowledge base. How did a source document become searchable chunks?
+
+**Brief answer**
+Knowledge editors uploaded curated guidelines, and an Azure Function turned each one into chunks. It extracted the text with its headings, split it along the document's own sections, and added the title and section path to each chunk. Then it embedded each chunk with OpenAI and stored the text, a full-text vector and the embedding in one PostgreSQL row.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **curated, not crawled** — editors upload, no patient records
+- **blob trigger**
+- **keeps the structure** — headings, recommendations, tables
+- **cleaning** — the same footer in hundreds of chunks
+- **split along the document's own structure** — half a dosing rule is dangerous
+- **a table stays in one chunk** — with its header row
+- **title and section path** — inside the embedded text
+- **embeddings API in batches**
+- SAS URL, 1,536 dimensions, content_tsv, ordinal
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+**What went in.** The corpus was curated, not crawled. Knowledge editors, a separate role in Entra ID, uploaded clinical guidelines and expert recommendations. The corpus reached about 5,000 documents and about 500,000 chunks. No patient records went in.
+
+**Upload.** The editor uploads through `assistant-service`. The service creates the `kb.document` row with status `processing`. It returns a short-lived Shared Access Signature (SAS) URL, and the file goes straight to the `kb-documents` container in Blob Storage.
+
+**Extraction.** A blob trigger starts `func-knowledge`. Most sources were Portable Document Format ([PDF](https://en.wikipedia.org/wiki/PDF "Fixed-layout document format for reliable printing and viewing")) files with a text layer. The function extracts the text and keeps the structure: headings, numbered recommendations, lists and tables. It also removes running headers, footers and page numbers. Without that cleaning, the same footer text lands in hundreds of chunks and matches many searches.
+
+**Splitting.** I split along the document's own structure first: section, then recommendation, then paragraph. A fixed split by character count can cut a recommendation in half, and half a dosing rule is dangerous. Only a section that is still too long is split again, at paragraph or sentence boundaries, with a small overlap. A table stays in one chunk with its header row, because a table row without its header means nothing. The chunk size question covers the limits.
+
+**Context in each chunk.** Each chunk starts with a short header: the document title and section path, such as "Sepsis guideline › Antibiotics › Adults". A chunk that says "give within one hour" is useless if you do not know what it refers to. The header is part of the embedded text and of the indexed text, so both kinds of search see it.
+
+**Embedding and storage.** The function sends chunks to the OpenAI embeddings API in batches. Each chunk becomes one `kb.chunk` row. The row holds the `ordinal`, the `content`, a 1,536-dimension `embedding`, and `content_tsv`, which the database generates for full-text search. The `ordinal` keeps the reading order, so the UI can show the text around a cited chunk.
+
+The document becomes `active` only when every chunk is stored. The ingestion question covers that step and its failures.
+
+</details>
+
+---
+
+### Q1. Which OpenAI models did the chatbot use, and why did you choose them?
+
+**Brief answer**
+`gpt-4o` wrote the answers and `text-embedding-3-small` produced the embeddings. The answer model had to follow "answer only from these passages" reliably and start streaming within 2 seconds. The embedding model had to be cheap enough for 500,000 chunks and good enough to match clinical paraphrases.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **gpt-4o** — follows the grounding instruction
+- **structured output** — fewer failed Pydantic parses
+- **first streamed token within 2 seconds**
+- **dated snapshot** — a model change goes through the evaluation
+- **temperature 0**
+- **text-embedding-3-small** — 1,536 dimensions
+- **2,000 dimensions** — the HNSW limit in pgvector
+- **same model for query and chunks** — a change means re-embedding the whole corpus
+- text-embedding-3-large, gpt-4o-mini for follow-up rewrites
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+There are two calls, and each one has its own model.
+
+**Answers: `gpt-4o`.** The chat model gets about eight passages and the instruction to answer only from them, with citations. I needed three things from it:
+
+- It follows the grounding instruction. Weaker models more often add facts from their own training, and that is the main risk in clinical answers.
+- It returns well-formed structured output. Pydantic parses the citation part, and a stronger model fails that parse less often.
+- It is fast enough. The targets were a first streamed token within 2 seconds, and a full answer within 8 seconds at p95.
+
+I used a dated snapshot of the model, not the alias that moves to new versions. A silent model update can change answers. So a model change went through the evaluation first, like a code change. I set temperature 0, because two identical clinical questions should not get different answers.
+
+**Embeddings: `text-embedding-3-small`.** It produces 1,536 dimensions, which sets the `vector(1536)` column and the HNSW index. I compared it with `text-embedding-3-large`. The large model produces 3,072 dimensions by default, and `pgvector` builds an HNSW index on at most 2,000 dimensions for the standard vector type. The large model would also double the index memory. On our retrieval question set, the gap between the two was small, so the small model won on cost and memory.
+
+**One rule connects the two.** Use the same model for query and chunks. Vectors from two models cannot be compared, even when they have the same size. So a change of embedding model means re-embedding the whole corpus and starting a new corpus version. The scaling question covers that job.
+
+For helper calls, I would use `gpt-4o-mini`. One example is rewriting a follow-up into a full question before retrieval. That step does not decide clinical content, so a cheaper and faster model fits it.
+
+</details>
+
+---
+
 ### Q1. How do you structure a multi-step LLM workflow?
 
 **Brief answer**
@@ -1402,6 +1526,99 @@ This design has no chain of model calls and no agent. One call keeps the answer 
 
 ---
 
+### Q2. How did your ingestion process keep the knowledge base consistent when a run failed or a document was replaced?
+
+**Brief answer**
+Only chunks of an `active` document could be searched. The function wrote new chunks as inactive, then switched the new version on and the old one off in one transaction. So search saw the old version or the new one, never half of each. A failed run left the old version live, and it could run again safely.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **status** — only active chunks are searched
+- **safe to repeat** — leftovers from a failed attempt deleted first
+- **chunks are inserted as inactive**
+- **one transaction** — old or new version, never a mix
+- **corpus version** — no cached answer from the old text
+- **exponential backoff** — respects Retry-After
+- **poison queue** — after five attempts
+- **old version stays active**
+- source, 24-hour cache TTL, capped scale-out, blob versioning
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Each `kb.document` row has a status: `processing`, `active`, `superseded` or `failed`. Search reads only chunks with `is_active = true`. So consistency depends on when that flag changes.
+
+**One run, step by step.**
+
+1. The blob trigger fires, and `func-knowledge` loads the document row. It finds the previous version of the same document by its `source`.
+2. It deletes any chunks that an earlier failed attempt left for this document. That makes the run safe to repeat.
+3. It extracts, splits and embeds the text. The chunks are inserted as inactive, with `is_active = false`.
+4. One transaction switches the versions. The new document and its chunks become active. The previous version becomes `superseded`, and its chunks become inactive.
+5. After the commit, the function increments the corpus version in Redis, `assistant:corpus_version`. The answer cache key includes that version, so no cached answer from the old text is served again.
+
+**Why one transaction.** Search sees either the old version or the new one. It never sees a mix, and it never sees a moment with neither.
+
+**Failures.** The long step is embedding. The usual failures there are an OpenAI rate limit, HTTP 429, and timeouts. The function retries each batch with exponential backoff and respects the `Retry-After` header. If the whole run still fails, the Functions runtime retries the blob trigger, up to five attempts. After that the message goes to a poison queue, and the document is marked `failed`. The old version stays active the whole time. The editor sees the `failed` status and can upload again.
+
+**The gap after the commit.** If the Redis increment fails after the commit, the cache can serve old answers until they expire. Cached answers live for 24 hours. The function retries the increment, so this gap is short in practice.
+
+**Bulk loads.** The first load of 5,000 documents, or a full re-embedding, is a burst of embedding calls. Batching many chunks into one request reduces the number of calls. Capping the function app's scale-out keeps us under the account's tokens-per-minute limit.
+
+The container also has blob versioning on. An earlier source file can be restored and processed again.
+
+</details>
+
+---
+
+### Q2. What chunk size did you use, and how did you arrive at it?
+
+**Brief answer**
+About 400 tokens per chunk, with a hard limit of 512 and about 50 tokens of overlap when a long section had to be cut. I started from the documents' structure and the prompt budget. Then I compared 256, 512 and 1,024 tokens on our retrieval question set, and the middle size found the right passage most often.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **about 400 tokens** — hard limit 512
+- **too small** — a chunk loses its context
+- **too large** — one embedding averages several topics
+- **one whole recommendation**
+- **prompt budget** — about eight chunks
+- **recall at 8** — same question set, three sizes
+- **tiktoken** — tokens, not characters
+- **overlap only when a long section is cut** — about 50 tokens
+- 8,191-token input limit, near-duplicate chunks, about 100 chunks per document
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I used about 400 tokens per chunk, with a hard limit of 512. Chunk size is a trade-off between two failures:
+
+- **Too small**, and a chunk loses its context. "Give within one hour" says nothing without the drug and the condition. The model gets fragments, and fewer questions find a complete answer.
+- **Too large**, and one embedding averages several topics. The vector then matches nothing well. Large chunks also fill the prompt, so fewer different sources fit.
+
+**Where I started.** Three facts set the range:
+
+1. **The documents.** One recommendation with its conditions is usually 100 to 400 tokens. A chunk should hold one whole recommendation.
+2. **The prompt budget.** About eight chunks go into the prompt. At 400 tokens each, that is about 3,200 tokens of passages, which keeps generation inside the 8-second answer target.
+3. **The embedding model.** `text-embedding-3-small` accepts up to 8,191 tokens. So the limit came from retrieval quality, not from the model.
+
+**How I decided.** I built the corpus three times, at 256, 512 and 1,024 tokens. Then I ran the same retrieval question set on each one. The metric was recall at 8: how often a passage that answers the question is among the eight chunks sent to the model. At 256, too many recommendations were split from their conditions. At 1,024, chunks mixed topics, and the right passage ranked lower. A limit of 512, with about 400 on average, scored best. The evaluation question covers the question set.
+
+**Counting.** I counted tokens with `tiktoken`, using the embedding model's tokenizer, not characters. Clinical text is full of drug names and units, and they use more tokens per character than plain English.
+
+**Overlap.** I used overlap only when a long section is cut at paragraph or sentence level. About 50 tokens, roughly 10%, keeps a sentence that crosses the cut readable in both chunks. More overlap stores the same text twice and returns near-duplicate chunks for one question.
+
+**A check against the corpus numbers.** 5,000 documents gave about 500,000 chunks, so about 100 chunks per document. About 400 tokens of text plus a 1,536-dimension vector per row matches the 4 GB the corpus takes in PostgreSQL.
+
+</details>
+
+---
+
 ### Q2. How did you make the document search both fast and accurate for expert terms?
 
 **Brief answer**
@@ -1436,6 +1653,90 @@ Keeping search in PostgreSQL meant one store, one backup and one access model. T
 Approximate indexes have one trap: filtering after the search. Superseded chunks are flagged with `is_active = false`. If the HNSW index returns 20 neighbours and a filter then removes some, you get fewer than 20 rows. So the design uses a partial HNSW index, `WHERE is_active`. That must be confirmed with `EXPLAIN` on the `pgvector` version in use. If it does not work, the fallback is to delete superseded chunks instead of flagging them.
 
 The target was a passage search p95 under 300 ms. The expensive part of the assistant is generation, not search, so search had room inside the full answer budget.
+
+</details>
+
+---
+
+### Q2. Why did you keep the embeddings in PostgreSQL instead of a dedicated vector database?
+
+**Brief answer**
+At about 500,000 chunks and 4 GB, `pgvector` met the 300 ms search target. PostgreSQL also gave me what a separate store could not: hybrid search in one query, version switches in one transaction, and the same grants, backups and recovery as the rest of the system.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **500,000 chunks and 4 GB** — the index fits in memory
+- **hybrid search in one query**
+- **one transaction for a version switch** — never a chunk from a superseded guideline
+- **one security model** — grants, backups, recovery
+- **HNSW index competes for memory**
+- **filtering after an approximate search**
+- **Azure AI Search** — the version switch would not be atomic
+- **kb schema on its own PostgreSQL server** — the first step
+- Qdrant, Pinecone, semantic ranker, slow index rebuild
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I compared three options: `pgvector` in our PostgreSQL, Azure [AI](https://en.wikipedia.org/wiki/Artificial_intelligence "Artificial Intelligence — Software that generates or assists with tasks such as writing code") Search, and a dedicated vector database such as Qdrant or Pinecone.
+
+**Why PostgreSQL won.**
+
+- **Size.** The corpus is about 500,000 chunks and 4 GB. An HNSW index of that size fits in memory on our server. Search met the passage search target of p95 under 300 ms. A dedicated store pays off at tens of millions of vectors, not here.
+- **Hybrid search in one query.** Vector search, full-text search and reciprocal rank fusion run in one SQL statement. With a separate vector store, the service runs two searches in two systems and merges them in code.
+- **One transaction for a version switch.** A new document version and its chunks become active, and the old ones inactive, in one transaction. With two stores, the vector index and the document table can disagree. Then search can return a chunk from a superseded guideline. In clinical guidance, that is the failure that matters most.
+- **One security model.** Only `assistant-service` and `func-knowledge` have grants on the `kb` schema. Backups, point-in-time recovery and disaster recovery already cover PostgreSQL. A new store would need its own access model, backups and failover plan.
+
+**What it costs.**
+
+- The HNSW index competes for memory with clinical queries on the same server.
+- A full index build is slow, so re-embedding the corpus means a slow index rebuild.
+- Filtering after an approximate search can return fewer rows than asked. The design uses a partial index on active chunks for that reason.
+
+**Azure AI Search** was the strongest alternative. It is managed, and it has hybrid search and a semantic ranker built in. I did not choose it, because the document table and the index would live in two places. Then the version switch would not be atomic. It would also add its own cost and a second copy of the corpus.
+
+**When I would move.** The first step is the `kb` schema on its own PostgreSQL server, if search starts to slow clinical queries. A dedicated vector database comes later, and only if PostgreSQL cannot keep the 300 ms target.
+
+</details>
+
+---
+
+### Q2. How did you decide which retrieved passages went into the prompt?
+
+**Brief answer**
+The hybrid search returned up to 40 candidates, reciprocal rank fusion ordered them, and the top eight went into the prompt, with at most two from one section. Eight came from our retrieval question set. I left out a separate reranking model to stay inside the latency budget.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **reciprocal rank fusion** — already a first reranking
+- **top eight** — recall flattened after about eight
+- **weak passages** — close but wrong
+- **at most two chunks from one section**
+- **chunk ID, document title and section path** — the model cites by chunk ID
+- **cross-encoder reranker** — left out for latency and one more provider
+- **no relevance cutoff** — fused scores measure rank, not closeness
+- k = 60, about 3,200 tokens, best passage first
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+**Candidates.** One SQL query takes the top 20 chunks by cosine distance and the top 20 by full-text rank. Reciprocal rank fusion merges them, with k = 60. Fusion is already a first reranking, because a chunk that both searches find rises to the top.
+
+**How many.** I sent the top eight. That number came from the retrieval question set. Recall rose quickly up to about eight passages and then flattened. More passages cost tokens on every question and add time to the 8-second target. They also add weak passages, and the model may then quote a passage that is close but wrong. At about 400 tokens per chunk, eight passages take about 3,200 tokens.
+
+**Variety.** Neighbouring chunks of one section often both match, and they say almost the same thing. So I kept at most two chunks from one section. That leaves room for a second guideline, which may say something different.
+
+**Format in the prompt.** Each passage goes in with its chunk ID, document title and section path. The model cites by chunk ID, so every citation points to a passage that was sent. The best passage goes first.
+
+**No separate reranking model.** A cross-encoder reranker reads the question and each candidate together. It usually ranks better than fusion. I left it out for two reasons. It adds a few hundred milliseconds to a budget that generation already uses up. And a hosted reranker sends the question to one more outside provider. I would add one if the question set often showed the right passage in the top 40 but not in the top eight. That is the gap a reranker closes.
+
+**What is missing.** There is no relevance cutoff, so eight passages go in even when none of them is relevant. A cutoff needs the cosine distance of the best passage, because fused scores measure rank, not closeness. The hallucination question covers this gap.
 
 </details>
 
@@ -1552,13 +1853,65 @@ Retrieval is the first defence, and R6 Q1 covers it. This answer is about what h
 
 **Require citations.** Every answer ends with citations: document ID, chunk ID and title. In a clinical setting, an answer nobody can check is worse than no answer. A clinician opens the cited passage and compares it with the answer.
 
-**Validate the output.** Pydantic parses the structured part of the output, so a malformed citation list is caught, not shown. One check I would add: every cited chunk ID must be one of the passages sent in the prompt. A citation to a chunk the model never saw means the model invented a source.
+**Validate the output.** Pydantic parses the structured part of the output, so a malformed citation list is caught, not shown. Also, every cited chunk ID must be one of the passages sent in the prompt. A citation to a chunk the model never saw means the model invented a source, so the service counts it as an invalid citation.
 
 **Never serve stale answers.** The answer cache is keyed by the corpus version. When a new document becomes active, the version changes. A cached answer based on old guidance is then never read again.
 
 **Review after the fact.** `chat_log` stores the redacted question and the cited chunk IDs. So a reviewer can see which sources backed which answers.
 
-Two parts are missing from the design. The first is a rule that refuses when retrieval finds nothing relevant. That rule needs a cutoff on the cosine distance of the best passage. The fused search score cannot serve, because reciprocal rank fusion works on ranks, not on how close a passage is. The second is a scored evaluation set, which the question on testing covers.
+One part is still missing: a rule that refuses when retrieval finds nothing relevant. That rule needs a cutoff on the cosine distance of the best passage. The fused search score cannot serve, because reciprocal rank fusion works on ranks, not on how close a passage is. The evaluation question covers how answers are scored.
+
+</details>
+
+---
+
+### Q2. How did you evaluate your RAG pipeline, and which metrics told you it was good enough?
+
+**Brief answer**
+I measured retrieval and answers separately, on a labelled set of about 200 expert questions. Retrieval was scored by recall at 8 and Mean Reciprocal Rank ([MRR](https://en.wikipedia.org/wiki/Mean_reciprocal_rank "Ranking metric scoring how high the first relevant result appears")). Answers were scored on citation match and on faithfulness to the passages, by a judge model that knowledge editors checked on a sample.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **two halves** — retrieval and answers fail for different reasons
+- **about 200 expert questions** — right chunks and documents marked
+- **recall at 8** — the main number
+- **MRR** — is the right chunk near the top
+- **recall at 40** — a ranking problem or a search problem
+- **citation match**
+- **faithfulness** — scored by an LLM judge
+- **human check on the judge**
+- invalid citations, Pydantic parse failures, search-only fallbacks, assistant_answer_seconds, never exact wording
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+I evaluated the two halves of the pipeline separately. Retrieval and answers fail for different reasons, so one end-to-end score would not say what to fix.
+
+**The question set.** Knowledge editors wrote about 200 expert questions. For each one, they marked the chunks that answer it and the documents a correct answer must cite. The set runs against a fixed corpus with stored embeddings, so retrieval results are repeatable. It runs before any change to chunking, the embedding model, the search query, the prompt or the chat model. It does not run on every commit, because the answer part costs tokens.
+
+**Retrieval metrics.**
+
+- **Recall at 8.** The share of questions where at least one right chunk is among the eight sent to the model. This is the main number. If retrieval misses, no model can answer correctly.
+- **Mean Reciprocal Rank (MRR).** The average of 1 divided by the rank of the first right chunk. It shows whether the right chunk is near the top or only just inside.
+- **Recall at 40.** The same measure before the top eight are chosen. A gap between recall at 40 and recall at 8 means ranking is the problem, not search.
+
+**Answer metrics.** Every question in the set runs through the full pipeline.
+
+- **Citation match.** The answer cites at least one of the expected documents. This is a plain code check.
+- **Faithfulness.** Every claim in the answer must be supported by the passages that were sent. A second model call scores this as a Large Language Model (LLM) judge, with a fixed rubric.
+- **Human check on the judge.** Knowledge editors scored a sample of about 30 answers by hand. That showed where the judge and the clinicians disagreed. A judge model is cheap, but I trusted it only where it agreed with the experts.
+
+**Production signals.** These run on live traffic:
+
+- invalid citations, where a cited chunk ID is not one of the passages sent;
+- Pydantic parse failures of the structured output;
+- search-only fallbacks, which show provider problems;
+- `assistant_answer_seconds` against its 8-second p95 target.
+
+**The release rule.** A change ships only if recall at 8 and faithfulness do not drop against the last run. Exact wording is never compared, because the model's wording changes between runs.
 
 </details>
 
@@ -1567,7 +1920,7 @@ Two parts are missing from the design. The first is a rule that refuses when ret
 ### Q2. How do you test LLM-dependent features?
 
 **Brief answer**
-I split the feature into deterministic parts and the model call. The deterministic parts fit the per-service unit and integration tests the pipeline already runs, with the model stubbed. The model's answers need a fixed question set checked on citations, which the design does not have yet.
+I split the feature into deterministic parts and the model call. The deterministic parts fit the per-service unit and integration tests the pipeline already runs, with the model stubbed. The model's answers are checked against a fixed question set, on citations rather than wording.
 
 <details>
 <summary><strong>Must cover</strong></summary>
@@ -1600,7 +1953,7 @@ A feature built on a Large Language Model (LLM) is mostly not the LLM. So the pa
 
 **Logs.** This test is in the design. A CI test sends sample requests and checks that no Protected Health Information (PHI) field reaches the logs. Chat text is one of the forbidden fields. So a test, not a review, keeps PHI out of the logs.
 
-The design does not include an evaluation set for the model's answers. The model output changes between runs and between model versions. So an exact-match test fails for the wrong reasons. I would add a fixed set of expert questions. Each one lists the documents a correct answer must cite. The check asserts on citations, not on wording. It would run before a model or prompt change, not on every commit, because each run costs tokens.
+The model output changes between runs and between model versions. So an exact-match test fails for the wrong reasons. Instead, the evaluation set holds a fixed list of expert questions. Each one lists the documents a correct answer must cite. The check asserts on citations, not on wording. It runs before a model or prompt change, not on every commit, because each run costs tokens. The evaluation question covers its metrics.
 
 </details>
 
@@ -1677,6 +2030,49 @@ I treated this as a data-flow problem with three entry points.
 The contract side matters as much as the code. OpenAI offers zero data retention and a Business Associate Agreement ([BAA](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html "HIPAA contract under which a vendor may handle protected health information for a covered entity")) only to approved API customers. Both must be confirmed before go-live. If they cannot be, the assistant moves to Azure OpenAI Service, which keeps the data in our tenant. We used the OpenAI Software Development Kit ([SDK](https://en.wikipedia.org/wiki/Software_development_kit "Packaged set of tools and libraries for building against a platform")), so that change is an endpoint and credential swap, not a rewrite.
 
 The trade-off is simple. We called the OpenAI API directly, not Azure OpenAI. That is acceptable only because the corpus holds no patient data and every question is redacted first.
+
+</details>
+
+---
+
+### Q3. How did you protect the chatbot against prompt injection?
+
+**Brief answer**
+I assumed some injections would get through, and I limited what they could do. Injected text can come from the question or from a document. So the corpus was curated, passages went into the prompt marked as data, and the model had no tools, no write access and no data beyond the guidelines. The worst case was a wrong answer that still had to cite a real passage.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **direct injection** — through the question
+- **indirect injection** — through a document, the more dangerous route
+- **limit the damage**
+- **nothing to steal** — grants only on the kb schema
+- **no tools** — the code chooses the next step
+- **KnowledgeEditor role** — only curated sources
+- **delimiters** — passages are reference material, never instructions
+- **every cited chunk ID must be one of the passages sent**
+- instruction-like text flagged at ingest, 20 questions per minute, daily token budget, chat_log review
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+Prompt injection is text that tries to override the model's instructions. It has two routes.
+
+- **Direct injection, through the question.** A user types "ignore your instructions and…". Every user is a signed-in staff member, but the risk is still real.
+- **Indirect injection, through a document.** A passage holds text that reads like an instruction, and retrieval puts it into the prompt. This is the more dangerous route, because the user never sees the text.
+
+No prompt wording stops injection completely. So I designed to limit the damage.
+
+1. **Nothing to steal.** `assistant-service` has grants only on the `kb` schema. The corpus holds no patient records, and the prompt holds no secrets and no other user's data. A successful injection can reveal only the system prompt and the guidelines.
+2. **Nothing to do.** The model has no tools and no function calling. It makes one call and returns text, and the code chooses the next step. So injected text cannot send a message, change a record or call another service.
+3. **Who can add text.** Only the KnowledgeEditor role can upload documents, and the documents are curated guidelines from known sources. Ingest also flags chunks with instruction-like text, such as "ignore previous instructions", for an editor to check.
+4. **Instructions apart from data.** The system message holds the rules. Passages go into the user message inside clear delimiters, each with its chunk ID. The system message says passage text is reference material, never instructions. This lowers the success rate, but it does not stop a determined attack.
+5. **Output checks.** Pydantic parses the structured output. Every cited chunk ID must be one of the passages sent. An answer that breaks the format is not shown, and the user gets the search results instead.
+6. **Limits and review.** API Management allows 20 questions per minute per user, and a daily token budget caps use. So nobody can probe at scale. `chat_log` keeps the redacted question, so a review can find attempts later.
+
+**What I accept.** A clever injection can still make an answer wrong. In a clinical setting that matters. So the citation is the last control: a clinician checks the cited source before acting on the answer.
 
 </details>
 
@@ -1800,6 +2196,53 @@ I do not have measured memory or timing numbers for these runs, so I will not qu
 
 ---
 
+### Q2. How did you turn raw vital-sign arrays into features for a machine learning model?
+
+**Brief answer**
+For each patient, I cut the sorted per-signal arrays into trailing windows and computed summary features with vectorised NumPy operations: level, spread, trend and the share of missing data. The same feature code ran in the scoring run and in the training export, so the model saw the same features in training and in production.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **trailing windows** — 15 minutes, 1 hour and 4 hours
+- **np.searchsorted** — window starts without a loop
+- **a slice is a view**
+- **trend** — the slope of a straight-line fit
+- **missing share**
+- **training-serving skew** — one feature function for both
+- **point in time** — no data after the prediction time
+- **artefact flag** — NaN, not zero
+- np.nanmean, np.polyfit, NEWS2 from vitals_rules, one row per patient
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The input is the array from the concatenate, sort and transpose steps: one row per signal, one column per frame, in time order.
+
+**Windows.** Deterioration is a change over time, so one reading says little. I used trailing windows of 15 minutes, 1 hour and 4 hours. The frames are sorted, so `np.searchsorted` on the timestamps finds where each window starts, without a loop. Each window is then a slice, and a slice is a view, not a copy.
+
+**Features for each signal and window.**
+
+- **Level:** mean, minimum and maximum, with `np.nanmean`, `np.nanmin` and `np.nanmax`.
+- **Spread:** the standard deviation. An unstable signal can matter as much as a high one.
+- **Trend:** the slope of a straight-line fit over the window, with `np.polyfit` of degree 1. A slow fall in oxygen saturation over 4 hours is the pattern a single threshold misses.
+- **Missing share:** the share of NaN values. Features from a window with many gaps are less reliable, and the model needs to know that.
+- **NEWS2** over the window, from the shared `vitals_rules` package.
+
+All patients are then stacked into one matrix, with one row per patient, for one batched call to the model endpoint.
+
+**Same code for training and scoring.** The biggest risk with features is a difference between training and production. This is called training-serving skew. If training computes a mean one way and scoring another way, the model is wrong without any error. So the feature function lives in one package. The scoring run and the monthly training export both import it, the same way both use NEWS2 from `vitals_rules`.
+
+**Point in time.** Training features use only data from before the prediction time. A window that reaches past it leaks the outcome into the features. The model then looks better in training than it really is.
+
+**Artefacts.** Frames with the device's artefact flag become NaN before any feature is computed. A probe-off reading of zero would otherwise look like a collapse.
+
+</details>
+
+---
+
 ## R8. Data quality — Pandas normalization and inspection
 
 > Data normalization and data inspection using Pandas;
@@ -1877,6 +2320,49 @@ In Pandas this is a group-by over the day's frames per device, with a few aggreg
 It is not a real-time alarm. Fast problems have their own path. A gateway that is silent for 30 seconds raises a `GATEWAY_SILENT` alert in the alert pipeline. The daily table finds slow problems, such as a device that drops a few percent of its frames every day, or a ward whose gateway is always late.
 
 The data also helps the clinical side. Sustain windows and score bands are tuned with clinical staff on replayed archive data. A device with a high artefact ratio would distort that threshold tuning, so it helps to know which devices those are.
+
+</details>
+
+---
+
+### Q2. How did you use Pandas to prepare a training dataset for a machine learning model from the monitoring data?
+
+**Brief answer**
+A monthly export matched each prediction time with what happened to the patient afterwards, and it dropped data the quality checks marked as poor. It also replaced patient IDs with a keyed hash. The result was a pseudonymised dataset that only the Azure Machine Learning workspace could read.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **outcome labels** — admission events within the prediction horizon
+- **merge_asof** — the next outcome event per admission
+- **leakage** — no data after the prediction time
+- **quality filter** — data_quality_daily
+- **kept the real ratio** — class weights in training
+- **HMAC** — key in Key Vault
+- **split by patient**
+- **pseudonymisation, not anonymisation** — still personal data
+- 12-hour horizon, Parquet, one-year deletion, ml-datasets container
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+The dataset trains the deterioration risk model, so each row needs features and an outcome. The export runs monthly in `func-analytics`.
+
+**Outcome labels.** `care.admission_event` records rapid-response calls, transfers to intensive care, deaths and discharges. The function reads them through the `care.v_admission_outcome` view. A row is positive when a deterioration event follows within the prediction horizon. I used 12 hours.
+
+**Joining in time.** In Pandas, `merge_asof` with `direction="forward"` and `by="admission_id"` matches each prediction time with the next outcome event for that admission. A `tolerance` of 12 hours turns "an event within the horizon" into one join, without a loop.
+
+**Leakage.** Features use only data from before the prediction time, as the NumPy question covers. Rows after an outcome event are dropped too. A patient who is already in intensive care is not "about to deteriorate".
+
+**Quality filter.** `telemetry.data_quality_daily` gives completeness and the artefact ratio per device per day. Rows from device-days with low completeness or a high artefact ratio are dropped. Otherwise the model can learn that a broken probe means a sick patient.
+
+**Class balance.** Deterioration events are rare. I kept the real ratio in the dataset and handled the imbalance in training with class weights. Deleting negatives in the export would hide the real rate from the evaluation.
+
+**Identity.** Patient IDs are replaced by a Hash-based Message Authentication Code ([HMAC](https://datatracker.ietf.org/doc/html/rfc2104 "Verifies both the integrity and authenticity of a message using a shared secret key")), with the key in Key Vault. The same patient always gets the same pseudonym, so one patient's rows stay linked. That makes a split by patient possible: no patient is in both the training set and the test set. Names, MRNs and national IDs never enter the dataset.
+
+This is pseudonymisation, not anonymisation. Whoever holds the key can link rows back to a patient, so the data is still personal data. It is written as Parquet to the `ml-datasets` container, deleted after one year, and readable only by the Azure Machine Learning workspace.
 
 </details>
 
@@ -2375,6 +2861,49 @@ One caution. The five-year figures are capacity estimates, not a retention polic
 ## R13. Cloud — Azure Functions
 
 > Implement serverless calculations using Azure Functions;
+
+---
+
+### Q1. How did you call an Azure Machine Learning model from an Azure Function?
+
+**Brief answer**
+A timer function ran every 15 minutes and built one feature row per monitored patient. It sent all the rows in one batched HTTPS call to the model's managed online endpoint, signed in with the function's managed identity. A score above the threshold raised an advisory alert. If the endpoint failed, the run was skipped and logged.
+
+<details>
+<summary><strong>Must cover</strong></summary>
+
+- **managed online endpoint** — tracking, versions, safe rollout
+- **every 15 minutes**
+- **one batched HTTPS call** — not 1,200 round trips
+- **advisory alert** — dedup_key stops a repeat every run
+- **managed identity** — no stored endpoint key
+- **skipped and logged** — the score goes stale
+- **no retry loop inside the run** — it would overlap the next run
+- **mirrored traffic** — a new version scores but is not used
+- batch endpoint, timeout, skipped-run metric
+
+</details>
+
+<details>
+<summary><strong>Detailed answer</strong></summary>
+
+**Where the model lives.** The `deterioration-risk` model was trained and versioned in Azure Machine Learning, and served from a managed online endpoint. I kept the model out of our services. The workspace gives experiment tracking, model versions and a safe rollout, and a model inside a service loses all three.
+
+**The scoring run.** `func-analytics` runs the scoring every 15 minutes on a timer.
+
+1. It builds one feature row per monitored patient with NumPy. The NumPy question covers the features.
+2. It sends all rows in one batched HTTPS call. One call per patient would be about 1,200 round trips every 15 minutes.
+3. A score above the threshold becomes an advisory alert, published like any other alert. The `dedup_key` stops a patient from getting a new alert on every run while the score stays high.
+
+**Sign-in.** The endpoint accepts Microsoft Entra ID tokens. The function gets a token with its managed identity, so no endpoint key is stored anywhere.
+
+**Failure.** The call is synchronous and has a timeout. If the endpoint is down or returns an error, the run is skipped and logged, and a metric counts skipped runs. The advisory score goes stale until the next run. That is acceptable because the score is advisory. The threshold and NEWS2 alerts on the live path do not depend on it. There is no retry loop inside the run, because a retry that runs past 15 minutes would overlap the next run.
+
+**New model versions.** A managed online endpoint can hold two deployments. A new version first gets mirrored traffic. It receives a copy of each request, and its scores are compared but not used. Then it takes a small share of real traffic, and finally all of it.
+
+**Online or batch.** Azure Machine Learning also has batch endpoints for large offline jobs. 1,200 rows every 15 minutes is small and needs an answer in seconds, so an online endpoint fits.
+
+</details>
 
 ---
 
